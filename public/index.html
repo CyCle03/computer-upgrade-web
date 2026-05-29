@@ -12,7 +12,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <!-- Google Fonts Outfit & JetBrains Mono -->
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
-  <!-- Socket.io Client (Express 서버 호스팅 소켓 연동) -->
+  <!-- Socket.io Client -->
   <script src="/socket.io/socket.io.js"></script>
   <style>
     body {
@@ -42,11 +42,18 @@
 
     function App() {
       // ----------------------------------------------------------------------
-      // 1. 핵심 유저 재화 상태 정의
+      // 1. 핵심 유저 재화 및 강화 피드백 상태 정의
       // ----------------------------------------------------------------------
       const [minerals, setMinerals] = useState(2000);
       const [normalCoins, setNormalCoins] = useState(50);
       const [scaCoins, setScaCoins] = useState(0);
+
+      // 확률 강화 피드백 전용 상태
+      const [upgradeStatus, setUpgradeStatus] = useState(null); // 'success', 'fail_keep', 'fail_drop', 'exploded', 'upgrading'
+      const [upgradeMessage, setUpgradeMessage] = useState('');
+      const [isUpgrading, setIsUpgrading] = useState(false);
+      const [activeUpgradingPart, setActiveUpgradingPart] = useState(null);
+      const [rebirthCount, setRebirthCount] = useState(0);
 
       // ----------------------------------------------------------------------
       // 2. 조립 컴퓨터 부품 상태 정의
@@ -56,7 +63,7 @@
       const [ram, setRam] = useState({ level: 1, clockMhz: 2400, capacityGb: 8, ddrGeneration: 'DDR4' });
       const [cooler, setCooler] = useState({ level: 1, coolingCapacity: 30 });
       const [motherboard, setMotherboard] = useState({ socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR4', shieldIncrease: 300 });
-      const [storage, setStorage] = useState({ type: 'HDD', capacityGb: 250 });
+      const [storage, setStorage] = useState({ type: 'HDD', capacityGb: 250, level: 1 });
 
       // ----------------------------------------------------------------------
       // 3. 사냥터 및 다운로드 진행 상태 정의
@@ -76,6 +83,73 @@
       const [myId] = useState(`u-${Math.random().toString(36).substring(2, 8)}`);
       const [nickname] = useState(`Player_${Math.floor(100 + Math.random() * 900)}`);
       const [errorMessage, setErrorMessage] = useState(null);
+
+      // ----------------------------------------------------------------------
+      // 스타1 컴퓨터강화 유즈맵 고증 부품 이름 매핑 헬퍼
+      // ----------------------------------------------------------------------
+      const getCpuName = (level) => {
+        const names = {
+          1: '똥컴 CPU (Dual-Core)',
+          2: '인텔 펜티엄 4',
+          3: '인텔 코어2듀오 E6600',
+          4: '인텔 Core i3 4세대',
+          5: '인텔 Core i5 9세대',
+          6: '인텔 Core i7 12세대',
+          7: '인텔 Core i9 14세대',
+          8: '인텔 Xeon Platinum',
+          9: 'AMD Ryzen Threadripper',
+          10: '양자 슈퍼컴퓨터 코어 v1.2'
+        };
+        return names[level] || `차세대 퀀텀 CPU (Lv.${level})`;
+      };
+
+      const getGpuName = (level) => {
+        const names = {
+          1: 'Riva TNT2 (16MB)',
+          2: 'NVIDIA GeForce 8600GT',
+          3: 'NVIDIA GeForce GTS250',
+          4: 'NVIDIA GeForce GTX460',
+          5: 'NVIDIA GeForce GTX760',
+          6: 'NVIDIA GeForce GTX1060 (6GB)',
+          7: 'NVIDIA GeForce RTX2060 Super',
+          8: 'NVIDIA GeForce RTX3060 Ti',
+          9: 'NVIDIA GeForce RTX4090 D',
+          10: 'NVIDIA GH200 Grace Hopper AI'
+        };
+        return names[level] || `AI 딥러닝 텐서 GPU (Lv.${level})`;
+      };
+
+      const getRamName = (level) => {
+        const names = {
+          1: 'Legacy SDRAM 4GB',
+          2: 'DDR3 High-Speed 8GB',
+          3: 'DDR3 Dual-Channel 16GB',
+          4: 'DDR4 Gamer Edition 16GB',
+          5: 'DDR4 RGB Corsair 32GB',
+          6: 'DDR5 Trident Z 32GB',
+          7: 'DDR5 Quad-Channel 64GB',
+          8: 'DDR5 ECC Server 128GB',
+          9: 'SK Hynix HBM3e 96GB',
+          10: '초임계 양자 가속 HBM4 192GB'
+        };
+        return names[level] || `양자 초고속 메모리 (Lv.${level})`;
+      };
+
+      const getCoolerName = (level) => {
+        const names = {
+          1: '인텔 기본 번들 (초코파이)',
+          2: '구리 히트싱크 알루미늄 공랭',
+          3: '보급형 타워 싱글팬 공랭',
+          4: '듀얼타워 대장급 공랭 (NH-D15)',
+          5: '240mm 2열 짭수랭 (AIO)',
+          6: '360mm 3열 RGB 수랭 (Kraken)',
+          7: '커스텀 아크릴 수로 오픈형 수랭',
+          8: '외장 거대 라디에이터 모라(MORA)',
+          9: '공업용 액체 냉동 칠러 (Chiller)',
+          10: 'LN2 액체질소 극한 냉각 제어탑'
+        };
+        return names[level] || `반중력 열복사 냉각 시스템 (Lv.${level})`;
+      };
 
       // ----------------------------------------------------------------------
       // 5. 실시간 하드웨어 스펙 연산 (2단계 백엔드 공식과 100% 매칭)
@@ -148,17 +222,17 @@
       }, [cpu, gpu, ram, cooler, motherboard, storage]);
 
       // ----------------------------------------------------------------------
-      // 6. 초당 자동 미네랄 수급 라이프사이클
+      // 6. 초당 자동 미네랄 수급 라이프사이클 (환생 버프 적용)
       // ----------------------------------------------------------------------
       useEffect(() => {
         const interval = setInterval(() => {
-          // 과열 페널티가 활성화되면 초당 수익이 50% 삭감됨
-          const autoEarn = Math.round(10 * specs.penalties.mineralMultiplier * huntingGround.multiplier);
+          const baseEarn = Math.round(10 * specs.penalties.mineralMultiplier * huntingGround.multiplier);
+          const autoEarn = Math.round(baseEarn * (1 + rebirthCount * 0.5));
           setMinerals(prev => prev + autoEarn);
         }, 1000);
 
         return () => clearInterval(interval);
-      }, [specs, huntingGround]);
+      }, [specs, huntingGround, rebirthCount]);
 
       // ----------------------------------------------------------------------
       // 7. 실시간 상점 강화 비용 계산 헬퍼
@@ -167,8 +241,24 @@
         return Math.round(100 * Math.pow(1.6, level));
       };
 
+      // 부품 강화 확률 매핑 함수
+      const getUpgradeProbability = (level) => {
+        if (level === 1) return 1.0;
+        if (level === 2) return 0.90;
+        if (level === 3) return 0.80;
+        if (level === 4) return 0.70;
+        if (level === 5) return 0.60;
+        if (level === 6) return 0.50;
+        if (level === 7) return 0.40;
+        if (level === 8) return 0.30;
+        if (level === 9) return 0.20;
+        return 0.10; // 10강 이상
+      };
+
       // 부품 강화 핸들러
-      const handleUpgrade = (part, setter) => {
+      const handleUpgrade = (part, setter, partName) => {
+        if (isUpgrading) return;
+        
         const cost = getUpgradeCost(part.level);
         if (minerals < cost) {
           alert('미네랄이 부족합니다.');
@@ -176,33 +266,149 @@
         }
 
         setMinerals(prev => prev - cost);
-        
-        // 쿨러의 경우 쿨링 수용량도 20씩 레벨 비례 자동 증가
-        if (setter === setCooler) {
-          setter(prev => ({
-            ...prev,
-            level: prev.level + 1,
-            coolingCapacity: prev.coolingCapacity + 25
-          }));
-        } else if (setter === setRam) {
-          setter(prev => ({
-            ...prev,
-            level: prev.level + 1,
-            clockMhz: prev.clockMhz + 400,
-            capacityGb: prev.capacityGb + 8
-          }));
-        } else if (setter === setStorage) {
-          setter(prev => ({
-            ...prev,
-            level: (prev.level || 1) + 1,
-            capacityGb: prev.capacityGb + 250
-          }));
-        } else {
-          setter(prev => ({
-            ...prev,
-            level: prev.level + 1
-          }));
+        setIsUpgrading(true);
+        setActiveUpgradingPart(partName);
+        setUpgradeStatus('upgrading');
+        setUpgradeMessage(`${partName.toUpperCase()} 강화 주입 중... (체스소켓 연동)`);
+
+        setTimeout(() => {
+          const currentLevel = part.level;
+          const prob = getUpgradeProbability(currentLevel);
+          const rand = Math.random();
+          
+          let result = 'success';
+          if (rand <= prob) {
+            result = 'success';
+          } else {
+            if (currentLevel <= 5) {
+              result = 'fail_keep';
+            } else if (currentLevel <= 7) {
+              result = 'fail_drop';
+            } else {
+              const explodeChance = currentLevel === 8 ? 0.5 : currentLevel === 9 ? 0.7 : 0.9;
+              if (Math.random() <= explodeChance) {
+                result = 'exploded';
+              } else {
+                result = 'fail_drop';
+              }
+            }
+          }
+
+          setIsUpgrading(false);
+          setUpgradeStatus(result);
+
+          if (result === 'success') {
+            const nextLvl = currentLevel + 1;
+            setUpgradeMessage(`🎉 [강화 성공] ${partName.toUpperCase()} 강화 성공! (+${nextLvl}강)`);
+            
+            if (setter === setCooler) {
+              setter(prev => ({
+                ...prev,
+                level: prev.level + 1,
+                coolingCapacity: prev.coolingCapacity + 25
+              }));
+            } else if (setter === setRam) {
+              setter(prev => ({
+                ...prev,
+                level: prev.level + 1,
+                clockMhz: prev.clockMhz + 400,
+                capacityGb: prev.capacityGb + 8
+              }));
+            } else if (setter === setStorage) {
+              setter(prev => ({
+                ...prev,
+                level: (prev.level || 1) + 1,
+                capacityGb: prev.capacityGb + 250
+              }));
+            } else {
+              setter(prev => ({
+                ...prev,
+                level: prev.level + 1
+              }));
+            }
+          } else if (result === 'fail_keep') {
+            setUpgradeMessage(`⚠️ [강화 실패] 업그레이드 실패. 부품이 안전하게 보존되었습니다.`);
+          } else if (result === 'fail_drop') {
+            const prevLvl = Math.max(1, currentLevel - 1);
+            setUpgradeMessage(`📉 [등급 하락] 전원 불일치로 레벨이 하락했습니다. (+${prevLvl}강)`);
+            
+            if (setter === setCooler) {
+              setter(prev => ({
+                ...prev,
+                level: prevLvl,
+                coolingCapacity: Math.max(30, prev.coolingCapacity - 25)
+              }));
+            } else if (setter === setRam) {
+              setter(prev => ({
+                ...prev,
+                level: prevLvl,
+                clockMhz: Math.max(2400, prev.clockMhz - 400),
+                capacityGb: Math.max(8, prev.capacityGb - 8)
+              }));
+            } else if (setter === setStorage) {
+              setter(prev => ({
+                ...prev,
+                level: prevLvl,
+                capacityGb: Math.max(250, prev.capacityGb - 250)
+              }));
+            } else {
+              setter(prev => ({
+                ...prev,
+                level: prevLvl
+              }));
+            }
+          } else if (result === 'exploded') {
+            setUpgradeMessage(`💥 [부품 파괴] 아아..! 부품이 과전압 합선으로 폭발해 파괴되었습니다! (+1강 초기화)`);
+            
+            if (setter === setCooler) {
+              setter({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR4', coolingCapacity: 30 });
+            } else if (setter === setRam) {
+              setter({ level: 1, clockMhz: 2400, capacityGb: 8, ddrGeneration: 'DDR4' });
+            } else if (setter === setStorage) {
+              setter({ type: 'HDD', capacityGb: 250, level: 1 });
+            } else if (setter === setCpu) {
+              setter(prev => ({ ...prev, level: 1 }));
+            } else if (setter === setGpu) {
+              setter({ level: 1 });
+            }
+          }
+
+          setTimeout(() => {
+            setUpgradeStatus(null);
+            setUpgradeMessage('');
+          }, 4000);
+        }, 600);
+      };
+
+      // GPU 환생 처리 핸들러
+      const handleRebirth = () => {
+        if (gpu.level < 10) {
+          alert('환생은 GPU가 10강에 도달해야만 가능합니다.');
+          return;
         }
+
+        const confirmRebirth = confirm('정말 GPU 환생을 수행하시겠습니까?\n\n환생 시 모든 부품 레벨과 미네랄이 리셋되지만, SCA 클라우드 코인 +10개 획득 및 영구 자동 미네랄 수급 버프(+50% 복리 증가)가 상시 활성화됩니다.');
+        if (!confirmRebirth) return;
+
+        setScaCoins(prev => prev + 10);
+        setRebirthCount(prev => prev + 1);
+        setMinerals(0);
+
+        setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR4' });
+        setGpu({ level: 1 });
+        setRam({ level: 1, clockMhz: 2400, capacityGb: 8, ddrGeneration: 'DDR4' });
+        setCooler({ level: 1, coolingCapacity: 30 });
+        setMotherboard({ socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR4', shieldIncrease: 300 });
+        setStorage({ type: 'HDD', capacityGb: 250, level: 1 });
+        setHuntingGround({ name: '테이블 탑 조립소 (1단계)', multiplier: 1.0 });
+
+        setUpgradeStatus('success');
+        setUpgradeMessage(`✨ [환생 성공] 차원 소켓 개방 완료! 영구 수급 배율 x${(1 + (rebirthCount + 1)*0.5).toFixed(1)} 증가.`);
+        
+        setTimeout(() => {
+          setUpgradeStatus(null);
+          setUpgradeMessage('');
+        }, 5000);
       };
 
       // 메인보드 완제품 변경 구매 핸들러
@@ -237,17 +443,15 @@
         const interval = setInterval(() => {
           setDownloadProgress(prev => {
             const currentSize = (prev / 100) * downloadTarget.sizeMb;
-            const nextSize = currentSize + (specs.downloadSpeedMb); // 스토리지의 다운로드 속도 반영
+            const nextSize = currentSize + (specs.downloadSpeedMb);
             
             if (nextSize >= downloadTarget.sizeMb) {
               clearInterval(interval);
               setIsDownloading(false);
-              // 사냥터 승급 완료
               setHuntingGround({
                 name: downloadTarget.name,
                 multiplier: downloadTarget.multiplier
               });
-              // 다음 사냥터 업그레이드 타겟팅 자동 갱신
               setDownloadTarget({
                 name: '데이터 웜홀 센터 (3단계)',
                 sizeMb: 25000,
@@ -271,14 +475,12 @@
         setRewardMessage(null);
         setIsRaidOpen(true);
 
-        // 로컬 호스팅 포트에 맞춰 Socket.io 소켓 커넥션 연결
         const socketCon = io({
           reconnection: false
         });
 
         socketCon.on('connect', () => {
           console.log('[Socket] Connected to server.');
-          // 방 참여 이벤트 발송 (내 조립 컴퓨터 부품 스펙 함께 전송)
           socketCon.emit('joinRoom', {
             roomId: 'carry-room-100',
             userId: myId,
@@ -287,16 +489,14 @@
           });
         });
 
-        // 실시간 방 요약본 데이터 브로드캐스트 수신
         socketCon.on('room_state', (state) => {
           setRaidState(state);
         });
 
-        // 10층 단위 돌파에 따른 트랜잭션 보상 지급 이벤트 수신
         socketCon.on('milestone_reward_claimed', (data) => {
           const { clearedFloor, txResult } = data;
           if (txResult.success) {
-            setScaCoins(txResult.currentTotalCoins); // 실시간 내 SCA 잔고 갱신
+            setScaCoins(txResult.currentTotalCoins);
             setRewardMessage(`돌파 성공. ${clearedFloor}층 마일스톤 보상 SCA 코인 +${txResult.claimedCoins} 지급 완료.`);
             setTimeout(() => setRewardMessage(null), 4000);
           }
@@ -313,7 +513,6 @@
         setSocket(socketCon);
       };
 
-      // 레이드 취소 및 나가기
       const leaveRaidRoom = () => {
         if (socket) {
           socket.disconnect();
@@ -323,7 +522,6 @@
         setIsRaidOpen(false);
       };
 
-      // 준비 토글
       const toggleReady = () => {
         if (socket && raidState) {
           const me = raidState.players.find(p => p.userId === myId);
@@ -333,13 +531,12 @@
         }
       };
 
-      // 가상 미네랄 수동 클릭 채굴 기능
       const handleManualClick = () => {
-        const income = Math.round(5 * specs.penalties.mineralMultiplier * huntingGround.multiplier);
+        const baseIncome = Math.round(5 * specs.penalties.mineralMultiplier * huntingGround.multiplier);
+        const income = Math.round(baseIncome * (1 + rebirthCount * 0.5));
         setMinerals(prev => prev + income);
       };
 
-      // 아이콘 자동 바인딩을 위한 컴포넌트 헬퍼
       useEffect(() => {
         if (window.lucide) {
           window.lucide.createIcons();
@@ -350,7 +547,7 @@
         <div class="container mx-auto p-4 max-w-7xl">
           
           {/* ================================================================== */}
-          {/* 상단 자원 바 (SCI-FI 플랫 헤더) */}
+          {/* 상단 자원 바 */}
           {/* ================================================================== */}
           <header class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 items-center bg-slate-900/60 p-4 rounded-xl border border-emerald-500/20 neon-border-emerald">
             <div class="flex items-center space-x-3">
@@ -359,11 +556,10 @@
               </div>
               <div>
                 <h1 class="text-sm text-slate-400 uppercase tracking-widest font-semibold">복원 제어 터미널</h1>
-                <p class="text-xs text-emerald-500 font-mono">CONNECTION ACTIVE</p>
+                <p class="text-xs text-emerald-500 font-mono">REBIRTH LEVEL: {rebirthCount} (x{(1 + rebirthCount * 0.5).toFixed(1)} BUFF)</p>
               </div>
             </div>
 
-            {/* 미네랄 */}
             <div class="flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border border-slate-800">
               <span class="text-xs uppercase tracking-wider text-slate-400 font-mono">MINERALS</span>
               <span class="text-lg font-bold text-emerald-400 font-mono flex items-center space-x-1">
@@ -372,7 +568,6 @@
               </span>
             </div>
 
-            {/* 일반 코인 */}
             <div class="flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border border-slate-800">
               <span class="text-xs uppercase tracking-wider text-slate-400 font-mono">NORMAL COINS</span>
               <span class="text-lg font-bold text-cyan-400 font-mono">
@@ -380,7 +575,6 @@
               </span>
             </div>
 
-            {/* SCA 코인 (클라우드 영구 재화) */}
             <div class="flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border border-cyan-500/30 neon-border-cyan">
               <div class="flex items-center space-x-1.5">
                 <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
@@ -393,13 +587,30 @@
           </header>
 
           {/* ================================================================== */}
+          {/* 강화 플래시 스크린 */}
+          {/* ================================================================== */}
+          {upgradeStatus && (
+            <div class={`mb-6 p-4 rounded-xl border transition-all duration-300 font-mono text-center ${
+              upgradeStatus === 'upgrading' ? 'bg-blue-950/30 border-blue-500/50 text-blue-400 neon-border-cyan animate-pulse' :
+              upgradeStatus === 'success' ? 'bg-emerald-950/30 border-emerald-500/50 text-emerald-400 neon-border-emerald' :
+              upgradeStatus === 'fail_keep' ? 'bg-amber-950/30 border-amber-500/50 text-amber-400' :
+              upgradeStatus === 'fail_drop' ? 'bg-yellow-950/30 border-yellow-500/50 text-yellow-400 animate-bounce' :
+              'bg-rose-950/40 border-rose-500/80 text-rose-400 neon-border-rose animate-ping'
+            }`}>
+              <div class="flex items-center justify-center space-x-2">
+                {upgradeStatus === 'upgrading' && <span class="w-2.5 h-2.5 rounded-full bg-blue-400 animate-ping"></span>}
+                {upgradeStatus === 'success' && <i data-lucide="check-circle" class="w-5 h-5 text-emerald-400"></i>}
+                {upgradeStatus === 'exploded' && <i data-lucide="bomb" class="w-6 h-6 text-rose-500 animate-bounce"></i>}
+                <span class="text-sm font-bold uppercase tracking-wider">{upgradeMessage}</span>
+              </div>
+            </div>
+          )}
+
+          {/* ================================================================== */}
           {/* 중앙 그리드 레이아웃 */}
           {/* ================================================================== */}
           <main class="grid grid-cols-1 lg:grid-cols-12 gap-6">
             
-            {/* ---------------------------------------------------------------- */}
-            {/* 좌측 - 내 컴퓨터 상태창 (컴퓨터 스펙 및 경고창) */}
-            {/* ---------------------------------------------------------------- */}
             <section class="lg:col-span-5 bg-slate-900/40 p-6 rounded-xl border border-slate-800 flex flex-col space-y-6">
               <div class="flex justify-between items-center border-b border-slate-800 pb-3">
                 <h2 class="text-md uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2">
@@ -409,7 +620,6 @@
                 <span class="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">DDR {cpu.ddrGeneration} SYSTEM</span>
               </div>
 
-              {/* 페널티 및 이상 발생 모듈 (네온 레드 시각 유도) */}
               {(specs.penalties.isOverheated || specs.penalties.isSocketMismatched || specs.penalties.isDdrMismatched) && (
                 <div class="p-4 bg-rose-950/20 border border-rose-500/50 rounded-lg neon-border-rose space-y-2.5 animate-pulse">
                   <h3 class="text-xs font-bold text-rose-500 uppercase tracking-widest font-mono flex items-center space-x-1.5">
@@ -419,63 +629,61 @@
                   
                   {specs.penalties.isOverheated && (
                     <div class="text-xs text-rose-400 font-mono">
-                      ⚠️ OVERHEAT ERROR: CPU 요구 열량({specs.cpuHeatDemand})이 쿨러 능력({cooler.coolingCapacity})을 초과했습니다. 초당 미네랄 수입이 50% 삭감되었으며 유닛 강철 피로도로 인해 방어력이 반감되었습니다.
+                      ⚠️ OVERHEAT ERROR: CPU 요구 열량({specs.cpuHeatDemand})이 쿨러 능력({cooler.coolingCapacity})을 초과했습니다. 초당 미네랄 수입이 50% 삭감되었으며 유닛 방어력이 반감되었습니다.
                     </div>
                   )}
 
                   {specs.penalties.isSocketMismatched && (
                     <div class="text-xs text-rose-400 font-mono">
-                      ⚠️ SOCKET MISMATCH: CPU 제조사({cpu.manufacturer})와 메인보드 소켓 제조사({motherboard.socketManufacturer})가 일치하지 않아 코어 접촉 불량으로 가용 필드 유닛 한도가 절반으로 축소됩니다.
+                      ⚠️ SOCKET MISMATCH: CPU 제조사({cpu.manufacturer})와 메인보드 소켓 제조사({motherboard.socketManufacturer})가 불일치하여 유닛 한도가 절반으로 축소됩니다.
                     </div>
                   )}
 
                   {specs.penalties.isDdrMismatched && (
                     <div class="text-xs text-rose-400 font-mono">
-                      ❌ COMPATIBILITY ERROR: CPU, RAM, 메인보드의 DDR 규격이 다릅니다. 초당 극단적인 HP Decay 디버프({specs.penalties.hpDecayRate * 100}%/초 HP 자동 감소)로 유닛들이 실시간으로 파괴될 위험이 있습니다.
+                      ❌ COMPATIBILITY ERROR: DDR 규격 혼용 오류 발생. 초당 HP Decay 디버프({specs.penalties.hpDecayRate * 100}%/초)가 활성화됩니다.
                     </div>
                   )}
                 </div>
               )}
 
-              {/* 장착 부품 리스트 및 세대 규격 명세 */}
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* CPU */}
                 <div class="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center">
                   <div>
-                    <p class="text-[10px] text-slate-500 font-mono">CPU MODULE</p>
-                    <p class="text-sm font-semibold text-slate-200">{cpu.manufacturer} Level {cpu.level}</p>
+                    <p class="text-[10px] text-slate-500 font-mono">CPU PROCESSOR</p>
+                    <p class="text-sm font-semibold text-slate-200">{getCpuName(cpu.level)}</p>
+                    <p class="text-[9px] text-slate-500 font-mono mt-0.5">Grade: +{cpu.level}강</p>
                   </div>
                   <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{cpu.ddrGeneration}</span>
                 </div>
 
-                {/* GPU */}
                 <div class="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center">
                   <div>
                     <p class="text-[10px] text-slate-500 font-mono">GPU ENGINE</p>
-                    <p class="text-sm font-semibold text-slate-200">RTX Series Level {gpu.level}</p>
+                    <p class="text-sm font-semibold text-slate-200">{getGpuName(gpu.level)}</p>
+                    <p class="text-[9px] text-slate-500 font-mono mt-0.5">Grade: +{gpu.level}강</p>
                   </div>
                   <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">PCI-E</span>
                 </div>
 
-                {/* RAM */}
                 <div class="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center">
                   <div>
-                    <p class="text-[10px] text-slate-500 font-mono">SYSTEM MEMORY</p>
-                    <p class="text-sm font-semibold text-slate-200">{ram.capacityGb}GB Clock {ram.clockMhz}Mhz</p>
+                    <p class="text-[10px] text-slate-500 font-mono">SYSTEM RAM (MEM)</p>
+                    <p class="text-sm font-semibold text-slate-200">{getRamName(ram.level)}</p>
+                    <p class="text-[9px] text-slate-500 font-mono mt-0.5">Cap: {ram.capacityGb}GB / Clock: {ram.clockMhz}Mhz</p>
                   </div>
                   <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{ram.ddrGeneration}</span>
                 </div>
 
-                {/* Cooler */}
                 <div class="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center">
                   <div>
                     <p class="text-[10px] text-slate-500 font-mono">COOLING BLADE</p>
-                    <p class="text-sm font-semibold text-slate-200">Level {cooler.level} (Cap: {cooler.coolingCapacity})</p>
+                    <p class="text-sm font-semibold text-slate-200">{getCoolerName(cooler.level)}</p>
+                    <p class="text-[9px] text-slate-500 font-mono mt-0.5">Cap: {cooler.coolingCapacity}W / Grade: +{cooler.level}강</p>
                   </div>
                   <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">LIQUID</span>
                 </div>
 
-                {/* Motherboard */}
                 <div class="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center col-span-2">
                   <div>
                     <p class="text-[10px] text-slate-500 font-mono">MOTHERBOARD (NOT UPGRADABLE)</p>
@@ -484,7 +692,6 @@
                   <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">{motherboard.supportedDdrGeneration} SLOT</span>
                 </div>
 
-                {/* Storage */}
                 <div class="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center col-span-2">
                   <div>
                     <p class="text-[10px] text-slate-500 font-mono">STORAGE SYSTEM</p>
@@ -494,7 +701,6 @@
                 </div>
               </div>
 
-              {/* 최종 변동된 가상 유닛 전투 상세 스펙 */}
               <div class="p-4 bg-slate-950/40 border border-slate-800 rounded-lg flex flex-col space-y-3 font-mono">
                 <h3 class="text-xs text-slate-400 uppercase tracking-widest border-b border-slate-800 pb-1.5 flex items-center space-x-1">
                   <i data-lucide="shield" class="w-4 h-4 text-emerald-400"></i>
@@ -534,7 +740,6 @@
                 </div>
               </div>
 
-              {/* 자원 채굴 및 멀티플레이 트리거 레이아웃 */}
               <div class="grid grid-cols-2 gap-4">
                 <button 
                   onClick={handleManualClick}
@@ -554,12 +759,8 @@
               </div>
             </section>
 
-            {/* ---------------------------------------------------------------- */}
-            {/* 우측 - 상점 및 강화 (각 부품별 강화 카드) */}
-            {/* ---------------------------------------------------------------- */}
             <section class="lg:col-span-7 flex flex-col space-y-6">
               
-              {/* 부품 강화 상점 */}
               <div class="bg-slate-900/40 p-6 rounded-xl border border-slate-800 flex flex-col space-y-4">
                 <h2 class="text-md uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
                   <i data-lucide="store" class="w-5 h-5 text-cyan-400"></i>
@@ -567,6 +768,7 @@
                 </h2>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  
                   {/* CPU 강화 */}
                   <div class="p-4 bg-slate-950/60 rounded border border-slate-800 flex flex-col justify-between">
                     <div>
@@ -574,6 +776,12 @@
                         <span class="text-xs font-bold text-emerald-400 font-mono">CPU PROCESSOR</span>
                         <span class="text-[10px] font-mono text-slate-500">Lv. {cpu.level}</span>
                       </div>
+                      <p class="text-[11px] text-cyan-400 font-mono font-semibold mb-1">
+                        현재 모델: {getCpuName(cpu.level)}
+                      </p>
+                      <p class="text-[10px] text-amber-400 font-mono mb-2">
+                        [성공률: {Math.round(getUpgradeProbability(cpu.level) * 100)}%] {cpu.level > 5 && (cpu.level > 7 ? '⚠️ 실패 시 파괴/하락' : '⚠️ 실패 시 등급하락')}
+                      </p>
                       <p class="text-xs text-slate-400 mb-3">
                         강화 시 가용 필드 유닛 <strong class="text-emerald-400">+2기</strong> 및 유닛 기본 체력 <strong class="text-emerald-400">+100</strong> 가산. 발열량 <strong class="text-rose-400">+15</strong> 발생.
                       </p>
@@ -594,33 +802,56 @@
                         </button>
                       </div>
                       <button 
-                        onClick={() => handleUpgrade(cpu, setCpu)}
-                        class="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-xs font-bold font-mono transition"
+                        onClick={() => handleUpgrade(cpu, setCpu, 'cpu')}
+                        disabled={isUpgrading}
+                        class="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-xs font-bold font-mono transition disabled:opacity-50"
                       >
                         {getUpgradeCost(cpu.level).toLocaleString()} M
                       </button>
                     </div>
                   </div>
 
-                  {/* GPU 강화 */}
+                  {/* GPU 강화 및 환생 */}
                   <div class="p-4 bg-slate-950/60 rounded border border-slate-800 flex flex-col justify-between">
                     <div>
                       <div class="flex justify-between items-center mb-1">
                         <span class="text-xs font-bold text-emerald-400 font-mono">GPU CHIPSET</span>
                         <span class="text-[10px] font-mono text-slate-500">Lv. {gpu.level}</span>
                       </div>
+                      <p class="text-[11px] text-cyan-400 font-mono font-semibold mb-1">
+                        현재 모델: {getGpuName(gpu.level)}
+                      </p>
+                      <p class="text-[10px] text-amber-400 font-mono mb-2">
+                        {gpu.level < 10 ? `[성공률: ${Math.round(getUpgradeProbability(gpu.level) * 100)}%] ${gpu.level > 5 ? (gpu.level > 7 ? '⚠️ 실패 시 파괴/하락' : '⚠️ 실패 시 등급하락') : ''}` : '✨ 환생 활성화 완료'}
+                      </p>
                       <p class="text-xs text-slate-400 mb-3">
-                        강화 시 유닛의 공격력(데미지)을 <strong class="text-cyan-400">1.5배 기하급수적</strong>으로 폭등시킵니다. (최상위 보스 처치 필수 요소)
+                        강화 시 유닛의 공격력(데미지)을 <strong class="text-cyan-400">1.5배 기하급수적</strong>으로 폭등시킵니다.
+                        {gpu.level >= 10 && <span class="block text-cyan-300 font-bold mt-1 animate-pulse">✨ 환생 한계 도달! SCA 코인 +10개를 획득하려면 아래 환생 버튼을 누르세요.</span>}
                       </p>
                     </div>
-                    <div class="flex justify-between items-center pt-2 border-t border-slate-900">
-                      <span class="text-[10px] text-slate-500 font-mono">PCI-EXPRESS CORE</span>
-                      <button 
-                        onClick={() => handleUpgrade(gpu, setGpu)}
-                        class="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-xs font-bold font-mono transition"
-                      >
-                        {getUpgradeCost(gpu.level).toLocaleString()} M
-                      </button>
+                    <div class="flex flex-col space-y-2 pt-2 border-t border-slate-900">
+                      <div class="flex justify-between items-center">
+                        <span class="text-[10px] text-slate-500 font-mono">PCI-EXPRESS CORE</span>
+                        {gpu.level < 10 ? (
+                          <button 
+                            onClick={() => handleUpgrade(gpu, setGpu, 'gpu')}
+                            disabled={isUpgrading}
+                            class="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-xs font-bold font-mono transition disabled:opacity-50"
+                          >
+                            {getUpgradeCost(gpu.level).toLocaleString()} M
+                          </button>
+                        ) : (
+                          <span class="text-xs text-cyan-400 font-bold font-mono">MAX LV UPGRADE COMPLETE</span>
+                        )}
+                      </div>
+                      {gpu.level >= 10 && (
+                        <button
+                          onClick={handleRebirth}
+                          class="w-full py-2 bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-slate-950 font-bold rounded text-xs tracking-wider transition uppercase shadow-lg shadow-cyan-500/20"
+                        >
+                          ✨ GPU 환생 (SCA CLOUD REBIRTH)
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -631,8 +862,14 @@
                         <span class="text-xs font-bold text-emerald-400 font-mono">SYSTEM RAM (MEM)</span>
                         <span class="text-[10px] font-mono text-slate-500">Lv. {ram.level}</span>
                       </div>
+                      <p class="text-[11px] text-cyan-400 font-mono font-semibold mb-1">
+                        현재 모델: {getRamName(ram.level)}
+                      </p>
+                      <p class="text-[10px] text-amber-400 font-mono mb-2">
+                        [성공률: {Math.round(getUpgradeProbability(ram.level) * 100)}%] {ram.level > 5 && (ram.level > 7 ? '⚠️ 실패 시 파괴/하락' : '⚠️ 실패 시 등급하락')}
+                      </p>
                       <p class="text-xs text-slate-400 mb-3">
-                        강화 시 클럭 <strong class="text-emerald-400">+400Mhz</strong>로 유닛 쿨타임 단축 및 용량 <strong class="text-emerald-400">+8GB</strong>로 사냥 유닛 수 확대.
+                        강화 시 클럭 <strong class="text-emerald-400">+400Mhz</strong>로 유닛 공속 단축 및 사냥 유닛 수 확대.
                       </p>
                     </div>
                     <div class="flex justify-between items-center pt-2 border-t border-slate-900">
@@ -643,8 +880,9 @@
                         RAM 규격: {ram.ddrGeneration}
                       </button>
                       <button 
-                        onClick={() => handleUpgrade(ram, setRam)}
-                        class="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-xs font-bold font-mono transition"
+                        onClick={() => handleUpgrade(ram, setRam, 'ram')}
+                        disabled={isUpgrading}
+                        class="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-xs font-bold font-mono transition disabled:opacity-50"
                       >
                         {getUpgradeCost(ram.level).toLocaleString()} M
                       </button>
@@ -658,27 +896,34 @@
                         <span class="text-xs font-bold text-emerald-400 font-mono">CPU LIQUID COOLER</span>
                         <span class="text-[10px] font-mono text-slate-500">Lv. {cooler.level}</span>
                       </div>
+                      <p class="text-[11px] text-cyan-400 font-mono font-semibold mb-1">
+                        현재 모델: {getCoolerName(cooler.level)}
+                      </p>
+                      <p class="text-[10px] text-amber-400 font-mono mb-2">
+                        [성공률: {Math.round(getUpgradeProbability(cooler.level) * 100)}%] {cooler.level > 5 && (cooler.level > 7 ? '⚠️ 실패 시 파괴/하락' : '⚠️ 실패 시 등급하락')}
+                      </p>
                       <p class="text-xs text-slate-400 mb-3">
-                        강화 시 쿨링 성능 <strong class="text-emerald-400">+25</strong> 향상으로 CPU 발열을 억제하고 유닛의 기본 방어력 <strong class="text-emerald-400">+3</strong> 추가 부여.
+                        강화 시 쿨링 성능 <strong class="text-emerald-400">+25</strong> 향상으로 발열 억제 및 유닛 방어력 <strong class="text-emerald-400">+3</strong> 부여.
                       </p>
                     </div>
                     <div class="flex justify-between items-center pt-2 border-t border-slate-900">
                       <span class="text-[10px] text-slate-500 font-mono">THERMAL RESOLVER</span>
                       <button 
-                        onClick={() => handleUpgrade(cooler, setCooler)}
-                        class="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-xs font-bold font-mono transition"
+                        onClick={() => handleUpgrade(cooler, setCooler, 'cooler')}
+                        disabled={isUpgrading}
+                        class="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-xs font-bold font-mono transition disabled:opacity-50"
                       >
                         {getUpgradeCost(cooler.level).toLocaleString()} M
                       </button>
                     </div>
                   </div>
 
-                  {/* 메인보드 완제품 변경 구매 (100% 수동 선택하여 오류 시뮬레이션 가능) */}
+                  {/* 메인보드 완제품 변경 구매 */}
                   <div class="p-4 bg-slate-950/60 rounded border border-slate-800 flex flex-col justify-between col-span-2">
                     <div>
                       <span class="text-xs font-bold text-cyan-300 font-mono block mb-1">MOTHERBOARD RACK SHOP (PROD)</span>
                       <p class="text-xs text-slate-400 mb-3">
-                        확률 강화 불가. 소켓과 DDR 지원 규격을 내 컴퓨터 부품과 **일치하도록 직접 매치**하여 완제품으로 구매하세요. (오조립 시 페널티 발생 가능)
+                        소켓과 DDR 지원 규격을 내 컴퓨터 부품과 **일치하도록 직접 매치**하여 완제품으로 구매하세요. (오조립 시 페널티 발생 가능)
                       </p>
                     </div>
                     <div class="grid grid-cols-3 gap-2.5 pt-2.5 border-t border-slate-900">
@@ -731,14 +976,16 @@
                         <span class="text-[9px] text-emerald-400 font-bold mt-1">600 M</span>
                       </button>
                       <button 
-                        onClick={() => handleUpgrade(storage, setStorage)}
-                        class="px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded flex flex-col items-center justify-center transition"
+                        onClick={() => handleUpgrade(storage, setStorage, 'storage')}
+                        disabled={isUpgrading}
+                        class="px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded flex flex-col items-center justify-center transition disabled:opacity-50"
                       >
                         <span class="text-[10px] font-bold">용량 강화</span>
                         <span class="text-[9px] mt-1">{getUpgradeCost(storage.level || 1).toLocaleString()} M</span>
                       </button>
                     </div>
                   </div>
+
                 </div>
               </div>
 
@@ -764,7 +1011,6 @@
                       <span class="text-slate-500 font-mono">요구: {downloadTarget.requiredGb}GB</span>
                     </div>
 
-                    {/* 다운로드 진행도 바 */}
                     <div class="w-full bg-slate-950 rounded-full h-3.5 overflow-hidden border border-slate-800 p-0.5">
                       <div 
                         class="bg-emerald-500 h-full rounded-full transition-all duration-100 flex justify-end items-center pr-1.5"
@@ -794,13 +1040,12 @@
           </main>
 
           {/* ================================================================== */}
-          {/* 레이드 오버레이 모달 (Raid Overlay) */}
+          {/* 레이드 오버레이 모달 */}
           {/* ================================================================== */}
           {isRaidOpen && (
             <div class="fixed inset-0 bg-slate-950/90 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
               <div class="bg-slate-950 border border-cyan-500/30 rounded-2xl w-full max-w-4xl p-6 neon-border-cyan flex flex-col space-y-6 max-h-[90vh] overflow-y-auto">
                 
-                {/* 헤더 */}
                 <div class="flex justify-between items-center border-b border-slate-800 pb-4">
                   <div class="flex items-center space-x-3">
                     <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
@@ -814,21 +1059,18 @@
                   </button>
                 </div>
 
-                {/* 에러 상태 안내 */}
                 {errorMessage && (
                   <div class="p-3.5 bg-rose-950/20 border border-rose-500/50 rounded-lg text-xs font-mono text-rose-400 animate-pulse">
-                    ⚠️ 에러 감지: {errorMessage} (데이터베이스 서버 미동작 등의 이유일 수 있습니다.)
+                    ⚠️ 에러 감지: {errorMessage}
                   </div>
                 )}
 
-                {/* 10층 단위 보상 알림 텍스트 플래시 (과감한 깜빡임 팝업) */}
                 {rewardMessage && (
                   <div class="p-4 bg-emerald-950/30 border border-emerald-400/50 rounded-lg text-center text-sm font-bold font-mono text-emerald-400 neon-border-emerald animate-bounce">
                     🎉 {rewardMessage}
                   </div>
                 )}
 
-                {/* 방 대기 상태 UI */}
                 {raidState && raidState.status === 'waiting' && (
                   <div class="flex flex-col items-center justify-center py-10 space-y-6">
                     <p class="text-slate-400 font-mono text-center">
@@ -836,7 +1078,6 @@
                       모든 인원이 준비 완료 버튼을 누르면 실시간 100층 시뮬레이션 전투에 돌입합니다.
                     </p>
 
-                    {/* 참가 인원 현황 카드 */}
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 w-full">
                       {raidState.players.map((p) => {
                         const isMe = p.userId === myId;
@@ -857,7 +1098,6 @@
                         );
                       })}
 
-                      {/* 빈 슬롯 연출 */}
                       {Array.from({ length: 4 - raidState.players.length }).map((_, idx) => (
                         <div key={idx} class="p-4 bg-slate-950/20 border border-slate-900 border-dashed rounded-lg flex flex-col items-center justify-center text-center text-slate-700 min-h-[120px]">
                           <i data-lucide="plus" class="w-6 h-6 stroke-dashed"></i>
@@ -875,24 +1115,19 @@
                   </div>
                 )}
 
-                {/* 전투 진행 중 UI */}
                 {raidState && (raidState.status === 'fighting' || raidState.status === 'won' || raidState.status === 'lost') && (
                   <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     
-                    {/* 좌측 2슬롯 - 층수 전광판 및 보스 HP 게이지 */}
                     <div class="lg:col-span-2 flex flex-col space-y-6">
                       
-                      {/* 거대한 층수 전광판 */}
                       <div class="bg-slate-950/80 border border-cyan-500/30 p-6 rounded-xl text-center neon-border-cyan flex flex-col items-center justify-center relative overflow-hidden">
                         <div class="absolute top-2 left-3 text-[9px] font-mono text-cyan-500/40 uppercase">LIVE COMPUTE COMBAT MONITOR</div>
                         
-                        {/* 층수 텍스트 */}
                         <div class="text-[10px] font-mono uppercase tracking-widest text-slate-500">BOSS RAID STAGE</div>
                         <div class="text-4xl font-extrabold text-cyan-300 font-mono tracking-wider mt-1.5">
                           FLOOR {raidState.currentFloor} <span class="text-lg text-slate-500">/ 100</span>
                         </div>
 
-                        {/* 상태 안내 */}
                         {raidState.status === 'won' ? (
                           <span class="mt-3 text-xs font-bold text-emerald-400 uppercase tracking-widest font-mono border border-emerald-500/30 bg-emerald-950/20 px-3 py-1 rounded">100층 완전 등반 성공</span>
                         ) : raidState.status === 'lost' ? (
@@ -902,7 +1137,6 @@
                         )}
                       </div>
 
-                      {/* 보스 체력바 게이지 */}
                       <div class="bg-slate-900/40 border border-slate-800 p-5 rounded-xl space-y-3 flex flex-col">
                         <div class="flex justify-between items-center text-xs">
                           <span class="font-bold text-slate-300 uppercase tracking-wider font-mono flex items-center space-x-1">
@@ -914,17 +1148,14 @@
                           </span>
                         </div>
 
-                        {/* 보스 HP 바 */}
                         <div class="w-full bg-slate-950 rounded-full h-5 overflow-hidden border border-slate-800 p-0.5">
                           <div 
                             class="bg-rose-500 h-full rounded-full transition-all duration-300 flex justify-end items-center pr-2 relative"
                             style={{ width: `${(raidState.bossCurrentHp / raidState.bossMaxHp) * 100}%` }}
                           >
-                            <span class="text-[9px] font-bold text-slate-950 font-mono z-10"></span>
                           </div>
                         </div>
 
-                        {/* 시간 제한 Progress Bar */}
                         <div class="flex justify-between items-center text-[10px] font-mono pt-1 text-slate-500">
                           <span>남은 타임아웃 제한 시간</span>
                           <span class={`font-bold ${raidState.timeLeft <= 10 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`}>{raidState.timeLeft} 초</span>
@@ -938,10 +1169,8 @@
                       </div>
                     </div>
 
-                    {/* 우측 1슬롯 - 파티원 개별 DPS 기여도 및 마일스톤 */}
                     <div class="flex flex-col space-y-6">
                       
-                      {/* 파티원 DPS 기여도 미니 바 차트 */}
                       <div class="bg-slate-900/40 border border-slate-800 p-5 rounded-xl flex flex-col space-y-4">
                         <h3 class="text-xs text-slate-400 font-bold uppercase tracking-widest border-b border-slate-800 pb-2 flex items-center space-x-1">
                           <i data-lucide="bar-chart" class="w-4 h-4 text-cyan-400"></i>
@@ -961,7 +1190,6 @@
                                   <span class="text-slate-500 font-bold">{p.dpsContribution.toLocaleString()} DPS</span>
                                 </div>
                                 
-                                {/* 가로 바 차트 */}
                                 <div class="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-slate-900">
                                   <div 
                                     class={`h-full rounded-full transition-all duration-300 ${p.isDead ? 'bg-rose-500' : isMe ? 'bg-cyan-400' : 'bg-slate-700'}`}
@@ -979,14 +1207,12 @@
                           })}
                         </div>
 
-                        {/* 합산 DPS 표기 */}
                         <div class="pt-3 border-t border-slate-800 flex justify-between items-center text-xs font-mono">
                           <span class="text-slate-500">파티 합산 누적 DPS:</span>
                           <span class="text-cyan-400 font-bold">{raidState.totalDps.toLocaleString()}</span>
                         </div>
                       </div>
 
-                      {/* 오늘 보상 가능 구간 정보 (UI 내 텍스트 마일스톤) */}
                       <div class="bg-slate-900/40 border border-slate-800 p-5 rounded-xl flex flex-col space-y-3 font-mono">
                         <h3 class="text-xs text-slate-400 uppercase tracking-widest border-b border-slate-800 pb-2 flex items-center space-x-1">
                           <i data-lucide="trophy" class="w-4 h-4 text-cyan-300"></i>
