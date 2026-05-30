@@ -129,6 +129,74 @@
       });
       const [errorMessage, setErrorMessage] = useState(null);
 
+      const [workerType, setWorkerType] = useState(() => {
+        return localStorage.getItem('sca_workerType') || 'SCV';
+      });
+      const [miningMessage, setMiningMessage] = useState('');
+      const [combatLogs, setCombatLogs] = useState([
+        '💬 [SYSTEM] 사이버네틱 배틀 매트릭스 기동 완료.',
+        '💬 [SYSTEM] 100층 레이드용 소켓 프로토콜 대기 중.'
+      ]);
+
+      const getSummonUnit = (level) => {
+        const units = {
+          1: { name: '테란 마린 (Marine)', emoji: '🔫', dpsFactor: 1.0 },
+          2: { name: '테란 고스트 (Ghost)', emoji: '👁️', dpsFactor: 1.5 },
+          3: { name: '프로토스 드라군 (Dragoon)', emoji: '🦀', dpsFactor: 2.2 },
+          4: { name: '저그 히드라리스크 (Hydralisk)', emoji: '🐍', dpsFactor: 3.2 },
+          5: { name: '테란 영웅 시즈 탱크 (Siege Tank)', emoji: '💥', dpsFactor: 4.8 },
+          6: { name: '프로토스 하이 템플러 / 아칸 (Archon)', emoji: '⚡', dpsFactor: 7.2 },
+          7: { name: '프로토스 우주모함 캐리어 (Carrier)', emoji: '🛸', dpsFactor: 11.0 },
+          8: { name: '테란 전투순양함 배틀크루저 (Battlecruiser)', emoji: '🚢', dpsFactor: 16.0 },
+          9: { name: '프로토스 전설 영웅 제라툴 (Zeratul)', emoji: '🗡️', dpsFactor: 25.0 },
+          10: { name: '최종 테란 기함 하이페리온 (Hyperion)', emoji: '🌟', dpsFactor: 45.0 }
+        };
+        return units[level] || { name: '미확인 차원 유닛', emoji: '👽', dpsFactor: level * 5 };
+      };
+
+      const getRaidBossName = (floor) => {
+        const bosses = {
+          10: 'Guarder (폭주한 광전사 영웅)',
+          20: 'Torrasque (울트라리스크 융합수)',
+          30: 'Matriarch (뮤탈리스크 군락 영웅)',
+          40: 'Unclean One (디파일러 불사 보스)',
+          50: 'General Duke (크론 배틀크루저)',
+          60: 'Fenix (드라군 기계 거신 영웅)',
+          70: 'Zeratul (공허의 방랑자 제라툴)',
+          80: 'Infested Kerrigan (칼날의 여왕 케리건)',
+          90: 'The Overmind (초월체 생체 거대 코어)',
+          100: 'Amon (어두운 공허의 지배자 아몬)'
+        };
+        return bosses[floor] || `Raid Boss Level ${floor} (수호 가디언)`;
+      };
+
+      const handleManualMining = () => {
+        const baseIncome = Math.round(5 * specs.penalties.mineralMultiplier * huntingGround.multiplier);
+        const income = Math.round(baseIncome * (1 + rebirthCount * 0.5));
+        setMinerals(prev => prev + income);
+
+        const actions = {
+          SCV: [
+            `🛠️ [SCV] 지지직... 융합 절단기로 미네랄 결정을 조각내어 커맨드 센터로 전송! (+${income}M)`,
+            `🛠️ [SCV] "SCV 좋은데~" 융합 절단기 오버클럭 가동 완료! (+${income}M)`,
+            `🛠️ [SCV] 지이잉- 광물 채굴 집게 가동! 광석을 커맨드 센터로 운반합니다. (+${income}M)`
+          ],
+          Probe: [
+            `🔮 [Probe] 삐비빅! 사이오닉 에너지 동력장을 활성화해 광물을 넥서스로 즉시 소환! (+${income}M)`,
+            `🔮 [Probe] 웅- 탐사정이 미네랄 주변에 미세 차원 워프 게이트를 개방했습니다! (+${income}M)`,
+            `🔮 [Probe] 삐-익! 고주파 빔으로 광석의 핵을 정밀 분리해 넥서스로 전송 완료! (+${income}M)`
+          ],
+          Drone: [
+            `🧬 [Drone] 쿠르릉... 날카로운 턱발톱으로 미네랄 층을 긁어 해처리로 이송! (+${income}M)`,
+            `🧬 [Drone] 쉭쉭- 드론이 광석 베이스를 갉아 해처리 배양액에 누적합니다! (+${income}M)`,
+            `🧬 [Drone] 크르르... 군락지의 산성 타액으로 광물을 녹여 유기 재화로 환원! (+${income}M)`
+          ]
+        };
+        const activeList = actions[workerType];
+        const randomAction = activeList[Math.floor(Math.random() * activeList.length)];
+        setMiningMessage(randomAction);
+      };
+
       // ----------------------------------------------------------------------
       // 스타1 컴퓨터강화 유즈맵 고증 부품 이름 매핑 헬퍼
       // ----------------------------------------------------------------------
@@ -230,8 +298,8 @@
         const calculatedAttackSpeed = 2.0 - (ram.clockMhz / 4000);
         const attackSpeedSec = Math.max(0.1, Math.round(calculatedAttackSpeed * 100) / 100);
 
-        // H. 데미지 (GPU 기하급수 성장)
-        const unitDamage = Math.round(10 * Math.pow(1.5, gpu.level - 1));
+        // H. 데미지 (GPU 기하급수 및 CPU 소환수 등급 결합 시너지 성장)
+        const unitDamage = Math.round(10 * Math.pow(1.5, gpu.level - 1) * getSummonUnit(cpu.level).dpsFactor);
 
         // I. 방어력
         let unitDefense = cooler.level * 3;
@@ -295,7 +363,33 @@
         localStorage.setItem('sca_storage', JSON.stringify(storage));
         localStorage.setItem('sca_huntingGround', JSON.stringify(huntingGround));
         localStorage.setItem('sca_downloadTarget', JSON.stringify(downloadTarget));
-      }, [minerals, normalCoins, scaCoins, rebirthCount, cpu, gpu, ram, cooler, motherboard, storage, huntingGround, downloadTarget]);
+        localStorage.setItem('sca_workerType', workerType);
+      }, [minerals, normalCoins, scaCoins, rebirthCount, cpu, gpu, ram, cooler, motherboard, storage, huntingGround, downloadTarget, workerType]);
+
+      // ----------------------------------------------------------------------
+      // 6.6. 가상 사냥터 실시간 전투 매트릭스 로그 생성기 (스타1 콘솔 싱크)
+      // ----------------------------------------------------------------------
+      useEffect(() => {
+        const interval = setInterval(() => {
+          const summon = getSummonUnit(cpu.level);
+          const enemies = ['카카루 (Cacaru)', '스커지 (Scourge)', '벵갈라스 (Bengalaas)', '우르사돈 (Ursadon)', '라그나로크 (Lagnasaur)', '파괴자 (Reaver)', '공허의 파편'];
+          const enemy = enemies[Math.floor(Math.random() * enemies.length)];
+          const earn = Math.round(10 * specs.penalties.mineralMultiplier * huntingGround.multiplier * (1 + rebirthCount * 0.5));
+          const time = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+          
+          const newLog = `[${time}] 🔫 배틀 기동 :: ${summon.emoji} ${summon.name.split(' ')[1]} ${specs.unitLimit}기가 '${enemy}'를 격퇴하고 +${earn}M 획득!`;
+          
+          setCombatLogs(prev => {
+            const nextLogs = [...prev, newLog];
+            if (nextLogs.length > 8) {
+              nextLogs.shift();
+            }
+            return nextLogs;
+          });
+        }, 1500);
+
+        return () => clearInterval(interval);
+      }, [cpu.level, specs, huntingGround, rebirthCount]);
 
       // ----------------------------------------------------------------------
       // 7. 실시간 상점 강화 비용 계산 헬퍼
@@ -772,6 +866,10 @@
                     <span className="text-slate-500">사냥터 배치 수:</span>
                     <span className="text-emerald-400 font-bold">{specs.maxHuntingUnits}기</span>
                   </div>
+                  <div className="flex justify-between col-span-2 text-cyan-300 font-semibold border-b border-slate-900 pb-1.5 mt-0.5">
+                    <span>👾 소환 스타 유닛:</span>
+                    <span>{getSummonUnit(cpu.level).emoji} {getSummonUnit(cpu.level).name}</span>
+                  </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">유닛 HP/실드:</span>
                     <span className="text-emerald-400 font-bold">{specs.unitHp} / {specs.unitShield}</span>
@@ -797,22 +895,61 @@
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <button 
-                  onClick={handleManualClick}
-                  className="flex items-center justify-center space-x-2 py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition text-slate-950 font-bold rounded-lg font-mono text-sm shadow-lg shadow-emerald-600/20"
-                >
-                  <span className="text-sm mr-1">⛏️</span>
-                  <span>수동 자원 채굴</span>
-                </button>
+              <div className="p-4 bg-slate-950/60 rounded border border-slate-800 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] text-slate-500 font-mono uppercase">채굴 일꾼(Worker) 지정</span>
+                  <span className="text-[10px] text-emerald-400 font-mono font-bold">{workerType} READY</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <button 
+                    onClick={() => setWorkerType('SCV')}
+                    className={`py-1.5 text-xs font-bold font-mono rounded border transition ${
+                      workerType === 'SCV' ? 'bg-amber-500/10 border-amber-500 text-amber-400' : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    🛠️ SCV
+                  </button>
+                  <button 
+                    onClick={() => setWorkerType('Probe')}
+                    className={`py-1.5 text-xs font-bold font-mono rounded border transition ${
+                      workerType === 'Probe' ? 'bg-cyan-500/10 border-cyan-500 text-cyan-400' : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    🔮 Probe
+                  </button>
+                  <button 
+                    onClick={() => setWorkerType('Drone')}
+                    className={`py-1.5 text-xs font-bold font-mono rounded border transition ${
+                      workerType === 'Drone' ? 'bg-rose-500/10 border-rose-500 text-rose-400' : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    🧬 Drone
+                  </button>
+                </div>
                 
-                <button 
-                  onClick={joinRaidRoom}
-                  className="flex items-center justify-center space-x-2 py-3 bg-cyan-500 hover:bg-cyan-400 active:scale-95 transition text-slate-950 font-bold rounded-lg font-mono text-sm shadow-lg shadow-cyan-500/20 animate-pulse"
-                >
-                  <span className="text-sm mr-1">⚔️</span>
-                  <span>100층 레이드 참가</span>
-                </button>
+                <div className="grid grid-cols-2 gap-4 pt-1">
+                  <button 
+                    onClick={handleManualMining}
+                    className="flex items-center justify-center space-x-2 py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition text-slate-950 font-bold rounded-lg font-mono text-sm shadow-lg shadow-emerald-600/20"
+                  >
+                    <span className="text-sm mr-1">⛏️</span>
+                    <span>수동 자원 채굴</span>
+                  </button>
+                  
+                  <button 
+                    onClick={joinRaidRoom}
+                    className="flex items-center justify-center space-x-2 py-3 bg-cyan-500 hover:bg-cyan-400 active:scale-95 transition text-slate-950 font-bold rounded-lg font-mono text-sm shadow-lg shadow-cyan-500/20 animate-pulse"
+                  >
+                    <span className="text-sm mr-1">⚔️</span>
+                    <span>100층 레이드 참가</span>
+                  </button>
+                </div>
+
+                {miningMessage && (
+                  <p className="text-[10px] text-slate-400 font-mono text-center animate-pulse pt-2 border-t border-slate-900 leading-relaxed">
+                    {miningMessage}
+                  </p>
+                )}
               </div>
             </section>
 
@@ -1092,6 +1229,25 @@
                     </div>
                   </div>
                 </div>
+
+                {/* 실시간 전투 매트릭스 로그 터미널 (스타1 유즈맵 콘솔) */}
+                <div className="p-4 bg-slate-950/90 rounded border border-emerald-500/30 neon-border-emerald flex flex-col space-y-2.5 mt-4">
+                  <div className="flex justify-between items-center border-b border-emerald-950 pb-2">
+                    <span className="text-[10px] text-emerald-400 font-mono tracking-widest uppercase flex items-center space-x-1.5 font-bold">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                      <span>사이버네틱 배틀 매트릭스 콘솔</span>
+                    </span>
+                    <span className="text-[9px] text-emerald-600 font-mono">STATUS: ACTIVE</span>
+                  </div>
+                  <div className="h-36 overflow-y-auto font-mono text-[10px] text-emerald-400/90 space-y-1.5 select-text leading-relaxed">
+                    {combatLogs.map((log, idx) => (
+                      <div key={idx} className="transition-all duration-300 hover:text-emerald-300">
+                        {log}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
               </div>
             </section>
           </main>
@@ -1183,6 +1339,9 @@
                         <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500">BOSS RAID STAGE</div>
                         <div className="text-4xl font-extrabold text-cyan-300 font-mono tracking-wider mt-1.5">
                           FLOOR {raidState.currentFloor} <span className="text-lg text-slate-500">/ 100</span>
+                        </div>
+                        <div className="text-xs font-bold text-rose-400 font-mono mt-2 animate-pulse uppercase tracking-wider">
+                          🎯 타겟 보스: {getRaidBossName(raidState.currentFloor)}
                         </div>
 
                         {raidState.status === 'won' ? (
