@@ -92,6 +92,18 @@
         return saved !== null ? JSON.parse(saved) : { type: 'HDD', capacityGb: 250, level: 1 };
       });
 
+      const [inventory, setInventory] = useState(() => {
+        const saved = localStorage.getItem('sca_inventory');
+        if (saved !== null) return JSON.parse(saved);
+        return [
+          { id: 'inv-cpu-1', type: 'cpu', level: 1, manufacturer: 'Intel', ddrGeneration: 'DDR4' },
+          { id: 'inv-gpu-1', type: 'gpu', level: 1 },
+          { id: 'inv-ram-1', type: 'ram', level: 1, clockMhz: 2400, capacityGb: 8, ddrGeneration: 'DDR4' },
+          { id: 'inv-cooler-1', type: 'cooler', level: 1, coolingCapacity: 30 },
+          { id: 'inv-storage-1', type: 'storage', level: 1, storageType: 'HDD', capacityGb: 250 }
+        ];
+      });
+
       // ----------------------------------------------------------------------
       // 3. 사냥터 및 다운로드 진행 상태 정의
       // ----------------------------------------------------------------------
@@ -364,7 +376,8 @@
         localStorage.setItem('sca_huntingGround', JSON.stringify(huntingGround));
         localStorage.setItem('sca_downloadTarget', JSON.stringify(downloadTarget));
         localStorage.setItem('sca_workerType', workerType);
-      }, [minerals, normalCoins, scaCoins, rebirthCount, cpu, gpu, ram, cooler, motherboard, storage, huntingGround, downloadTarget, workerType]);
+        localStorage.setItem('sca_inventory', JSON.stringify(inventory));
+      }, [minerals, normalCoins, scaCoins, rebirthCount, cpu, gpu, ram, cooler, motherboard, storage, huntingGround, downloadTarget, workerType, inventory]);
 
       // ----------------------------------------------------------------------
       // 6.6. 가상 사냥터 실시간 전투 매트릭스 로그 생성기 (스타1 콘솔 싱크)
@@ -412,11 +425,136 @@
         return 0.10; // 10강 이상
       };
 
-      // 부품 강화 핸들러
-      const handleUpgrade = (part, setter, partName) => {
-        if (isUpgrading) return;
+      // 1. 기본 1강 부품 팩 구매 핸들러
+      const handleBuyComponentPack = (type) => {
+        const cost = 100;
+        if (minerals < cost) {
+          alert('미네랄이 부족합니다.');
+          return;
+        }
+
+        setMinerals(prev => prev - cost);
+        const newId = `inv-${type}-${Math.random().toString(36).substring(2, 9)}`;
         
-        const cost = getUpgradeCost(part.level);
+        let newPart = { id: newId, type: type, level: 1 };
+        if (type === 'cpu') {
+          newPart.manufacturer = 'Intel';
+          newPart.ddrGeneration = 'DDR4';
+        } else if (type === 'ram') {
+          newPart.clockMhz = 2400;
+          newPart.capacityGb = 8;
+          newPart.ddrGeneration = 'DDR4';
+        } else if (type === 'cooler') {
+          newPart.coolingCapacity = 30;
+        } else if (type === 'storage') {
+          newPart.storageType = 'HDD';
+          newPart.capacityGb = 250;
+        }
+
+        setInventory(prev => [...prev, newPart]);
+        
+        // 시각 피드백용 상태
+        setUpgradeStatus('success');
+        setUpgradeMessage(`📦 [부품 팩 구매] 새로운 1강 ${type.toUpperCase()} 부품이 인벤토리에 추가되었습니다.`);
+        setTimeout(() => {
+          setUpgradeStatus(null);
+          setUpgradeMessage('');
+        }, 3000);
+      };
+
+      // 2. 보관 장비 스왑 장착 핸들러
+      const handleEquipComponent = (itemId) => {
+        const partToEquip = inventory.find(p => p.id === itemId);
+        if (!partToEquip) return;
+
+        const type = partToEquip.type;
+
+        // 메인 부품 스와핑 처리
+        if (type === 'cpu') {
+          const currentEquipped = { ...cpu };
+          setCpu({
+            manufacturer: partToEquip.manufacturer,
+            level: partToEquip.level,
+            ddrGeneration: partToEquip.ddrGeneration
+          });
+          // 인벤토리 목록에서 장착된 것 빼고 기존 장착 부품 반입
+          setInventory(prev => prev.filter(p => p.id !== itemId).concat({
+            id: `inv-cpu-${Math.random().toString(36).substring(2, 7)}`,
+            type: 'cpu',
+            level: currentEquipped.level,
+            manufacturer: currentEquipped.manufacturer,
+            ddrGeneration: currentEquipped.ddrGeneration
+          }));
+        } else if (type === 'gpu') {
+          const currentEquipped = { ...gpu };
+          setGpu({ level: partToEquip.level });
+          setInventory(prev => prev.filter(p => p.id !== itemId).concat({
+            id: `inv-gpu-${Math.random().toString(36).substring(2, 7)}`,
+            type: 'gpu',
+            level: currentEquipped.level
+          }));
+        } else if (type === 'ram') {
+          const currentEquipped = { ...ram };
+          setRam({
+            level: partToEquip.level,
+            clockMhz: partToEquip.clockMhz,
+            capacityGb: partToEquip.capacityGb,
+            ddrGeneration: partToEquip.ddrGeneration
+          });
+          setInventory(prev => prev.filter(p => p.id !== itemId).concat({
+            id: `inv-ram-${Math.random().toString(36).substring(2, 7)}`,
+            type: 'ram',
+            level: currentEquipped.level,
+            clockMhz: currentEquipped.clockMhz,
+            capacityGb: currentEquipped.capacityGb,
+            ddrGeneration: currentEquipped.ddrGeneration
+          }));
+        } else if (type === 'cooler') {
+          const currentEquipped = { ...cooler };
+          setCooler({
+            level: partToEquip.level,
+            coolingCapacity: partToEquip.coolingCapacity
+          });
+          setInventory(prev => prev.filter(p => p.id !== itemId).concat({
+            id: `inv-cooler-${Math.random().toString(36).substring(2, 7)}`,
+            type: 'cooler',
+            level: currentEquipped.level,
+            coolingCapacity: currentEquipped.coolingCapacity
+          }));
+        } else if (type === 'storage') {
+          const currentEquipped = { ...storage };
+          setStorage({
+            type: partToEquip.storageType, // 장착 스키마는 'type'으로 HDD/SSD 보유
+            capacityGb: partToEquip.capacityGb,
+            level: partToEquip.level
+          });
+          setInventory(prev => prev.filter(p => p.id !== itemId).concat({
+            id: `inv-storage-${Math.random().toString(36).substring(2, 7)}`,
+            type: 'storage',
+            level: currentEquipped.level,
+            storageType: currentEquipped.type, // 복귀 시 장착 스키마 'type'을 storageType에 매치
+            capacityGb: currentEquipped.capacityGb
+          }));
+        }
+
+        setUpgradeStatus('success');
+        setUpgradeMessage(`🔄 [장비 교체 장착] ${type.toUpperCase()} +${partToEquip.level}강 장비가 장착 완료되었습니다.`);
+        setTimeout(() => {
+          setUpgradeStatus(null);
+          setUpgradeMessage('');
+        }, 3000);
+      };
+
+      // 3. 인벤토리 부품 강화 핸들러
+      const handleInventoryUpgrade = (itemId) => {
+        if (isUpgrading) return;
+
+        const partToUpgrade = inventory.find(p => p.id === itemId);
+        if (!partToUpgrade) return;
+
+        const currentLevel = partToUpgrade.level;
+        const cost = getUpgradeCost(currentLevel);
+
         if (minerals < cost) {
           alert('미네랄이 부족합니다.');
           return;
@@ -424,12 +562,11 @@
 
         setMinerals(prev => prev - cost);
         setIsUpgrading(true);
-        setActiveUpgradingPart(partName);
+        setActiveUpgradingPart(partToUpgrade.type);
         setUpgradeStatus('upgrading');
-        setUpgradeMessage(`${partName.toUpperCase()} 강화 주입 중... (체스소켓 연동)`);
+        setUpgradeMessage(`보관함 ${partToUpgrade.type.toUpperCase()} +${currentLevel}강 주입 중... (창고 강화)`);
 
         setTimeout(() => {
-          const currentLevel = part.level;
           const prob = getUpgradeProbability(currentLevel);
           const rand = Math.random();
           
@@ -456,78 +593,46 @@
 
           if (result === 'success') {
             const nextLvl = currentLevel + 1;
-            setUpgradeMessage(`🎉 [강화 성공] ${partName.toUpperCase()} 강화 성공! (+${nextLvl}강)`);
+            setUpgradeMessage(`🎉 [강화 성공] 보관함 ${partToUpgrade.type.toUpperCase()} 강화 성공! (+${nextLvl}강)`);
             
-            if (setter === setCooler) {
-              setter(prev => ({
-                ...prev,
-                level: prev.level + 1,
-                coolingCapacity: prev.coolingCapacity + 25
-              }));
-            } else if (setter === setRam) {
-              setter(prev => ({
-                ...prev,
-                level: prev.level + 1,
-                clockMhz: prev.clockMhz + 400,
-                capacityGb: prev.capacityGb + 8
-              }));
-            } else if (setter === setStorage) {
-              setter(prev => ({
-                ...prev,
-                level: (prev.level || 1) + 1,
-                capacityGb: prev.capacityGb + 250
-              }));
-            } else {
-              setter(prev => ({
-                ...prev,
-                level: prev.level + 1
-              }));
-            }
+            setInventory(prev => prev.map(p => {
+              if (p.id !== itemId) return p;
+              const upgraded = { ...p, level: nextLvl };
+              
+              if (p.type === 'cooler') {
+                upgraded.coolingCapacity = p.coolingCapacity + 25;
+              } else if (p.type === 'ram') {
+                upgraded.clockMhz = p.clockMhz + 400;
+                upgraded.capacityGb = p.capacityGb + 8;
+              } else if (p.type === 'storage') {
+                upgraded.capacityGb = p.capacityGb + 250;
+              }
+              return upgraded;
+            }));
           } else if (result === 'fail_keep') {
-            setUpgradeMessage(`⚠️ [강화 실패] 업그레이드 실패. 부품이 안전하게 보존되었습니다.`);
+            setUpgradeMessage(`⚠️ [강화 실패] 업그레이드 실패. 창고 내 부품이 보존되었습니다.`);
           } else if (result === 'fail_drop') {
             const prevLvl = Math.max(1, currentLevel - 1);
-            setUpgradeMessage(`📉 [등급 하락] 전원 불일치로 레벨이 하락했습니다. (+${prevLvl}강)`);
+            setUpgradeMessage(`📉 [등급 하락] 전원 불일치로 등급이 하락했습니다. (+${prevLvl}강)`);
             
-            if (setter === setCooler) {
-              setter(prev => ({
-                ...prev,
-                level: prevLvl,
-                coolingCapacity: Math.max(30, prev.coolingCapacity - 25)
-              }));
-            } else if (setter === setRam) {
-              setter(prev => ({
-                ...prev,
-                level: prevLvl,
-                clockMhz: Math.max(2400, prev.clockMhz - 400),
-                capacityGb: Math.max(8, prev.capacityGb - 8)
-              }));
-            } else if (setter === setStorage) {
-              setter(prev => ({
-                ...prev,
-                level: prevLvl,
-                capacityGb: Math.max(250, prev.capacityGb - 250)
-              }));
-            } else {
-              setter(prev => ({
-                ...prev,
-                level: prevLvl
-              }));
-            }
+            setInventory(prev => prev.map(p => {
+              if (p.id !== itemId) return p;
+              const degraded = { ...p, level: prevLvl };
+              
+              if (p.type === 'cooler') {
+                degraded.coolingCapacity = Math.max(30, p.coolingCapacity - 25);
+              } else if (p.type === 'ram') {
+                degraded.clockMhz = Math.max(2400, p.clockMhz - 400);
+                degraded.capacityGb = Math.max(8, p.capacityGb - 8);
+              } else if (p.type === 'storage') {
+                degraded.capacityGb = Math.max(250, p.capacityGb - 250);
+              }
+              return degraded;
+            }));
           } else if (result === 'exploded') {
-            setUpgradeMessage(`💥 [부품 파괴] 아아..! 부품이 과전압 합선으로 폭발해 파괴되었습니다! (+1강 초기화)`);
-            
-            if (setter === setCooler) {
-              setter({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR4', coolingCapacity: 30 });
-            } else if (setter === setRam) {
-              setter({ level: 1, clockMhz: 2400, capacityGb: 8, ddrGeneration: 'DDR4' });
-            } else if (setter === setStorage) {
-              setter({ type: 'HDD', capacityGb: 250, level: 1 });
-            } else if (setter === setCpu) {
-              setter(prev => ({ ...prev, level: 1 }));
-            } else if (setter === setGpu) {
-              setter({ level: 1 });
-            }
+            setUpgradeMessage(`💥 [창고 부품 파괴] 아아..! 창고의 부품이 과전압 합선으로 완전히 폭파되었습니다!`);
+            // 인벤토리 목록에서 완전 영구 영점/삭제
+            setInventory(prev => prev.filter(p => p.id !== itemId));
           }
 
           setTimeout(() => {
@@ -557,6 +662,13 @@
         setCooler({ level: 1, coolingCapacity: 30 });
         setMotherboard({ socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR4', shieldIncrease: 300 });
         setStorage({ type: 'HDD', capacityGb: 250, level: 1 });
+        setInventory([
+          { id: 'inv-cpu-1', type: 'cpu', level: 1, manufacturer: 'Intel', ddrGeneration: 'DDR4' },
+          { id: 'inv-gpu-1', type: 'gpu', level: 1 },
+          { id: 'inv-ram-1', type: 'ram', level: 1, clockMhz: 2400, capacityGb: 8, ddrGeneration: 'DDR4' },
+          { id: 'inv-cooler-1', type: 'cooler', level: 1, coolingCapacity: 30 },
+          { id: 'inv-storage-1', type: 'storage', level: 1, storageType: 'HDD', capacityGb: 250 }
+        ]);
         setHuntingGround({ name: '테이블 탑 조립소 (1단계)', multiplier: 1.0 });
 
         setUpgradeStatus('success');
@@ -963,153 +1075,162 @@
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   
-                  {/* CPU 강화 */}
-                  <div className="p-4 bg-slate-950/60 rounded border border-slate-800 flex flex-col justify-between">
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs font-bold text-emerald-400 font-mono">CPU PROCESSOR</span>
-                        <span className="text-[10px] font-mono text-slate-500">Lv. {cpu.level}</span>
-                      </div>
-                      <p className="text-[11px] text-cyan-400 font-mono font-semibold mb-1">
-                        현재 모델: {getCpuName(cpu.level)}
-                      </p>
-                      <p className="text-[10px] text-amber-400 font-mono mb-2">
-                        [성공률: {Math.round(getUpgradeProbability(cpu.level) * 100)}%] {cpu.level > 5 && (cpu.level > 7 ? '⚠️ 실패 시 파괴/하락' : '⚠️ 실패 시 등급하락')}
-                      </p>
-                      <p className="text-xs text-slate-400 mb-3">
-                        강화 시 가용 필드 유닛 <strong className="text-emerald-400">+2기</strong> 및 유닛 기본 체력 <strong className="text-emerald-400">+100</strong> 가산. 발열량 <strong className="text-rose-400">+15</strong> 발생.
-                      </p>
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-slate-900">
-                      <div className="flex space-x-1.5">
-                        <button 
-                          onClick={() => setCpu(prev => ({ ...prev, manufacturer: prev.manufacturer === 'Intel' ? 'AMD' : 'Intel' }))}
-                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-[10px] font-mono rounded text-slate-300 border border-slate-700"
-                        >
-                          제조사: {cpu.manufacturer}
-                        </button>
-                        <button 
-                          onClick={() => setCpu(prev => ({ ...prev, ddrGeneration: prev.ddrGeneration === 'DDR3' ? 'DDR4' : prev.ddrGeneration === 'DDR4' ? 'DDR5' : 'DDR3' }))}
-                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-[10px] font-mono rounded text-slate-300 border border-slate-700"
-                        >
-                          규격: {cpu.ddrGeneration}
-                        </button>
-                      </div>
-                      <button 
-                        onClick={() => handleUpgrade(cpu, setCpu, 'cpu')}
-                        disabled={isUpgrading}
-                        className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-xs font-bold font-mono transition disabled:opacity-50"
-                      >
-                        {getUpgradeCost(cpu.level).toLocaleString()} M
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* GPU 강화 및 환생 */}
-                  <div className="p-4 bg-slate-950/60 rounded border border-slate-800 flex flex-col justify-between">
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs font-bold text-emerald-400 font-mono">GPU CHIPSET</span>
-                        <span className="text-[10px] font-mono text-slate-500">Lv. {gpu.level}</span>
-                      </div>
-                      <p className="text-[11px] text-cyan-400 font-mono font-semibold mb-1">
-                        현재 모델: {getGpuName(gpu.level)}
-                      </p>
-                      <p className="text-[10px] text-amber-400 font-mono mb-2">
-                        {gpu.level < 10 ? `[성공률: ${Math.round(getUpgradeProbability(gpu.level) * 100)}%] ${gpu.level > 5 ? (gpu.level > 7 ? '⚠️ 실패 시 파괴/하락' : '⚠️ 실패 시 등급하락') : ''}` : '✨ 환생 활성화 완료'}
-                      </p>
-                      <p className="text-xs text-slate-400 mb-3">
-                        강화 시 유닛의 공격력(데미지)을 <strong className="text-cyan-400">1.5배 기하급수적</strong>으로 폭등시킵니다.
-                        {gpu.level >= 10 && <span className="block text-cyan-300 font-bold mt-1 animate-pulse">✨ 환생 한계 도달! SCA 코인 +10개를 획득하려면 아래 환생 버튼을 누르세요.</span>}
-                      </p>
-                    </div>
-                    <div className="flex flex-col space-y-2 pt-2 border-t border-slate-900">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[10px] text-slate-500 font-mono">PCI-EXPRESS CORE</span>
-                        {gpu.level < 10 ? (
-                          <button 
-                            onClick={() => handleUpgrade(gpu, setGpu, 'gpu')}
-                            disabled={isUpgrading}
-                            className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-xs font-bold font-mono transition disabled:opacity-50"
-                          >
-                            {getUpgradeCost(gpu.level).toLocaleString()} M
-                          </button>
-                        ) : (
-                          <span className="text-xs text-cyan-400 font-bold font-mono">MAX LV UPGRADE COMPLETE</span>
-                        )}
+                  {/* 기본 1강 장비 팩 구매 카드들 */}
+                  <div className="p-4 bg-slate-950/60 rounded border border-slate-800 col-span-2 space-y-3.5 animate-fade-in">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 기본 1강 부품 팩 보급소 (Warehouse Supply)</span>
+                        <p className="text-xs text-slate-400">
+                          미네랄을 지불하여 1강 스펙의 부품 상자를 조달받아 인벤토리 창고에 채웁니다. 창고에서 조심스럽게 강화한 뒤 메인 컴퓨터에 스왑 장착하세요.
+                        </p>
                       </div>
                       {gpu.level >= 10 && (
                         <button
                           onClick={handleRebirth}
-                          className="w-full py-2 bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-slate-950 font-bold rounded text-xs tracking-wider transition uppercase shadow-lg shadow-cyan-500/20"
+                          className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-slate-950 font-bold rounded text-xs tracking-wider transition uppercase shadow-lg shadow-cyan-500/20 animate-pulse"
                         >
-                          ✨ GPU 환생 (SCA CLOUD REBIRTH)
+                          ✨ GPU 환생 (REBIRTH)
                         </button>
                       )}
                     </div>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-2.5 border-t border-slate-900">
+                      <button 
+                        onClick={() => handleBuyComponentPack('cpu')}
+                        className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/30 rounded flex flex-col items-center justify-center transition text-center space-y-2"
+                      >
+                        <span className="text-lg">🧠</span>
+                        <span className="text-[10px] font-bold text-slate-200">CPU 1강 팩</span>
+                        <span className="text-[10px] text-emerald-400 font-mono font-bold">100 M</span>
+                      </button>
+                      
+                      <button 
+                        onClick={() => handleBuyComponentPack('gpu')}
+                        className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/30 rounded flex flex-col items-center justify-center transition text-center space-y-2"
+                      >
+                        <span className="text-lg">🎮</span>
+                        <span className="text-[10px] font-bold text-slate-200">GPU 1강 팩</span>
+                        <span className="text-[10px] text-emerald-400 font-mono font-bold">100 M</span>
+                      </button>
+                      
+                      <button 
+                        onClick={() => handleBuyComponentPack('ram')}
+                        className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/30 rounded flex flex-col items-center justify-center transition text-center space-y-2"
+                      >
+                        <span className="text-lg">⚡</span>
+                        <span className="text-[10px] font-bold text-slate-200">RAM 1강 팩</span>
+                        <span className="text-[10px] text-emerald-400 font-mono font-bold">100 M</span>
+                      </button>
+                      
+                      <button 
+                        onClick={() => handleBuyComponentPack('cooler')}
+                        className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-rose-500/30 rounded flex flex-col items-center justify-center transition text-center space-y-2"
+                      >
+                        <span className="text-lg">❄️</span>
+                        <span className="text-[10px] font-bold text-slate-200">Cooler 1강 팩</span>
+                        <span className="text-[10px] text-emerald-400 font-mono font-bold">100 M</span>
+                      </button>
+
+                      <button 
+                        onClick={() => handleBuyComponentPack('storage')}
+                        className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/30 rounded flex flex-col items-center justify-center transition text-center space-y-2"
+                      >
+                        <span className="text-lg">💾</span>
+                        <span className="text-[10px] font-bold text-slate-200">Storage 1강 팩</span>
+                        <span className="text-[10px] text-emerald-400 font-mono font-bold">100 M</span>
+                      </button>
+                    </div>
                   </div>
 
-                  {/* RAM 강화 */}
-                  <div className="p-4 bg-slate-950/60 rounded border border-slate-800 flex flex-col justify-between">
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs font-bold text-emerald-400 font-mono">SYSTEM RAM (MEM)</span>
-                        <span className="text-[10px] font-mono text-slate-500">Lv. {ram.level}</span>
-                      </div>
-                      <p className="text-[11px] text-cyan-400 font-mono font-semibold mb-1">
-                        현재 모델: {getRamName(ram.level)}
-                      </p>
-                      <p className="text-[10px] text-amber-400 font-mono mb-2">
-                        [성공률: {Math.round(getUpgradeProbability(ram.level) * 100)}%] {ram.level > 5 && (ram.level > 7 ? '⚠️ 실패 시 파괴/하락' : '⚠️ 실패 시 등급하락')}
-                      </p>
-                      <p className="text-xs text-slate-400 mb-3">
-                        강화 시 클럭 <strong className="text-emerald-400">+400Mhz</strong>로 유닛 공속 단축 및 사냥 유닛 수 확대.
-                      </p>
+                  {/* ================================================================== */}
+                  {/* 보유 장비 창고 (인벤토리) */}
+                  {/* ================================================================== */}
+                  <div className="p-4 bg-slate-950/60 rounded border border-slate-800 col-span-2 space-y-3.5 mt-2 animate-fade-in">
+                    <div className="flex justify-between items-center border-b border-slate-900 pb-2">
+                      <span className="text-xs font-bold text-emerald-400 font-mono tracking-widest uppercase flex items-center space-x-1.5 font-bold">
+                        <span>📦 내 보유 장비 창고 (Inventory Warehouse)</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono">보관 개수: {inventory.length}개</span>
                     </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-slate-900">
-                      <button 
-                        onClick={() => setRam(prev => ({ ...prev, ddrGeneration: prev.ddrGeneration === 'DDR3' ? 'DDR4' : prev.ddrGeneration === 'DDR4' ? 'DDR5' : 'DDR3' }))}
-                        className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-[10px] font-mono rounded text-slate-300 border border-slate-700"
-                      >
-                        RAM 규격: {ram.ddrGeneration}
-                      </button>
-                      <button 
-                        onClick={() => handleUpgrade(ram, setRam, 'ram')}
-                        disabled={isUpgrading}
-                        className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-xs font-bold font-mono transition disabled:opacity-50"
-                      >
-                        {getUpgradeCost(ram.level).toLocaleString()} M
-                      </button>
-                    </div>
-                  </div>
 
-                  {/* 쿨러 강화 */}
-                  <div className="p-4 bg-slate-950/60 rounded border border-slate-800 flex flex-col justify-between">
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs font-bold text-emerald-400 font-mono">CPU LIQUID COOLER</span>
-                        <span className="text-[10px] font-mono text-slate-500">Lv. {cooler.level}</span>
+                    {inventory.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-slate-600 font-mono border border-slate-900 border-dashed rounded">
+                        창고에 보관 중인 여비 장비가 없습니다. 위의 부품 팩 보급소에서 신규 1강 팩을 조달받으세요.
                       </div>
-                      <p className="text-[11px] text-cyan-400 font-mono font-semibold mb-1">
-                        현재 모델: {getCoolerName(cooler.level)}
-                      </p>
-                      <p className="text-[10px] text-amber-400 font-mono mb-2">
-                        [성공률: {Math.round(getUpgradeProbability(cooler.level) * 100)}%] {cooler.level > 5 && (cooler.level > 7 ? '⚠️ 실패 시 파괴/하락' : '⚠️ 실패 시 등급하락')}
-                      </p>
-                      <p className="text-xs text-slate-400 mb-3">
-                        강화 시 쿨링 성능 <strong className="text-emerald-400">+25</strong> 향상으로 발열 억제 및 유닛 방어력 <strong className="text-emerald-400">+3</strong> 부여.
-                      </p>
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-slate-900">
-                      <span className="text-[10px] text-slate-500 font-mono">THERMAL RESOLVER</span>
-                      <button 
-                        onClick={() => handleUpgrade(cooler, setCooler, 'cooler')}
-                        disabled={isUpgrading}
-                        className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-xs font-bold font-mono transition disabled:opacity-50"
-                      >
-                        {getUpgradeCost(cooler.level).toLocaleString()} M
-                      </button>
-                    </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1">
+                        {inventory.map((p) => {
+                          let partName = '';
+                          let specDetail = '';
+                          let badgeText = '';
+                          let badgeStyle = '';
+
+                          if (p.type === 'cpu') {
+                            partName = getCpuName(p.level);
+                            specDetail = `호환: ${p.manufacturer} / ${p.ddrGeneration}`;
+                            badgeText = 'CPU';
+                            badgeStyle = 'bg-emerald-950/50 text-emerald-400 border border-emerald-500/20';
+                          } else if (p.type === 'gpu') {
+                            partName = getGpuName(p.level);
+                            specDetail = `데미지 배율: x${getSummonUnit(p.level).dpsFactor.toFixed(1)}`;
+                            badgeText = 'GPU';
+                            badgeStyle = 'bg-cyan-950/50 text-cyan-400 border border-cyan-500/20';
+                          } else if (p.type === 'ram') {
+                            partName = getRamName(p.level);
+                            specDetail = `클럭: ${p.clockMhz}Mhz / ${p.capacityGb}GB / ${p.ddrGeneration}`;
+                            badgeText = 'RAM';
+                            badgeStyle = 'bg-emerald-950/50 text-emerald-400 border border-emerald-500/20';
+                          } else if (p.type === 'cooler') {
+                            partName = getCoolerName(p.level);
+                            specDetail = `쿨링: ${p.coolingCapacity}W / 방어력: +${p.level * 3}`;
+                            badgeText = 'COOLER';
+                            badgeStyle = 'bg-rose-950/50 text-rose-400 border border-rose-500/20';
+                          } else if (p.type === 'storage') {
+                            partName = `${p.capacityGb}GB ${p.storageType}`;
+                            specDetail = `속도: ${p.storageType === 'SSD' ? 'SSD 4X 가속' : 'HDD 기본'}`;
+                            badgeText = 'STORAGE';
+                            badgeStyle = 'bg-slate-800 text-slate-300';
+                          }
+
+                          const cost = getUpgradeCost(p.level);
+                          const prob = getUpgradeProbability(p.level);
+
+                          return (
+                            <div key={p.id} className="p-3 bg-slate-900/60 rounded border border-slate-800 hover:border-slate-700 transition flex flex-col justify-between space-y-2">
+                              <div>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-bold ${badgeStyle}`}>
+                                    {badgeText}
+                                  </span>
+                                  <span className="text-[10px] font-mono text-slate-500">+{p.level}강</span>
+                                </div>
+                                <p className="text-[11px] font-bold text-slate-200 truncate">{partName}</p>
+                                <p className="text-[9px] text-slate-500 font-mono mt-0.5">{specDetail}</p>
+                                <p className="text-[9px] text-amber-500/80 font-mono mt-1">
+                                  [확률: {Math.round(prob * 100)}%] {p.level > 5 && (p.level > 7 ? '⚠️실패 시 파괴' : '⚠️실패 시 하락')}
+                                </p>
+                              </div>
+                              
+                              <div className="flex space-x-2 pt-2 border-t border-slate-950">
+                                <button 
+                                  onClick={() => handleInventoryUpgrade(p.id)}
+                                  disabled={isUpgrading}
+                                  className="flex-1 py-1 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-[10px] font-bold font-mono transition disabled:opacity-50 text-center"
+                                >
+                                  강화: {cost.toLocaleString()} M
+                                </button>
+                                <button 
+                                  onClick={() => handleEquipComponent(p.id)}
+                                  className="flex-1 py-1 bg-cyan-500/10 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 border border-cyan-500/30 rounded text-[10px] font-bold font-mono transition text-center"
+                                >
+                                  장비 장착 (Equip)
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* 메인보드 완제품 변경 구매 */}
