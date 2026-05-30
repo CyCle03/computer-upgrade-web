@@ -881,8 +881,11 @@
           setErrorMessage(msg);
         });
 
-        socketCon.on('disconnect', () => {
-          console.log('[Socket] Disconnected.');
+        socketCon.on('disconnect', (reason) => {
+          console.log('[Socket] Disconnected:', reason);
+          setErrorMessage(`🔴 [실시간 연결 끊김] 서버와의 실시간 네트워크 연결이 유실되었습니다 (원인: ${reason}). 레이드 참여방에서 이탈되었으니 다시 [레이드 입장]을 눌러 도전해 주시기 바랍니다.`);
+          setRaidState(null);
+          setSocket(null);
         });
 
         setSocket(socketCon);

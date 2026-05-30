@@ -19,6 +19,9 @@ export function setupSocketServer(httpServer: HttpServer) {
       origin: '*', // 전체 오리진 허용 (개발 및 웹 복원 대응)
       methods: ['GET', 'POST'],
     },
+    // [고증 보안 고도화] Render.com 무료 호스팅 서버 CPU 쓰로틀링/지연 대비용 커넥션 유지 세팅 상향
+    pingTimeout: 120000, // 핑 타임아웃 120초
+    pingInterval: 30000, // 핑 주기 30초
   });
 
   console.log('[Socket] Socket.io server successfully attached to HTTP server.');
