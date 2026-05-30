@@ -3,6 +3,7 @@ import { Server, Socket } from 'socket.io';
 import { RaidRoomState, RaidPlayer } from './raidSimulator';
 import { RewardService } from './rewardService';
 import { ComputerParts } from './types';
+import { pool } from './db';
 
 // 활성화된 레이드 방 저장소
 const activeRooms: Map<string, RaidRoomState> = new Map();
@@ -42,6 +43,15 @@ export function setupSocketServer(httpServer: HttpServer) {
           return;
         }
 
+        // [고증 복원 보안 패치] 부모 테이블인 users 테이블에 해당 유저가 존재하지 않으면 강제 Upsert 등록 진행
+        // 외래키(foreign key references users(id)) 제약조건으로 인한 트랜잭션 롤백 폭사 방지
+        await pool.query(`
+          INSERT INTO users (id, nickname)
+          VALUES ($1, $2)
+          ON CONFLICT (id) 
+          DO UPDATE SET nickname = EXCLUDED.nickname
+        `, [userId, nickname]);
+
         // 방이 없으면 동적 신규 생성
         if (!activeRooms.has(roomId)) {
           console.log(`[Socket] Creating new Raid Room: ${roomId}`);
@@ -56,7 +66,10 @@ export function setupSocketServer(httpServer: HttpServer) {
             async (uId, clearedFloor) => {
               try {
                 console.log(`[Socket DB Core] 10층 마일스톤 돌파 보상 검증 및 지급 시도: User=${uId}, Floor=${clearedFloor}`);
-                const txResult = await RewardService.claimRewardWithTx(uId, clearedFloor);
+                const useRpc = process.env.USE_RPC === 'true';
+                const txResult = useRpc
+                  ? await RewardService.claimRewardWithRpc(uId, clearedFloor)
+                  : await RewardService.claimRewardWithTx(uId, clearedFloor);
                 
                 // 해당 플레이어의 소켓을 찾아 보상 수령 결과 전송
                 const targetPlayer = Array.from(newRoom.players.values()).find(p => p.userId === uId);
