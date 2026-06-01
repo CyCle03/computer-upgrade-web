@@ -221,21 +221,15 @@
     return Math.max(10, Math.floor(score / 100));
   }
 
-  function calcRebirthMineralRange(scaUpgrades) {
+  /** SCA 상점 구매분 합산 = 다음 환생 시작 미네랄 (고정, 랜덤 없음) */
+  function calcRebirthStartMinerals(scaUpgrades) {
     const u = scaUpgrades || {};
-    const start = u.rebirthMineral500 ? 500 : 0;
-    const maxBonus =
+    const total =
+      (u.rebirthMineral500 || 0) * 500 +
       (u.rebirthMineralMax200 || 0) * 200 +
       (u.rebirthMineralMax2000 || 0) * 2000 +
       (u.rebirthMineralMax7500 || 0) * 7500;
-    const max = Math.min(REBIRTH_MINERAL_CAP, Math.max(start, start + maxBonus));
-    return { min: start, max };
-  }
-
-  function rollRebirthStartMinerals(scaUpgrades) {
-    const range = calcRebirthMineralRange(scaUpgrades);
-    if (range.max <= range.min) return range.min;
-    return range.min + Math.floor(Math.random() * (range.max - range.min + 1));
+    return Math.min(REBIRTH_MINERAL_CAP, total);
   }
 
   function calcRebirthIncomeMultiplier(rebirthStat) {
@@ -251,7 +245,7 @@
     getPartTable, getMaxLevel, getTier, getUpgradeCost, getUpgradeProbability, getPartName,
     applyTierStats, getCpuCoolingRequired, getCpuCores, convertMineralsToCoins,
     calcRebirthPerformanceScore, calcRebirthStatGain, calcRebirthScaReward,
-    calcRebirthMineralRange, rollRebirthStartMinerals, calcRebirthIncomeMultiplier,
+    calcRebirthStartMinerals, calcRebirthIncomeMultiplier,
     calcIncomeBonus, calcProbBonus,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
