@@ -525,7 +525,7 @@
               const costC = OMG.getShopTierCost(type, 1, buyMeta);
               if (normalCoins >= costC) { handleBuyComponentPack(type, 1); break; }
               setAuto(false);
-              setCombatLogs(prev => [...prev.slice(-7), `⚠️ [SYSTEM] 가스 부족으로 ${type.toUpperCase()} 자동 구매가 중단되었습니다.`]);
+              setCombatLogs(prev => [...prev.slice(-7), `⚠️ [SYSTEM] Normal 코인 부족으로 ${type.toUpperCase()} 자동 구매가 중단되었습니다.`]);
               break;
             } else {
               const goal = autoTargetLevels[type] || 1;
@@ -547,7 +547,7 @@
       }, [autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage, autoTargetLevels, isUpgrading, inventory, normalCoins, cpuBuyManufacturer, coolerBuyKind, storageBuyKind]);
 
       // ----------------------------------------------------------------------
-      // 7. V1.2.9 원작 강화 (가스)
+      // 7. V1.2.9 원작 강화 (Normal 코인)
       // ----------------------------------------------------------------------
       const getUpgradeCost = (type, level, part) => OMG.getUpgradeCost(type, level, part || { type });
       const getUpgradeProbability = (type, level, part) => OMG.getUpgradeProbability(type, level, part || { type }, probBonusRate);
@@ -589,7 +589,7 @@
         const buyMeta = getComponentBuyMeta(type);
         const costC = OMG.getShopTierCost(type, level, buyMeta);
         if (normalCoins < costC) {
-          alert(`가스 부족 (필요 ${OMG.formatGas(costC)} · 보유 ${OMG.formatGas(normalCoins)})`);
+          alert(`Normal 코인 부족 (필요 ${OMG.formatCoin(costC)} · 보유 ${OMG.formatCoin(normalCoins)})`);
           return;
         }
         setNormalCoins((prev) => prev - costC);
@@ -602,7 +602,7 @@
         setInventory((prev) => [...prev, newPart]);
         const tierName = OMG.getPartName(type, level, newPart);
         setUpgradeStatus('success');
-        setUpgradeMessage(`📦 [구매] ${tierName} (+${level}강, -${OMG.formatGas(costC)})`);
+        setUpgradeMessage(`📦 [구매] ${tierName} (+${level}강, -${OMG.formatCoin(costC)})`);
         setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 2500);
       };
 
@@ -612,7 +612,7 @@
         const sellC = OMG.getShopSellPrice(part.type, part.level, part);
         setNormalCoins((prev) => prev + sellC);
         setInventory((prev) => prev.filter(p => p.id !== itemId));
-        setUpgradeMessage(`💰 [판매] +${OMG.formatGas(sellC)} (${OMG.getPartName(part.type, part.level, part)})`);
+        setUpgradeMessage(`💰 [판매] +${OMG.formatCoin(sellC)} (${OMG.getPartName(part.type, part.level, part)})`);
         setUpgradeStatus('success');
         setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 2500);
       };
@@ -645,7 +645,7 @@
       const handleRebirth = () => {
         if (gpu.level < 10) { alert('GPU 10강 필요'); return; }
         if (isDownloading) { alert('게임 다운로드 중에는 환생할 수 없습니다. (v1.0.6)'); return; }
-        if (!confirm('환생 시 부품·미네랄·가스가 초기화됩니다. SCA 코인/센터·환생 수치는 유지됩니다.')) return;
+        if (!confirm('환생 시 부품·미네랄·Normal 코인이 초기화됩니다. SCA 코인/센터·환생 수치는 유지됩니다.')) return;
         const parts = { cpu, gpu, ram, cooler, storage };
         const outcome = OMG.calcRebirthOutcome(parts, rebirthStat);
         const startMinerals = OMG.calcRebirthStartMinerals(scaUpgrades);
@@ -906,12 +906,12 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">MINERALS (원)</span>
               <span className="text-lg font-bold text-emerald-400 font-mono flex items-center space-x-1">
                 <span>{minerals.toLocaleString()}<span className="text-slate-500 text-[10px] ml-1">원</span></span>
-                <span className="text-xs text-emerald-500/60 ml-1">/ {OMG.formatMineral(OMG.MINERAL_PER_COIN)}→1 가스</span>
+                <span className="text-xs text-emerald-500/60 ml-1">/ {OMG.formatMineral(OMG.MINERAL_PER_COIN)}→1C</span>
               </span>
             </div>
 
             <div className="flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border border-slate-800">
-              <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">가스</span>
+              <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">Normal 코인</span>
               <span className="text-lg font-bold text-cyan-400 font-mono">
                 {normalCoins.toLocaleString()}
               </span>
@@ -1137,9 +1137,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <div className="p-4 bg-slate-950/60 rounded border border-slate-800 col-span-2 space-y-3.5 animate-fade-in">
                     <div className="flex justify-between items-center">
                       <div>
-                        <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 부품 상점 — 티어별 직접 구매 (가스)</span>
+                        <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 부품 상점 — 티어별 직접 구매 (Normal 코인)</span>
                         <p className="text-xs text-slate-400">
-                          미네랄 1,000만원(천만 원)이 가스 1로 자동 환전됩니다. 원작처럼 1~최고강까지 원하는 티어를 가스로 바로 구매할 수 있습니다. RAM은 창고 최대 4개 · 판매 시 구매가의 50% 환급.
+                          미네랄 1,000만원(천만 원)이 Normal 코인 1C로 자동 환전됩니다. 원작처럼 1~최고강까지 원하는 티어를 코인(C)으로 바로 구매할 수 있습니다. RAM은 창고 최대 4개 · 판매 시 구매가의 50% 환급.
                         </p>
                       </div>
                       {gpu.level >= 10 && (
@@ -1261,7 +1261,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                                     }`}
                                   >
                                     <span className="truncate mr-2">+{row.level}강 {row.name}</span>
-                                    <span className={`shrink-0 font-bold ${affordable ? 'text-cyan-400' : 'text-rose-400/80'}`}>{OMG.formatGas(row.costC)}</span>
+                                    <span className={`shrink-0 font-bold ${affordable ? 'text-cyan-400' : 'text-rose-400/80'}`}>{OMG.formatCoin(row.costC)}</span>
                                   </button>
                                 );
                               })}
@@ -1359,7 +1359,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                                   onClick={() => handleSellComponent(p.id)}
                                   className="flex-1 py-1 bg-rose-500/10 hover:bg-rose-500 hover:text-slate-950 text-rose-400 border border-rose-500/30 rounded text-[9px] font-bold font-mono transition text-center truncate"
                                 >
-                                  💰 {OMG.formatGas(OMG.getShopSellPrice(p.type, p.level, p))}
+                                  💰 {OMG.formatCoin(OMG.getShopSellPrice(p.type, p.level, p))}
                                 </button>
                               </div>
                             </div>

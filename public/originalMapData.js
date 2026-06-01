@@ -425,10 +425,10 @@
 
   const formatManwon = formatMineral;
 
-  /** Normal 코인(가스 UI) 표기 — 원작 스타 가스 칸 */
-  function formatGas(amount) {
+  /** Normal 코인 표기 (문서 §3 구매가: 1C, 5C …) */
+  function formatCoin(amount) {
     const n = Math.max(0, Math.floor(amount || 0));
-    return n.toLocaleString() + ' 가스';
+    return n.toLocaleString() + 'C';
   }
 
   function getPurchaseCostMinerals(type, level, part) {
@@ -650,7 +650,7 @@ function getPartLevel(part) {
     calcGameSpeedFrames, calcGameSpeedMultiplier, calcGpuGrade, calcGpuAttackFrames,
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
     MAX_RAM_INVENTORY, getShopTierCost, getShopSellPrice, getShopCatalog, countRamInInventory, canPurchaseRam, buildInventoryPart,
-    costToMinerals, formatMineral, formatManwon, formatGas, getPurchaseCostMinerals,
+    costToMinerals, formatMineral, formatManwon, formatCoin, getPurchaseCostMinerals,
     getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getWorkTask, getGameHunt, getDownloadTargetMeta,
     getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
