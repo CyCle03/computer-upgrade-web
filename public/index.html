@@ -528,7 +528,7 @@
         const parts = { cpu, gpu, ram, cooler, storage };
         const statGain = OMG.calcRebirthStatGain(parts);
         const scaReward = OMG.calcRebirthScaReward(parts);
-        const startMinerals = OMG.rollRebirthStartMinerals(scaUpgrades);
+        const startMinerals = OMG.calcRebirthStartMinerals(scaUpgrades);
         setScaCoins((prev) => prev + scaReward);
         setRebirthStat((prev) => prev + statGain);
         setRebirthCount((prev) => prev + 1);
@@ -551,8 +551,7 @@
         setHuntingGround({ name: g0.name, multiplier: g0.multiplier, mineralBase: g0.mineralBase, groundIndex: 0 });
         const dt = OMG.DOWNLOAD_TARGETS[0];
         setDownloadTarget({ name: dt.name, sizeMb: dt.sizeMb, requiredGb: dt.requiredGb, groundIndex: dt.groundIndex });
-        const mineralRange = OMG.calcRebirthMineralRange(scaUpgrades);
-        setUpgradeMessage(`✨ 환생 +${statGain.toLocaleString()} 환생수치 · SCA +${scaReward}C · 미네랄 ${startMinerals.toLocaleString()}원 (${mineralRange.min}~${mineralRange.max})`);
+        setUpgradeMessage(`✨ 환생 +${statGain.toLocaleString()} 환생수치 · SCA +${scaReward}C · 시작 미네랄 ${startMinerals.toLocaleString()}원`);
         setUpgradeStatus('success');
       };
 
@@ -794,7 +793,9 @@
             <button onClick={() => setShowScaCenter(v => !v)} className="px-3 py-2 text-xs font-mono border border-cyan-500/30 rounded text-cyan-300">🏛️ SCA 센터</button>
           </div>
           {showScaCenter && (
-            <section className="mb-4 p-4 border border-cyan-500/20 rounded-xl grid grid-cols-2 md:grid-cols-4 gap-2">
+            <section className="mb-4 p-4 border border-cyan-500/20 rounded-xl space-y-3">
+              <p className="text-[10px] font-mono text-cyan-300/80">다음 환생 시작 미네랄: <strong>{OMG.calcRebirthStartMinerals(scaUpgrades).toLocaleString()}원</strong> (SCA 상점 구매분 합산 · 상한 {OMG.REBIRTH_MINERAL_CAP.toLocaleString()}원)</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {OMG.SCA_SHOP_ITEMS.map(item => {
                 const bought = scaUpgrades[item.id] || 0;
                 const soldOut = bought >= item.maxPurchases;
@@ -806,6 +807,7 @@
                   </button>
                 );
               })}
+              </div>
             </section>
           )}
 
