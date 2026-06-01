@@ -39,7 +39,157 @@
     const { useState, useEffect, useMemo, useRef } = React;
     const OMG = window.OriginalMapGame;
 
-    function App() {
+    // ======================================================================
+    // 로그인 · 진행도 서버 동기화 헬퍼
+    // 게임 진행도는 'sca_*' 키로 localStorage에 저장되며, 로그인 계정에 한해
+    // 서버(PostgreSQL)와 동기화된다.
+    // ======================================================================
+    const AUTH_TOKEN_KEY = 'sca_authToken';
+    // 서버에 동기화하지 않을 키 (토큰 등 민감/런타임 값)
+    const SYNC_EXCLUDE = new Set([AUTH_TOKEN_KEY]);
+
+    const GameSync = {
+      getToken() {
+        return localStorage.getItem(AUTH_TOKEN_KEY);
+      },
+      setAuth(token, userId, nickname) {
+        localStorage.setItem(AUTH_TOKEN_KEY, token);
+        if (userId) localStorage.setItem('sca_myId', userId);
+        if (nickname) localStorage.setItem('sca_nickname', nickname);
+      },
+      clearAuth() {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+      },
+      // 로컬 게임 진행도 전체 삭제 (계정 전환 시 데이터 혼선 방지)
+      clearLocalGameState() {
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('sca_')) keys.push(key);
+        }
+        keys.forEach((k) => localStorage.removeItem(k));
+      },
+      // localStorage의 'sca_*' 키를 모아 서버 저장용 객체로 변환
+      collectState() {
+        const state = {};
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('sca_') && !SYNC_EXCLUDE.has(key)) {
+            const v = localStorage.getItem(key);
+            if (v !== null) state[key] = v;
+          }
+        }
+        return state;
+      },
+      // 서버에서 받은 진행도를 localStorage로 복원
+      restoreState(state) {
+        if (!state || typeof state !== 'object') return;
+        Object.keys(state).forEach((key) => {
+          if (key.startsWith('sca_') && !SYNC_EXCLUDE.has(key) && typeof state[key] === 'string') {
+            localStorage.setItem(key, state[key]);
+          }
+        });
+      },
+      async _authRequest(path, username, password) {
+        const res = await fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+          throw new Error(data.message || '요청을 처리할 수 없습니다.');
+        }
+        return data; // { token, userId, nickname }
+      },
+      register(username, password) {
+        return this._authRequest('/api/auth/register', username, password);
+      },
+      login(username, password) {
+        return this._authRequest('/api/auth/login', username, password);
+      },
+      async loadFromServer() {
+        const token = this.getToken();
+        if (!token) throw new Error('NO_TOKEN');
+        const res = await fetch('/api/state', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (res.status === 401) throw new Error('UNAUTHORIZED');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) throw new Error(data.message || '진행도를 불러오지 못했습니다.');
+        return data.state || {};
+      },
+      async saveToServer() {
+        const token = this.getToken();
+        if (!token) return false;
+        try {
+          const res = await fetch('/api/state', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ state: this.collectState() }),
+          });
+          return res.ok;
+        } catch (e) {
+          return false;
+        }
+      },
+      async logout() {
+        const token = this.getToken();
+        if (token) {
+          try {
+            await fetch('/api/auth/logout', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` },
+            });
+          } catch (e) { /* 네트워크 실패해도 로컬 정리는 진행 */ }
+        }
+      },
+    };
+
+    // 진행도 서버 저장 디바운서 (잦은 상태 변경을 묶어 전송)
+    // 주의: 수입 틱으로 minerals가 ~1.5초마다 변하므로 단순 디바운스는 계속 리셋되어
+    // 영원히 저장되지 않을 수 있다. 따라서 마지막 저장 후 MAX_WAIT를 넘기면 강제 저장한다.
+    const SYNC_DEBOUNCE_MS = 1500;
+    const SYNC_MAX_WAIT_MS = 5000;
+    let __scaSyncTimer = null;
+    let __scaLastSync = 0;
+    function scheduleServerSync() {
+      if (!GameSync.getToken()) return;
+      const now = Date.now();
+      if (now - __scaLastSync >= SYNC_MAX_WAIT_MS) {
+        if (__scaSyncTimer) { clearTimeout(__scaSyncTimer); __scaSyncTimer = null; }
+        __scaLastSync = now;
+        GameSync.saveToServer();
+        return;
+      }
+      if (__scaSyncTimer) clearTimeout(__scaSyncTimer);
+      __scaSyncTimer = setTimeout(() => {
+        __scaSyncTimer = null;
+        __scaLastSync = Date.now();
+        GameSync.saveToServer();
+      }, SYNC_DEBOUNCE_MS);
+    }
+
+    // 탭 종료/숨김 시 마지막 진행도를 keepalive 요청으로 즉시 전송 (디바운스 유실 방지)
+    function flushServerSync() {
+      const token = GameSync.getToken();
+      if (!token) return;
+      try {
+        fetch('/api/state', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ state: GameSync.collectState() }),
+          keepalive: true,
+        });
+        __scaLastSync = Date.now();
+      } catch (e) { /* best-effort */ }
+    }
+    window.addEventListener('pagehide', flushServerSync);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flushServerSync();
+    });
+
+    function App({ onLogout }) {
       // ----------------------------------------------------------------------
       // 1. 핵심 유저 재화 및 강화 피드백 상태 정의
       // ----------------------------------------------------------------------
@@ -495,6 +645,8 @@
         localStorage.setItem('sca_autoBuyRam', autoBuyRam.toString());
         localStorage.setItem('sca_autoBuyCooler', autoBuyCooler.toString());
         localStorage.setItem('sca_autoBuyStorage', autoBuyStorage.toString());
+        // 로컬 저장과 함께 로그인 계정의 서버 진행도도 디바운스 동기화
+        scheduleServerSync();
       }, [minerals, scaCoins, rebirthCount, rebirthStat, autoTargetLevels, scaUpgrades, partyHuntingTier, cpu, gpu, ram, cooler, motherboard, storage, workTaskIndex, workUnitMode, manualWorkUnits, unlockedGameIndex, downloadTarget, inventory, autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage]);
 
       // ----------------------------------------------------------------------
@@ -986,6 +1138,15 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               <div>
                 <h1 className="text-sm text-slate-400 uppercase tracking-widest font-semibold">복원 제어 터미널</h1>
                 <p className="text-xs text-emerald-500 font-mono">환생 {rebirthCount}회 · 환생수치 {rebirthStat.toLocaleString()} · 수입 x{rebirthIncomeMult.toFixed(2)} · 배속 {gameSpeedFrames}f</p>
+                <p className="text-[11px] text-slate-400 font-mono mt-0.5 flex items-center gap-2">
+                  <span>👤 {nickname}</span>
+                  <button
+                    onClick={() => { if (onLogout) onLogout(); }}
+                    className="px-2 py-0.5 text-[10px] border border-rose-500/40 rounded text-rose-300 hover:bg-rose-500/10"
+                  >
+                    로그아웃
+                  </button>
+                </p>
               </div>
             </div>
 
@@ -1809,9 +1970,152 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       );
     }
 
+    // ======================================================================
+    // 로그인 게이트: 미로그인 시 로그인/회원가입 화면, 로그인 시 게임(App) 마운트
+    // ======================================================================
+    function AuthGate() {
+      const [phase, setPhase] = useState('booting'); // booting | auth | ready
+      const [mode, setMode] = useState('login');      // login | register
+      const [username, setUsername] = useState('');
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState(null);
+      const [loading, setLoading] = useState(false);
+
+      // 최초 로드 시 저장된 토큰이 있으면 서버 진행도를 불러와 자동 로그인
+      useEffect(() => {
+        const token = GameSync.getToken();
+        if (!token) { setPhase('auth'); return; }
+        (async () => {
+          try {
+            const state = await GameSync.loadFromServer();
+            GameSync.restoreState(state);
+            setPhase('ready');
+          } catch (e) {
+            GameSync.clearAuth();
+            setPhase('auth');
+          }
+        })();
+      }, []);
+
+      const submit = async (e) => {
+        e.preventDefault();
+        setError(null);
+        setLoading(true);
+        try {
+          const name = username.trim();
+          const res = mode === 'login'
+            ? await GameSync.login(name, password)
+            : await GameSync.register(name, password);
+
+          // 계정 전환 시 이전 계정의 로컬 데이터가 섞이지 않도록 정리
+          GameSync.clearLocalGameState();
+          GameSync.setAuth(res.token, res.userId, res.nickname);
+
+          const state = await GameSync.loadFromServer();
+          if (state && Object.keys(state).length > 0) {
+            GameSync.restoreState(state);
+          } else {
+            // 서버에 저장된 진행도가 없으면(신규/초기) 현재 로컬 상태를 업로드
+            await GameSync.saveToServer();
+          }
+          setPhase('ready');
+        } catch (err) {
+          setError(err.message || '오류가 발생했습니다.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const handleLogout = async () => {
+        await GameSync.saveToServer();
+        await GameSync.logout();
+        GameSync.clearAuth();
+        GameSync.clearLocalGameState();
+        // 게임 상태를 완전히 초기화하기 위해 새로고침
+        window.location.reload();
+      };
+
+      if (phase === 'booting') {
+        return (
+          <div className="min-h-screen flex items-center justify-center text-slate-400 font-mono text-sm">
+            <span className="animate-pulse">⏳ 진행도 동기화 중...</span>
+          </div>
+        );
+      }
+
+      if (phase === 'ready') {
+        const userId = localStorage.getItem('sca_myId');
+        return <App key={userId} onLogout={handleLogout} />;
+      }
+
+      // 로그인 / 회원가입 화면
+      return (
+        <div className="min-h-screen flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-slate-900/70 border border-emerald-500/20 neon-border-emerald rounded-2xl p-7 space-y-5">
+            <div className="text-center space-y-1">
+              <div className="text-3xl">🧠</div>
+              <h1 className="text-lg font-bold text-emerald-300">컴퓨터 강화하기</h1>
+              <p className="text-xs text-slate-400 font-mono">
+                {mode === 'login' ? '로그인하여 진행도를 불러옵니다' : '계정을 만들어 진행도를 저장합니다'}
+              </p>
+            </div>
+
+            <form onSubmit={submit} className="space-y-3">
+              <div>
+                <label className="block text-[11px] text-slate-400 font-mono mb-1">닉네임</label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoComplete="username"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-100 focus:border-emerald-500 outline-none"
+                  placeholder="2~50자"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-400 font-mono mb-1">비밀번호</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-100 focus:border-emerald-500 outline-none"
+                  placeholder="최소 4자"
+                />
+              </div>
+
+              {error && (
+                <p className="text-xs text-rose-400 font-mono bg-rose-500/10 border border-rose-500/30 rounded px-3 py-2">
+                  {error}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 rounded-lg bg-emerald-500/90 hover:bg-emerald-400 text-slate-950 font-bold text-sm disabled:opacity-50"
+              >
+                {loading ? '처리 중...' : (mode === 'login' ? '로그인' : '회원가입')}
+              </button>
+            </form>
+
+            <div className="text-center text-xs text-slate-400 font-mono">
+              {mode === 'login' ? '계정이 없으신가요? ' : '이미 계정이 있으신가요? '}
+              <button
+                onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); }}
+                className="text-emerald-400 underline"
+              >
+                {mode === 'login' ? '회원가입' : '로그인'}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     const container = document.getElementById('root');
     const root = ReactDOM.createRoot(container);
-    root.render(<App />);
+    root.render(<AuthGate />);
   </script>
 </body>
 </html>

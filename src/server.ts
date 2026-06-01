@@ -4,6 +4,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { isDbReady, testConnection } from './db';
 import { RewardService } from './rewardService';
+import { AuthService, AuthError } from './authService';
+import { StateService } from './stateService';
 import { ClaimRewardRequest } from './types';
 import { setupSocketServer } from './socketServer';
 
@@ -24,6 +26,110 @@ app.get('/health', (_req: Request, res: Response) => {
     db: isDbReady() ? 'connected' : 'unavailable',
     timestamp: new Date(),
   });
+});
+
+// DB 연결 보장 헬퍼: 미연결 시 재시도 후 실패하면 503 응답.
+async function ensureDb(res: Response): Promise<boolean> {
+  if (isDbReady()) return true;
+  const ok = await testConnection();
+  if (!ok) {
+    res.status(503).json({
+      success: false,
+      message: '데이터베이스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.',
+    });
+    return false;
+  }
+  return true;
+}
+
+// Authorization 헤더에서 Bearer 토큰 추출.
+function extractToken(req: Request): string | null {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) return null;
+  return header.slice('Bearer '.length).trim() || null;
+}
+
+// 인증 미들웨어: 유효한 토큰이면 req.userId 설정, 아니면 401.
+async function requireAuth(req: Request, res: Response): Promise<string | null> {
+  const userId = await AuthService.resolveToken(extractToken(req));
+  if (!userId) {
+    res.status(401).json({ success: false, message: '로그인이 필요합니다.' });
+    return null;
+  }
+  return userId;
+}
+
+// 회원가입
+app.post('/api/auth/register', async (req: Request, res: Response) => {
+  if (!(await ensureDb(res))) return;
+  try {
+    const { username, password } = req.body ?? {};
+    const result = await AuthService.register(username, password);
+    return res.status(201).json({ success: true, ...result });
+  } catch (error: unknown) {
+    if (error instanceof AuthError) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    console.error('[AuthAPI] register error:', error);
+    return res.status(500).json({ success: false, message: '회원가입 처리 중 오류가 발생했습니다.' });
+  }
+});
+
+// 로그인
+app.post('/api/auth/login', async (req: Request, res: Response) => {
+  if (!(await ensureDb(res))) return;
+  try {
+    const { username, password } = req.body ?? {};
+    const result = await AuthService.login(username, password);
+    return res.status(200).json({ success: true, ...result });
+  } catch (error: unknown) {
+    if (error instanceof AuthError) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    console.error('[AuthAPI] login error:', error);
+    return res.status(500).json({ success: false, message: '로그인 처리 중 오류가 발생했습니다.' });
+  }
+});
+
+// 로그아웃 (세션 토큰 폐기)
+app.post('/api/auth/logout', async (req: Request, res: Response) => {
+  if (!(await ensureDb(res))) return;
+  try {
+    await AuthService.logout(extractToken(req));
+    return res.status(200).json({ success: true });
+  } catch (error: unknown) {
+    console.error('[AuthAPI] logout error:', error);
+    return res.status(500).json({ success: false, message: '로그아웃 처리 중 오류가 발생했습니다.' });
+  }
+});
+
+// 게임 진행도 조회
+app.get('/api/state', async (req: Request, res: Response) => {
+  if (!(await ensureDb(res))) return;
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+  try {
+    const state = await StateService.getState(userId);
+    return res.status(200).json({ success: true, state });
+  } catch (error: unknown) {
+    console.error('[StateAPI] get error:', error);
+    return res.status(500).json({ success: false, message: '진행도 조회 중 오류가 발생했습니다.' });
+  }
+});
+
+// 게임 진행도 저장
+app.put('/api/state', async (req: Request, res: Response) => {
+  if (!(await ensureDb(res))) return;
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+  try {
+    const { state } = req.body ?? {};
+    const saved = await StateService.saveState(userId, state);
+    return res.status(200).json({ success: true, state: saved });
+  } catch (error: unknown) {
+    console.error('[StateAPI] save error:', error);
+    return res.status(500).json({ success: false, message: '진행도 저장 중 오류가 발생했습니다.' });
+  }
 });
 
 app.post('/api/raid/claim', async (req: Request, res: Response) => {

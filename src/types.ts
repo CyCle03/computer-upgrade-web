@@ -55,6 +55,33 @@ export interface ClaimRewardResponse {
 }
 
 // ============================================================================
+// 로그인(계정) 및 게임 진행도 동기화 관련 타입 정의
+// ============================================================================
+
+/**
+ * 회원가입 / 로그인 요청 DTO
+ */
+export interface AuthRequest {
+  username: string; // 닉네임 = 로그인 ID
+  password: string;
+}
+
+/**
+ * 인증 성공 응답 DTO
+ */
+export interface AuthResponse {
+  token: string; // 세션 Bearer 토큰
+  userId: string; // 유저 UUID
+  nickname: string;
+}
+
+/**
+ * 계정별로 서버에 저장되는 게임 진행도 (클라이언트 localStorage 스냅샷)
+ * 키는 'sca_*' 형식이며 값은 localStorage에 저장된 문자열 그대로다.
+ */
+export type GameStatePayload = Record<string, string>;
+
+// ============================================================================
 // 하드웨어 시뮬레이터 관련 데이터 구조 및 스펙 타입 정의
 // ============================================================================
 
