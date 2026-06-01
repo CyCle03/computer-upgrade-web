@@ -6,6 +6,19 @@
   const MINERAL_PER_COIN = 10000000;
   const MANWON_MINERALS = 10000;
 
+  /** 스프레드시트 가격 → tier.cost. 숫자=원, NC=N×천만, -=0 */
+  function parseSheetPrice(raw) {
+    if (raw == null) return 0;
+    const s = String(raw).trim().replace(/,/g, '');
+    if (s === '' || s === '-') return 0;
+    if (s.endsWith('C')) {
+      const n = parseFloat(s.slice(0, -1)) || 1;
+      return Math.floor(n * MINERAL_PER_COIN);
+    }
+    return Math.floor(Number(s)) || 0;
+  }
+
+
   const INTEL_CPU = [
     { level: 1, name: 'Core i5-760', cost: 1, prob: 0.4, cores: 1, perf: 1, cooling: 100 },
     { level: 2, name: 'Core i5-2500K', cost: 0, prob: 0.4, cores: 1, perf: 5, cooling: 200 },
@@ -687,7 +700,7 @@ function getPartLevel(part) {
   }
 
   global.OriginalMapGame = {
-    MINERAL_PER_COIN, MANWON_MINERALS, REBIRTH_MINERAL_CAP,
+    MINERAL_PER_COIN, MANWON_MINERALS, parseSheetPrice, REBIRTH_MINERAL_CAP,
     GAME_SPEED_BASE, GAME_SPEED_MAX, GAME_SPEED_FRAME_REF,
     GPU_GRADE_NAMES, GPU_GRADE_ATTACK_FRAMES, GPU_GRADE_BENCHMARK_MULTIPLIERS, DOWNLOAD_BASE_MB,
     INTEL_CPU, AMD_CPU, GPU, RAM, COOLER_AIR, COOLER_WATER, HDD, NVME,
