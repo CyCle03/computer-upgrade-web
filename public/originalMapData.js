@@ -630,12 +630,18 @@ function getPartLevel(part) {
   }
 
   /** RAM: 작업 점유 후 남은 용량으로 사냥 유닛 수 계산 (작업·게임 동시) */
-  function calcRamAllocation(parts, workTaskIndex, maxUnitsOverride) {
+  function calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride) {
     const totalRam = getRamCapacityGb(parts && parts.ram);
     const maxByCpu = maxUnitsOverride != null ? maxUnitsOverride : getCpuCores(parts && parts.cpu);
     const workSpec = evaluateWorkTaskSpec(parts, workTaskIndex);
     const work = workSpec.task;
-    const workRamUsed = workSpec.ok ? workSpec.activeWorkUnits * (work.ramPerUnitGb || 1) : (work.requiredRamGb || 0);
+    const maxWorkUnits = workSpec.ok ? workSpec.activeWorkUnits : 0;
+    const activeWorkUnits = workUnitsOverride != null
+      ? Math.max(0, Math.min(workUnitsOverride, maxWorkUnits))
+      : maxWorkUnits;
+    const workRamUsed = workSpec.ok
+      ? activeWorkUnits * (work.ramPerUnitGb || 1)
+      : (work.requiredRamGb || 0);
     const huntRamFree = Math.max(0, totalRam - workRamUsed);
     const ramPerUnit = getGpuRamPerUnit(parts && parts.gpu);
     const maxByRam = ramPerUnit > 0 ? Math.floor(huntRamFree / ramPerUnit) : 0;
@@ -648,8 +654,9 @@ function getPartLevel(part) {
       maxByRam,
       maxByCpu,
       activeHuntingUnits,
-      activeWorkUnits: workSpec.ok ? workSpec.activeWorkUnits : 0,
-      canRunWork: workSpec.ok && workSpec.activeWorkUnits > 0,
+      activeWorkUnits,
+      maxWorkUnits,
+      canRunWork: workSpec.ok && activeWorkUnits > 0,
       workSpecOk: workSpec.ok,
       workSpecFailures: workSpec.failures,
     };
@@ -711,23 +718,42 @@ function getPartLevel(part) {
     return { ok: true, reason: '', mineralCost: cost };
   }
 
-  function calcHuntIncomePerTick(parts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, maxUnitsOverride) {
+  function calcHuntIncomePerTick(parts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, maxUnitsOverride, workUnitsOverride) {
     if (isDownloading) return 0;
-    const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride);
+    const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride);
     const game = getGameHunt(unlockedGameIndex);
     if (!game || alloc.activeHuntingUnits <= 0) return 0;
     const bonus = 1 + (incomeBonusRate || 0);
     return Math.round(game.mineralPerUnit * alloc.activeHuntingUnits * bonus);
   }
 
-  function calcWorkIncomePerTick(parts, workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride) {
-    const spec = evaluateWorkTaskSpec(parts, workTaskIndex);
-    if (!spec.ok || spec.activeWorkUnits <= 0) return 0;
-    const task = spec.task;
+  function calcWorkIncomePerTick(parts, workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, workUnitsOverride) {
+    const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride);
+    if (!alloc.canRunWork || alloc.activeWorkUnits <= 0) return 0;
+    const task = getWorkTask(workTaskIndex);
     return Math.round(
-      task.mineralPerUnit * spec.activeWorkUnits *
+      task.mineralPerUnit * alloc.activeWorkUnits *
       (mineralMultiplier || 1) * (rebirthIncomeMult || 1) * (1 + (incomeBonusRate || 0))
     );
+  }
+
+  /** 작업·사냥 합산 틱 수입이 최대가 되도록 작업 유닛 수 탐색 */
+  function calcOptimalWorkUnits(parts, workTaskIndex, unlockedGameIndex, maxUnitsOverride, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading) {
+    const spec = evaluateWorkTaskSpec(parts, workTaskIndex);
+    const maxW = spec.ok ? spec.activeWorkUnits : 0;
+    if (maxW <= 0) return 0;
+    let bestUnits = 0;
+    let bestTotal = -1;
+    for (let w = 0; w <= maxW; w++) {
+      const workInc = calcWorkIncomePerTick(parts, workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, w);
+      const huntInc = calcHuntIncomePerTick(parts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, maxUnitsOverride, w);
+      const total = workInc + huntInc;
+      if (total > bestTotal) {
+        bestTotal = total;
+        bestUnits = w;
+      }
+    }
+    return bestUnits;
   }
 
   function createIntelCpu11InventoryItem() {
@@ -762,7 +788,7 @@ function getPartLevel(part) {
     getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getWorkTask, getGameHunt, getDownloadTargetMeta,
     getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
-    calcHuntIncomePerTick, calcWorkIncomePerTick, toDownloadTargetSnapshot,
+    calcHuntIncomePerTick, calcWorkIncomePerTick, calcOptimalWorkUnits, toDownloadTargetSnapshot,
     createIntelCpu11InventoryItem,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
