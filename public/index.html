@@ -94,6 +94,7 @@
       const [coolerBuyKind, setCoolerBuyKind] = useState('air');
       const [storageBuyKind, setStorageBuyKind] = useState('hdd');
       const [buyLevelIndex, setBuyLevelIndex] = useState({ cpu: 0, gpu: 0, ram: 0, cooler: 0, storage: 0 });
+      const [motherboardBuyIndex, setMotherboardBuyIndex] = useState(0);
 
       // ----------------------------------------------------------------------
       // 2. 조립 컴퓨터 부품 상태 정의
@@ -602,6 +603,11 @@
         });
       };
 
+
+      const adjustMotherboardBuyIndex = (delta) => {
+        const count = OMG.MOTHERBOARDS.length;
+        setMotherboardBuyIndex((cur) => Math.max(0, Math.min(count - 1, cur + delta)));
+      };
       const getComponentBuyMeta = (type) => ({
         type,
         manufacturer: type === 'cpu' ? cpuBuyManufacturer : undefined,
@@ -1178,7 +1184,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       <div>
                         <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 부품 상점 — 부품별 구매 가능 강 (미네랄)</span>
                         <p className="text-xs text-slate-400">
-                          스프레드시트 구매가 = 미네랄(원) 1:1 (C = N×천만). Intel CPU 1·4·7·10·11강, AMD 1·3강, GPU 1·3·5·7강, RAM 1·5·10강, 쿨러·드라이브 1강만 직접 구매. ◀▶로 강 선택. RAM 창고 최대 4개 · 판매 50% 환급.
+                          스프레드시트 구매가 = 미네랄(원) 1:1 (C = N×천만). Intel CPU 1·4·7·10·11강, AMD 1·3강, GPU 1·3·5·7강, RAM 1·5·10강, 쿨러·드라이브 1강, 메인보드(DDR·소켓 표시) 직접 구매. ◀▶로 강 선택. RAM 창고 최대 4개 · 판매 50% 환급.
                         </p>
                       </div>
                       {gpu.level >= 10 && (
@@ -1250,6 +1256,32 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                           </div>
                         );
                       })}
+                      {(() => {
+                        const boards = OMG.MOTHERBOARDS;
+                        const mbIdx = Math.min(motherboardBuyIndex, boards.length - 1);
+                        const board = boards[mbIdx];
+                        const mbCost = OMG.costToMinerals(board.cost);
+                        const affordable = minerals >= mbCost;
+                        return (
+                          <div className="p-2.5 bg-slate-900/40 rounded border border-slate-800 space-y-2 flex flex-col">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-bold text-slate-200 font-mono shrink-0">🔌 Motherboard</span>
+                              <span className="text-[9px] font-mono text-cyan-400">{board.socketManufacturer}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button type="button" onClick={() => adjustMotherboardBuyIndex(-1)} disabled={mbIdx <= 0} className={`px-2.5 py-2 rounded border text-xs font-bold ${mbIdx <= 0 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>◀</button>
+                              <div className="flex-1 text-center px-1 py-1 bg-slate-950 rounded border border-slate-800 min-w-0">
+                                <div className="text-[11px] font-bold text-cyan-200 font-mono truncate" title={board.name}>{board.name}</div>
+                                <div className="text-[8px] text-slate-400 font-mono">{board.supportedDdrGeneration} · 실드+{board.shieldIncrease.toLocaleString()}</div>
+                              </div>
+                              <button type="button" onClick={() => adjustMotherboardBuyIndex(1)} disabled={mbIdx >= boards.length - 1} className={`px-2.5 py-2 rounded border text-xs font-bold ${mbIdx >= boards.length - 1 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>▶</button>
+                            </div>
+                            <button type="button" onClick={() => handlePurchaseMotherboard(board)} disabled={!affordable} className={`w-full py-1.5 rounded text-[10px] font-bold font-mono border transition mt-auto ${!affordable ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed opacity-60' : 'bg-cyan-600/20 border-cyan-500 text-cyan-200 hover:bg-cyan-500/30'}`}>
+                              구매 {OMG.formatMineral(mbCost)}
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-2 pt-2.5 border-t border-slate-900">
@@ -1405,25 +1437,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     )}
                   </div>
 
-                  {/* 메인보드 완제품 변경 구매 */}
-                  <div className="p-4 bg-slate-950/60 rounded border border-slate-800 flex flex-col justify-between col-span-2">
-                    <div>
-                      <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">MOTHERBOARD RACK SHOP (PROD)</span>
-                      <p className="text-xs text-slate-400 mb-3">
-                        소켓과 DDR 지원 규격을 내 컴퓨터 부품과 **일치하도록 직접 매치**하여 완제품으로 구매하세요. (오조립 시 페널티 발생 가능)
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 pt-2.5 border-t border-slate-900">
-                      {OMG.MOTHERBOARDS.map(board => (
-                        <button key={board.name} onClick={() => handlePurchaseMotherboard(board)} className="p-2 bg-slate-900 border border-slate-800 rounded text-center">
-                          <span className="text-[10px] font-bold text-slate-200">{board.name}</span>
-                          <span className="text-[9px] text-cyan-400 font-mono block">{OMG.formatMineral(board.cost)}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                                    {/* 저장장치 교체 상점 */}
+{/* 저장장치 교체 상점 */}
                   <div className="p-4 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center col-span-2">
                     <div className="max-w-[70%]">
                       <span className="text-xs font-bold text-emerald-400 font-mono block mb-1">STORAGE ENGINE EXCHANGE</span>
