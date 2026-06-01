@@ -102,13 +102,13 @@
     { name: 'AMD X670E (DDR5)', socketManufacturer: 'AMD', supportedDdrGeneration: 'DDR5', shieldIncrease: 900, cost: 100 },
   ];
 
-  // 작업(Work) — RAM [NGB] 점유 · 다운로드와 무관, RAM만 충족하면 선택 가능
+  // 작업(Work) — CPU(코어)·RAM(용량/강)·GPU(공격) 스펙 충족 시만 선택·수입
   const WORK_TASKS = [
-    { name: '간단한 문서작업', mineralBase: 10, taskIndex: 0, requiredRamGb: 1 },
-    { name: '2D/3D 그래픽 작업', mineralBase: 25, taskIndex: 1, requiredRamGb: 4 },
-    { name: '간단한 AI 작업', mineralBase: 40, taskIndex: 2, requiredRamGb: 4 },
-    { name: '3D 그래픽 / 전문 편집', mineralBase: 50, taskIndex: 3, requiredRamGb: 8 },
-    { name: '고사양 AI / 렌더링', mineralBase: 80, taskIndex: 4, requiredRamGb: 16 },
+    { name: '간단한 문서작업', mineralBase: 10, taskIndex: 0, requiredRamGb: 1, ramPerUnitGb: 1, requiredGpuLevel: 1, requiredRamLevel: 1, requiredCpuCores: 1, requiredShield: 0 },
+    { name: '2D/3D 그래픽 작업', mineralBase: 25, taskIndex: 1, requiredRamGb: 4, ramPerUnitGb: 1, requiredGpuLevel: 2, requiredRamLevel: 2, requiredCpuCores: 1, requiredShield: 0 },
+    { name: '간단한 AI 작업', mineralBase: 40, taskIndex: 2, requiredRamGb: 4, ramPerUnitGb: 2, requiredGpuLevel: 3, requiredRamLevel: 3, requiredCpuCores: 2, requiredShield: 0 },
+    { name: '3D 그래픽 / 전문 편집', mineralBase: 50, taskIndex: 3, requiredRamGb: 8, ramPerUnitGb: 4, requiredGpuLevel: 4, requiredRamLevel: 5, requiredCpuCores: 4, requiredShield: 30 },
+    { name: '고사양 AI / 렌더링', mineralBase: 80, taskIndex: 4, requiredRamGb: 16, ramPerUnitGb: 8, requiredGpuLevel: 6, requiredRamLevel: 7, requiredCpuCores: 6, requiredShield: 100 },
   ];
 
   // 게임 사냥터(Gaming) — 다운로드로 해금 · 작업과 동시 진행
@@ -387,6 +387,67 @@
     return GPU_RAM_PER_UNIT_GB[lv - 1];
   }
 
+  function getPartLevel(part) {
+    return Math.max(1, (part && part.level) || 1);
+  }
+
+  /**
+   * 작업 티어 스펙 검사 — CPU 코어, RAM 용량·강, GPU 강, (고티어) 메인보드 실드
+   */
+  function evaluateWorkTaskSpec(parts, taskIndex) {
+    const task = getWorkTask(taskIndex);
+    const cpu = (parts && parts.cpu) || { level: 1 };
+    const gpu = (parts && parts.gpu) || { level: 1 };
+    const ram = (parts && parts.ram) || { level: 1, capacityGb: 1 };
+    const motherboard = (parts && parts.motherboard) || { shieldIncrease: 0 };
+
+    const gpuLevel = getPartLevel(gpu);
+    const ramLevel = getPartLevel(ram);
+    const ramGb = getRamCapacityGb(ram);
+    const cpuCores = getCpuCores(cpu);
+    const shield = motherboard.shieldIncrease || 0;
+    const minRamGb = task.requiredRamGb || task.ramPerUnitGb || 1;
+
+    const failures = [];
+    if (gpuLevel < task.requiredGpuLevel) {
+      failures.push(`GPU ${task.requiredGpuLevel}강 필요 (현재 ${gpuLevel}강)`);
+    }
+    if (ramLevel < task.requiredRamLevel) {
+      failures.push(`RAM ${task.requiredRamLevel}강 필요 (현재 ${ramLevel}강)`);
+    }
+    if (cpuCores < task.requiredCpuCores) {
+      failures.push(`CPU 코어 ${task.requiredCpuCores} 필요 (현재 ${cpuCores})`);
+    }
+    if (ramGb < minRamGb) {
+      failures.push(`RAM ${minRamGb}GB 필요 (현재 ${ramGb}GB)`);
+    }
+    if ((task.requiredShield || 0) > 0 && shield < task.requiredShield) {
+      failures.push(`고정 실드 ${task.requiredShield} 필요 (현재 ${shield})`);
+    }
+
+    const ramPerUnit = task.ramPerUnitGb || 1;
+    const maxWorkByRam = Math.floor(ramGb / ramPerUnit);
+    const activeWorkUnits = Math.max(0, Math.min(cpuCores, maxWorkByRam));
+
+    return {
+      ok: failures.length === 0,
+      failures,
+      task,
+      gpuLevel,
+      ramLevel,
+      ramGb,
+      cpuCores,
+      shield,
+      activeWorkUnits,
+      ramPerUnit,
+    };
+  }
+
+  function getWorkTaskSpecReason(parts, taskIndex) {
+    const ev = evaluateWorkTaskSpec(parts, taskIndex);
+    return ev.ok ? '' : ev.failures.join(' · ');
+  }
+
   function getWorkTask(taskIndex) {
     const idx = Math.max(0, Math.min(WORK_TASKS.length - 1, taskIndex || 0));
     return WORK_TASKS[idx];
@@ -397,14 +458,15 @@
   }
 
   /** RAM: 작업 점유 후 남은 용량으로 사냥 유닛 수 계산 (작업·게임 동시) */
-  function calcRamAllocation(parts, workTaskIndex) {
+  function calcRamAllocation(parts, workTaskIndex, maxUnitsOverride) {
     const totalRam = getRamCapacityGb(parts && parts.ram);
-    const work = getWorkTask(workTaskIndex);
-    const workRamUsed = work.requiredRamGb;
+    const maxByCpu = maxUnitsOverride != null ? maxUnitsOverride : getCpuCores(parts && parts.cpu);
+    const workSpec = evaluateWorkTaskSpec(parts, workTaskIndex);
+    const work = workSpec.task;
+    const workRamUsed = workSpec.ok ? workSpec.activeWorkUnits * (work.ramPerUnitGb || 1) : (work.requiredRamGb || 0);
     const huntRamFree = Math.max(0, totalRam - workRamUsed);
     const ramPerUnit = getGpuRamPerUnit(parts && parts.gpu);
     const maxByRam = ramPerUnit > 0 ? Math.floor(huntRamFree / ramPerUnit) : 0;
-    const maxByCpu = getCpuCores(parts && parts.cpu);
     const activeHuntingUnits = Math.max(0, Math.min(maxByRam, maxByCpu));
     return {
       totalRam,
@@ -414,13 +476,15 @@
       maxByRam,
       maxByCpu,
       activeHuntingUnits,
-      canRunWork: totalRam >= workRamUsed,
+      activeWorkUnits: workSpec.ok ? workSpec.activeWorkUnits : 0,
+      canRunWork: workSpec.ok && workSpec.activeWorkUnits > 0,
+      workSpecOk: workSpec.ok,
+      workSpecFailures: workSpec.failures,
     };
   }
 
   function canSelectWorkTask(parts, taskIndex) {
-    const task = getWorkTask(taskIndex);
-    return getRamCapacityGb(parts && parts.ram) >= task.requiredRamGb;
+    return evaluateWorkTaskSpec(parts, taskIndex).ok;
   }
 
   function normalizeGameProgress(unlockedGameIndex, downloadTarget) {
@@ -465,8 +529,9 @@
   }
 
   function calcWorkIncomePerTick(parts, workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate) {
-    const task = getWorkTask(workTaskIndex);
-    if (!canSelectWorkTask(parts, workTaskIndex)) return 0;
+    const spec = evaluateWorkTaskSpec(parts, workTaskIndex);
+    if (!spec.ok || spec.activeWorkUnits <= 0) return 0;
+    const task = spec.task;
     return Math.round(
       task.mineralBase * (mineralMultiplier || 1) * (rebirthIncomeMult || 1) * (1 + (incomeBonusRate || 0))
     );
@@ -499,6 +564,7 @@
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
     costToMinerals, formatManwon, getPurchaseCostMinerals,
     getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getWorkTask, getGameHunt,
+    getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
     calcHuntIncomePerTick, calcWorkIncomePerTick,
     createIntelCpu11InventoryItem,

@@ -235,9 +235,20 @@
       const gpuGrade = useMemo(() => OMG.calcGpuGrade(scaUpgrades), [scaUpgrades]);
       const gpuAttackFrames = useMemo(() => OMG.calcGpuAttackFrames(scaUpgrades), [scaUpgrades]);
 
-      const workParts = useMemo(() => ({ cpu, gpu, ram, cooler, storage }), [cpu, gpu, ram, cooler, storage]);
+      const workParts = useMemo(() => ({ cpu, gpu, ram, cooler, storage, motherboard }), [cpu, gpu, ram, cooler, storage, motherboard]);
+      const effectiveUnitLimit = useMemo(() => {
+        let limit = OMG.getCpuCores(cpu);
+        if (cpu.manufacturer !== motherboard.socketManufacturer) {
+          limit = Math.max(1, Math.floor(limit * 0.5));
+        }
+        return limit;
+      }, [cpu, motherboard]);
       const ramAlloc = useMemo(
-        () => OMG.calcRamAllocation(workParts, workTaskIndex),
+        () => OMG.calcRamAllocation(workParts, workTaskIndex, effectiveUnitLimit),
+        [workParts, workTaskIndex, effectiveUnitLimit]
+      );
+      const workSpecStatus = useMemo(
+        () => OMG.evaluateWorkTaskSpec(workParts, workTaskIndex),
         [workParts, workTaskIndex]
       );
       const currentWorkTask = useMemo(() => OMG.getWorkTask(workTaskIndex), [workTaskIndex]);
@@ -280,7 +291,7 @@
         }
 
         // E. RAM 분배: 작업 점유 후 남은 RAM으로 사냥 유닛 (GPU 1기당 RAM × CPU 코어)
-        const ramAllocation = OMG.calcRamAllocation({ cpu, gpu, ram, cooler, storage }, workTaskIndex);
+        const ramAllocation = OMG.calcRamAllocation(workParts, workTaskIndex, effectiveUnitLimit);
         const maxHuntingUnits = ramAllocation.activeHuntingUnits;
 
         // F. 유닛 체력 및 메인보드 고정 실드
@@ -329,7 +340,7 @@
             mineralMultiplier
           }
         };
-      }, [cpu, gpu, ram, cooler, motherboard, storage, scaUpgrades, gpuAttackFrames, gpuGrade]);
+      }, [cpu, gpu, ram, cooler, motherboard, storage, scaUpgrades, gpuAttackFrames, gpuGrade, workParts, workTaskIndex, effectiveUnitLimit]);
 
       useEffect(() => {
         if (localStorage.getItem('sca_rebirthStatMigrated')) return;
@@ -359,6 +370,17 @@
           return p;
         }));
       }, []);
+
+      useEffect(() => {
+        if (OMG.canSelectWorkTask(workParts, workTaskIndex)) return;
+        for (let i = workTaskIndex - 1; i >= 0; i--) {
+          if (OMG.canSelectWorkTask(workParts, i)) {
+            setWorkTaskIndex(i);
+            return;
+          }
+        }
+        setWorkTaskIndex(0);
+      }, [workParts, workTaskIndex, cpu.level, gpu.level, ram.level, ram.capacityGb, motherboard.shieldIncrease]);
 
       useEffect(() => {
         const normalized = OMG.normalizeGameProgress(unlockedGameIndex, downloadTarget);
@@ -1377,7 +1399,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <span className="text-emerald-400 text-lg mr-1.5">💼</span>
                   <span>작업 사냥터</span>
                 </h2>
-                <p className="text-xs text-slate-400">작업(Work)과 게임 사냥(Gaming)은 <strong className="text-emerald-400">동시 진행</strong> · RAM = 작업 점유 + 사냥 유닛(GPU 1기당 RAM × CPU 코어)</p>
+                <p className="text-xs text-slate-400">작업(Work)과 게임 사냥(Gaming)은 <strong className="text-emerald-400">동시 진행</strong> · 작업 티어는 <strong className="text-amber-400">GPU·RAM·CPU(코어)</strong> 스펙 충족 필요</p>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="p-4 bg-slate-950/60 rounded border border-emerald-900/40 space-y-3">
                     <span className="text-[10px] text-emerald-400 font-mono uppercase font-bold">💼 작업 (Work)</span>
@@ -1385,23 +1407,26 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       {OMG.WORK_TASKS.map((task) => {
                         const selectable = OMG.canSelectWorkTask(workParts, task.taskIndex);
                         const active = workTaskIndex === task.taskIndex;
+                        const req = `GPU${task.requiredGpuLevel} RAM${task.requiredRamLevel} CPU${task.requiredCpuCores}${task.requiredShield ? ' 실드'+task.requiredShield : ''}`;
+                        const reason = OMG.getWorkTaskSpecReason(workParts, task.taskIndex);
                         return (
                           <button
                             key={task.name}
                             type="button"
                             disabled={!selectable}
                             onClick={() => selectable && setWorkTaskIndex(task.taskIndex)}
-                            title={selectable ? `RAM ${task.requiredRamGb}GB 점유 · 틱당 ${task.mineralBase}원` : `RAM ${task.requiredRamGb}GB 필요 (현재 ${ramAlloc.totalRam}GB)`}
+                            title={selectable ? `${req} · RAM ${task.requiredRamGb}GB · 틱당 ${task.mineralBase}원` : reason}
                             className={`text-[10px] px-2 py-1 rounded font-mono border ${active ? 'bg-emerald-600 border-emerald-500 text-white' : selectable ? 'bg-slate-900 border-slate-700 text-slate-300 hover:border-emerald-500/40' : 'bg-slate-950 border-slate-800 text-slate-600 opacity-50 cursor-not-allowed'}`}
                           >
-                            {active ? '▶ ' : ''}{task.name} [{task.requiredRamGb}GB]
+                            {active ? '▶ ' : ''}{task.name}
+                            <span className="block text-[8px] opacity-80">{req}</span>
                           </button>
                         );
                       })}
                     </div>
                     <p className="text-xs text-slate-400">
                       틱당 <strong className="text-emerald-400">{OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate).toLocaleString()}원</strong>
-                      {isPartyHunting ? ' · 파티 ON — 작업 중단' : ramAlloc.canRunWork ? '' : ' · RAM 부족'}
+                      {isPartyHunting ? ' · 파티 ON — 작업 중단' : ramAlloc.canRunWork ? ` · ${ramAlloc.activeWorkUnits || 0}기` : workSpecStatus.failures.length ? ` · ${workSpecStatus.failures[0]}` : ' · 스펙 부족'}
                     </p>
                   </div>
                   <div className="p-4 bg-slate-950/60 rounded border border-cyan-900/40 space-y-3">
