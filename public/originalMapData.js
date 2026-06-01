@@ -201,6 +201,62 @@
 
   const MAX_RAM_INVENTORY = 4;
 
+  const SHOP_PURCHASABLE_LEVELS = {
+    cpu: { Intel: [1, 4, 7, 10, 11], AMD: [1, 3] },
+    gpu: [1, 3, 5, 7],
+    ram: [1, 5, 10],
+    cooler: [1],
+    storage: [1],
+  };
+
+  function getShopTierCost(type, level, part) {
+    const tier = getTier(type, part, level);
+    return tier && tier.cost != null ? tier.cost : Infinity;
+  }
+
+  function getShopSellPrice(type, level, part) {
+    const cost = getShopTierCost(type, level, part);
+    return cost === Infinity ? 0 : Math.floor(cost * 0.5);
+  }
+
+  /** 부품(변형 포함)별 직접 구매 가능한 강 목록 */
+  function getPurchasableLevels(type, part) {
+    const maxLevel = getMaxLevel(type, part);
+    let levels = SHOP_PURCHASABLE_LEVELS[type];
+    if (levels && !Array.isArray(levels)) {
+      const key = type === 'cpu' ? ((part && part.manufacturer) || 'Intel') : null;
+      levels = (key != null && levels[key]) || [];
+    }
+    if (!levels) return [];
+    return levels.filter((lv) => lv >= 1 && lv <= maxLevel);
+  }
+
+  /** 부품별 직접 구매 가능한 최고 강 (안내 메시지용) */
+  function getPurchasableMaxLevel(type, part) {
+    const levels = getPurchasableLevels(type, part);
+    return levels.length ? Math.max.apply(null, levels) : 0;
+  }
+
+  /** 해당 강을 상점에서 직접 구매할 수 있는지 */
+  function isPurchasableLevel(type, level, part) {
+    return getPurchasableLevels(type, part).indexOf(level) !== -1;
+  }
+
+  function getShopCatalog(type, part) {
+    const buyable = getPurchasableLevels(type, part);
+    return getPartTable(type, part).map((row) => ({
+      level: row.level,
+      name: row.name,
+      costC: row.cost,
+      costMinerals: Math.max(0, Math.floor(row.cost || 0)),
+      prob: row.prob,
+      cores: row.cores,
+      cooling: row.cooling,
+      capacityGb: row.capacityGb,
+      purchasable: buyable.indexOf(row.level) !== -1,
+    }));
+  }
+
   function getShopTierCost(type, level, part) {
     const tier = getTier(type, part, level);
     return tier && tier.cost != null ? tier.cost : Infinity;
@@ -220,19 +276,6 @@
   function getShopSellPriceMinerals(type, level, part) {
     const buy = getShopTierCostMinerals(type, level, part);
     return buy === Infinity ? 0 : Math.floor(buy * 0.5);
-  }
-
-  function getShopCatalog(type, part) {
-    return getPartTable(type, part).filter((row) => row.cost > 0).map((row) => ({
-      level: row.level,
-      name: row.name,
-      costC: row.cost,
-      costMinerals: Math.max(0, Math.floor(row.cost || 0)),
-      prob: row.prob,
-      cores: row.cores,
-      cooling: row.cooling,
-      capacityGb: row.capacityGb,
-    }));
   }
 
   function countRamInInventory(inventory) {
@@ -714,7 +757,7 @@ function getPartLevel(part) {
     calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeEventIntervalMs,
     calcGpuGrade, calcGpuAttackFrames, calcGpuBenchmarkMultiplier,
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
-    MAX_RAM_INVENTORY, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, countRamInInventory, canPurchaseRam, buildInventoryPart,
+    MAX_RAM_INVENTORY, SHOP_PURCHASABLE_LEVELS, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, getPurchasableLevels, getPurchasableMaxLevel, isPurchasableLevel, countRamInInventory, canPurchaseRam, buildInventoryPart,
     costToMinerals, formatMineral, formatManwon, getPurchaseCostMinerals,
     getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getWorkTask, getGameHunt, getDownloadTargetMeta,
     getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
