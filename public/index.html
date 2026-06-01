@@ -14,6 +14,7 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
   <!-- Socket.io Client -->
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/originalMapData.js"></script>
   <style>
     body {
       font-family: 'Outfit', 'JetBrains Mono', sans-serif;
@@ -36,6 +37,7 @@
   <!-- React UI 컴포넌트 마운트 -->
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
+    const OMG = window.OriginalMapGame;
 
     function App() {
       // ----------------------------------------------------------------------
@@ -47,7 +49,7 @@
       });
       const [normalCoins, setNormalCoins] = useState(() => {
         const saved = localStorage.getItem('sca_normalCoins');
-        return saved !== null ? parseInt(saved, 10) : 50;
+        return saved !== null ? parseInt(saved, 10) : 0;
       });
       const [scaCoins, setScaCoins] = useState(() => {
         const saved = localStorage.getItem('sca_scaCoins');
@@ -70,6 +72,13 @@
         const saved = localStorage.getItem('sca_rebirthCount');
         return saved !== null ? parseInt(saved, 10) : 0;
       });
+      const [scaUpgrades, setScaUpgrades] = useState(() => JSON.parse(localStorage.getItem('sca_scaUpgrades') || '{}'));
+      const [showScaCenter, setShowScaCenter] = useState(false);
+      const [partyHuntingTier, setPartyHuntingTier] = useState(0);
+      const [isPartyHunting, setIsPartyHunting] = useState(false);
+      const [cpuBuyManufacturer, setCpuBuyManufacturer] = useState('Intel');
+      const [coolerBuyKind, setCoolerBuyKind] = useState('air');
+      const [storageBuyKind, setStorageBuyKind] = useState('hdd');
 
       // ----------------------------------------------------------------------
       // 2. 조립 컴퓨터 부품 상태 정의
@@ -116,13 +125,13 @@
       // ----------------------------------------------------------------------
       const [huntingGround, setHuntingGround] = useState(() => {
         const saved = localStorage.getItem('sca_huntingGround');
-        return saved !== null ? JSON.parse(saved) : { name: '테이블 탑 조립소 (1단계)', multiplier: 1.0 };
+        if (saved !== null) return JSON.parse(saved); const g = OMG.WORK_HUNTING_GROUNDS[0]; return { name: g.name, multiplier: g.multiplier, mineralBase: g.mineralBase, groundIndex: 0 };
       });
       const [isDownloading, setIsDownloading] = useState(false);
       const [downloadProgress, setDownloadProgress] = useState(0);
       const [downloadTarget, setDownloadTarget] = useState(() => {
         const saved = localStorage.getItem('sca_downloadTarget');
-        return saved !== null ? JSON.parse(saved) : { name: '서버 랙 테마파크 (2단계)', sizeMb: 5000, requiredGb: 500, multiplier: 2.5 };
+        if (saved !== null) return JSON.parse(saved); const t = OMG.DOWNLOAD_TARGETS[0]; return { name: t.name, sizeMb: t.sizeMb, requiredGb: t.requiredGb, groundIndex: t.groundIndex };
       });
 
       // ----------------------------------------------------------------------
@@ -201,7 +210,7 @@
       };
 
       const handleManualMining = () => {
-        const baseIncome = Math.round(5 * specs.penalties.mineralMultiplier * huntingGround.multiplier);
+        const baseIncome = Math.round((huntingGround.mineralBase || 5 * huntingGround.multiplier) * specs.penalties.mineralMultiplier * (1 + incomeBonusRate));
         const income = Math.round(baseIncome * (1 + rebirthCount * 0.5));
         setMinerals(prev => prev + income);
 
@@ -230,76 +239,20 @@
       // ----------------------------------------------------------------------
       // 스타1 컴퓨터강화 유즈맵 고증 부품 이름 매핑 헬퍼
       // ----------------------------------------------------------------------
-      const getCpuName = (level) => {
-        const names = {
-          1: '똥컴 CPU (Dual-Core)',
-          2: '인텔 펜티엄 4',
-          3: '인텔 코어2듀오 E6600',
-          4: '인텔 Core i3 4세대',
-          5: '인텔 Core i5 9세대',
-          6: '인텔 Core i7 12세대',
-          7: '인텔 Core i9 14세대',
-          8: '인텔 Xeon Platinum',
-          9: 'AMD Ryzen Threadripper',
-          10: '양자 슈퍼컴퓨터 코어 v1.2'
-        };
-        return names[level] || `차세대 퀀텀 CPU (Lv.${level})`;
-      };
-
-      const getGpuName = (level) => {
-        const names = {
-          1: 'Riva TNT2 (16MB)',
-          2: 'NVIDIA GeForce 8600GT',
-          3: 'NVIDIA GeForce GTS250',
-          4: 'NVIDIA GeForce GTX460',
-          5: 'NVIDIA GeForce GTX760',
-          6: 'NVIDIA GeForce GTX1060 (6GB)',
-          7: 'NVIDIA GeForce RTX2060 Super',
-          8: 'NVIDIA GeForce RTX3060 Ti',
-          9: 'NVIDIA GeForce RTX4090 D',
-          10: 'NVIDIA GH200 Grace Hopper AI'
-        };
-        return names[level] || `AI 딥러닝 텐서 GPU (Lv.${level})`;
-      };
-
-      const getRamName = (level) => {
-        const names = {
-          1: 'Legacy SDRAM 4GB',
-          2: 'DDR3 High-Speed 8GB',
-          3: 'DDR3 Dual-Channel 16GB',
-          4: 'DDR4 Gamer Edition 16GB',
-          5: 'DDR4 RGB Corsair 32GB',
-          6: 'DDR5 Trident Z 32GB',
-          7: 'DDR5 Quad-Channel 64GB',
-          8: 'DDR5 ECC Server 128GB',
-          9: 'SK Hynix HBM3e 96GB',
-          10: '초임계 양자 가속 HBM4 192GB'
-        };
-        return names[level] || `양자 초고속 메모리 (Lv.${level})`;
-      };
-
-      const getCoolerName = (level) => {
-        const names = {
-          1: '인텔 기본 번들 (초코파이)',
-          2: '구리 히트싱크 알루미늄 공랭',
-          3: '보급형 타워 싱글팬 공랭',
-          4: '듀얼타워 대장급 공랭 (NH-D15)',
-          5: '240mm 2열 짭수랭 (AIO)',
-          6: '360mm 3열 RGB 수랭 (Kraken)',
-          7: '커스텀 아크릴 수로 오픈형 수랭',
-          8: '외장 거대 라디에이터 모라(MORA)',
-          9: '공업용 액체 냉동 칠러 (Chiller)',
-          10: 'LN2 액체질소 극한 냉각 제어탑'
-        };
-        return names[level] || `반중력 열복사 냉각 시스템 (Lv.${level})`;
-      };
+      const incomeBonusRate = useMemo(() => OMG.calcIncomeBonus(scaUpgrades), [scaUpgrades]);
+      const probBonusRate = useMemo(() => OMG.calcProbBonus(scaUpgrades), [scaUpgrades]);
+      const getCpuName = (level, m) => OMG.getPartName('cpu', level, { type: 'cpu', manufacturer: m || cpu.manufacturer });
+      const getGpuName = (level) => OMG.getPartName('gpu', level, { type: 'gpu' });
+      const getRamName = (level, part) => OMG.getPartName('ram', level, part || ram);
+      const getCoolerName = (level, part) => OMG.getPartName('cooler', level, part || cooler);
+      const getStorageName = (level, part) => OMG.getPartName('storage', level, part || storage);
 
       // ----------------------------------------------------------------------
       // 5. 실시간 하드웨어 스펙 연산 (2단계 백엔드 공식과 100% 매칭)
       // ----------------------------------------------------------------------
       const specs = useMemo(() => {
         // A. 과열 시스템 감지
-        const cpuHeatDemand = cpu.level * 15;
+        const cpuHeatDemand = OMG.getCpuCoolingRequired(cpu);
         const isOverheated = cpuHeatDemand > cooler.coolingCapacity;
         const mineralMultiplier = isOverheated ? 0.5 : 1.0;
 
@@ -312,7 +265,7 @@
         const hpDecayRate = isDdrMismatched ? (ddrSet.size === 2 ? 0.50 : 1.00) : 0.00;
 
         // D. 가용 유닛 수 상한
-        let unitLimit = cpu.level * 2;
+        let unitLimit = OMG.getCpuCores(cpu) * 2;
         if (isSocketMismatched) {
           unitLimit = Math.max(1, Math.floor(unitLimit * 0.5));
         }
@@ -364,18 +317,29 @@
         };
       }, [cpu, gpu, ram, cooler, motherboard, storage]);
 
-      // ----------------------------------------------------------------------
-      // 6. 초당 자동 미네랄 수급 라이프사이클 (환생 버프 적용)
-      // ----------------------------------------------------------------------
+      useEffect(() => {
+        if (minerals >= OMG.MINERAL_PER_COIN) {
+          const { coins, remainder } = OMG.convertMineralsToCoins(minerals);
+          if (coins > 0) { setMinerals(remainder); setNormalCoins(p => p + coins); }
+        }
+      }, [minerals]);
       useEffect(() => {
         const interval = setInterval(() => {
-          const baseEarn = Math.round(10 * specs.penalties.mineralMultiplier * huntingGround.multiplier);
-          const autoEarn = Math.round(baseEarn * (1 + rebirthCount * 0.5));
-          setMinerals(prev => prev + autoEarn);
+          const base = huntingGround.mineralBase || 10 * huntingGround.multiplier;
+          setMinerals(p => p + Math.round(base * specs.penalties.mineralMultiplier * (1 + rebirthCount * 0.5) * (1 + incomeBonusRate)));
         }, 1000);
-
         return () => clearInterval(interval);
-      }, [specs, huntingGround, rebirthCount]);
+      }, [specs, huntingGround, rebirthCount, incomeBonusRate]);
+      useEffect(() => {
+        if (!isPartyHunting) return;
+        const tier = OMG.PARTY_HUNTING_TIERS[partyHuntingTier];
+        if (!tier) return;
+        const iv = setInterval(() => {
+          setMinerals(p => p + Math.round(tier.mineralPerTick * (1 + incomeBonusRate)));
+          setScaCoins(p => p + tier.scaCoins);
+        }, 3000);
+        return () => clearInterval(iv);
+      }, [isPartyHunting, partyHuntingTier, incomeBonusRate]);
 
       // ----------------------------------------------------------------------
       // 6.5. 게임 진행 상태 로컬 스토리지 실시간 자동 저장 (F5/새로고침 방지)
@@ -385,6 +349,8 @@
         localStorage.setItem('sca_normalCoins', normalCoins.toString());
         localStorage.setItem('sca_scaCoins', scaCoins.toString());
         localStorage.setItem('sca_rebirthCount', rebirthCount.toString());
+        localStorage.setItem('sca_scaUpgrades', JSON.stringify(scaUpgrades));
+        localStorage.setItem('sca_partyHuntingTier', String(partyHuntingTier));
         localStorage.setItem('sca_cpu', JSON.stringify(cpu));
         localStorage.setItem('sca_gpu', JSON.stringify(gpu));
         localStorage.setItem('sca_ram', JSON.stringify(ram));
@@ -400,7 +366,7 @@
         localStorage.setItem('sca_autoBuyRam', autoBuyRam.toString());
         localStorage.setItem('sca_autoBuyCooler', autoBuyCooler.toString());
         localStorage.setItem('sca_autoBuyStorage', autoBuyStorage.toString());
-      }, [minerals, normalCoins, scaCoins, rebirthCount, cpu, gpu, ram, cooler, motherboard, storage, huntingGround, downloadTarget, workerType, inventory, autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage]);
+      }, [minerals, normalCoins, scaCoins, rebirthCount, scaUpgrades, partyHuntingTier, cpu, gpu, ram, cooler, motherboard, storage, huntingGround, downloadTarget, workerType, inventory, autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage]);
 
       // ----------------------------------------------------------------------
       // 6.6. 가상 사냥터 실시간 전투 매트릭스 로그 생성기 (스타1 콘솔 싱크)
@@ -453,28 +419,15 @@
             const owned = inventory.filter(p => p.type === type);
             
             if (owned.length === 0) {
-              // A. 부품 소멸 감지 시 1강 즉시 자동 구매
-              if (minerals >= 100) {
-                handleBuyComponentPack(type);
-                break; // 한 턴에 하나만 시도
-              } else {
-                setAuto(false);
-                setCombatLogs(prev => [...prev.slice(-7), `⚠️ [SYSTEM] 미네랄이 부족하여 ${type.toUpperCase()} 자동 구매가 중단되었습니다.`]);
-                break;
-              }
+              const buyMeta = { type, manufacturer: type === 'cpu' ? cpuBuyManufacturer : undefined, coolerKind: type === 'cooler' ? coolerBuyKind : undefined, storageKind: type === 'storage' ? storageBuyKind : undefined };
+              if (normalCoins >= OMG.getUpgradeCost(type, 0, buyMeta)) { handleBuyComponentPack(type); break; }
+              setAuto(false); break;
             } else {
-              // B. 부품 존재 시 10강 미만 중 등급이 가장 높은 부품을 타겟으로 지정
-              const target = owned.filter(p => p.level < 10).sort((a, b) => b.level - a.level)[0];
+              const target = owned.filter(p => p.level < OMG.getMaxLevel(type, p)).sort((a, b) => b.level - a.level)[0];
               if (target) {
-                const cost = getUpgradeCost(target.level);
-                if (minerals >= cost) {
-                  handleInventoryUpgrade(target.id);
-                  break; // 한 턴에 하나만 시도
-                } else {
-                  setAuto(false);
-                  setCombatLogs(prev => [...prev.slice(-7), `⚠️ [SYSTEM] 미네랄이 부족하여 ${type.toUpperCase()} 자동 강화가 중단되었습니다.`]);
-                  break;
-                }
+                const cost = OMG.getUpgradeCost(target.type, target.level, target);
+                if (normalCoins >= cost) { handleInventoryUpgrade(target.id); break; }
+                setAuto(false); break;
               } else {
                 // 더 이상 10강 미만의 예비 부품이 없을 경우 완성 정지
                 setAuto(false);
@@ -486,67 +439,119 @@
         }, 650);
 
         return () => clearInterval(interval);
-      }, [autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage, isUpgrading, inventory, minerals]);
+      }, [autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage, isUpgrading, inventory, normalCoins, cpuBuyManufacturer, coolerBuyKind, storageBuyKind]);
 
       // ----------------------------------------------------------------------
-      // 7. 실시간 상점 강화 비용 계산 헬퍼
+      // 7. V1.2.9 원작 강화 (Normal 코인)
       // ----------------------------------------------------------------------
-      const getUpgradeCost = (level) => {
-        return Math.round(100 * Math.pow(1.6, level));
+      const getUpgradeCost = (type, level, part) => OMG.getUpgradeCost(type, level, part || { type });
+      const getUpgradeProbability = (type, level, part) => OMG.getUpgradeProbability(type, level, part || { type }, probBonusRate);
+
+      const handlePurchaseScaItem = (item) => {
+        const bought = scaUpgrades[item.id] || 0;
+        if (bought >= item.maxPurchases) { alert('최대 구매 횟수 도달'); return; }
+        if (scaCoins < item.cost) { alert('SCA 코인 부족'); return; }
+        setScaCoins((prev) => prev - item.cost);
+        setScaUpgrades((prev) => ({ ...prev, [item.id]: bought + 1 }));
       };
 
-      // 부품 강화 확률 매핑 함수
-      const getUpgradeProbability = (level) => {
-        if (level === 1) return 1.0;
-        if (level === 2) return 0.90;
-        if (level === 3) return 0.80;
-        if (level === 4) return 0.70;
-        if (level === 5) return 0.60;
-        if (level === 6) return 0.50;
-        if (level === 7) return 0.40;
-        if (level === 8) return 0.30;
-        if (level === 9) return 0.20;
-        return 0.10; // 10강 이상
-      };
-
-      // 1. 기본 1강 부품 팩 구매 핸들러
       const handleBuyComponentPack = (type) => {
-        const cost = 100;
-        if (minerals < cost) {
-          alert('미네랄이 부족합니다.');
-          return;
-        }
-
-        setMinerals(prev => prev - cost);
+        const buyMeta = { type, manufacturer: type === 'cpu' ? cpuBuyManufacturer : undefined, coolerKind: type === 'cooler' ? coolerBuyKind : undefined, storageKind: type === 'storage' ? storageBuyKind : undefined };
+        const cost = OMG.getUpgradeCost(type, 0, buyMeta);
+        if (normalCoins < cost) { alert('Normal 코인 부족 (미네랄 10,000원 = 1코인)'); return; }
+        setNormalCoins((prev) => prev - cost);
         const newId = `inv-${type}-${Math.random().toString(36).substring(2, 9)}`;
-        
-        let newPart = { id: newId, type: type, level: 1 };
-        if (type === 'cpu') {
-          newPart.manufacturer = 'Intel';
-          newPart.ddrGeneration = 'DDR4';
-        } else if (type === 'ram') {
-          newPart.clockMhz = 2400;
-          newPart.capacityGb = 8;
-          newPart.ddrGeneration = 'DDR4';
-        } else if (type === 'cooler') {
-          newPart.coolingCapacity = 30;
-        } else if (type === 'storage') {
-          newPart.storageType = 'HDD';
-          newPart.capacityGb = 250;
-        }
-
-        setInventory(prev => [...prev, newPart]);
-        
-        // 시각 피드백용 상태
+        let newPart = { id: newId, type, level: 1 };
+        if (type === 'cpu') { newPart.manufacturer = cpuBuyManufacturer; newPart.ddrGeneration = 'DDR4'; }
+        else if (type === 'ram') { const t = OMG.getTier('ram', newPart, 1); newPart.clockMhz = t.clockMhz; newPart.capacityGb = t.capacityGb; newPart.ddrGeneration = t.ddrGeneration; }
+        else if (type === 'cooler') { newPart.coolerKind = coolerBuyKind; newPart.coolingCapacity = OMG.getTier('cooler', newPart, 1).coolingCapacity; }
+        else if (type === 'storage') { newPart.storageKind = storageBuyKind; const t = OMG.getTier('storage', newPart, 1); newPart.storageType = t.storageType; newPart.capacityGb = t.capacityGb; }
+        setInventory((prev) => [...prev, newPart]);
         setUpgradeStatus('success');
-        setUpgradeMessage(`📦 [부품 팩 구매] 새로운 1강 ${type.toUpperCase()} 부품이 인벤토리에 추가되었습니다.`);
-        setTimeout(() => {
-          setUpgradeStatus(null);
-          setUpgradeMessage('');
-        }, 3000);
+        setUpgradeMessage(`📦 [구매] ${type.toUpperCase()} 1강 (+${cost}C)`);
+        setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 2500);
       };
 
-      // 2. 보관 장비 스왑 장착 핸들러
+      const handleSellComponent = (itemId) => {
+        const part = inventory.find(p => p.id === itemId);
+        if (!part) return;
+        const sellPrice = Math.max(1, Math.floor(OMG.getUpgradeCost(part.type, Math.max(0, part.level - 1), part) * 0.5));
+        setNormalCoins((prev) => prev + sellPrice);
+        setInventory((prev) => prev.filter(p => p.id !== itemId));
+        setUpgradeMessage(`💰 판매 +${sellPrice}C`);
+        setUpgradeStatus('success');
+        setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 2500);
+      };
+
+      const handleInventoryUpgrade = (itemId) => {
+        if (isUpgrading) return;
+        const partToUpgrade = inventory.find(p => p.id === itemId);
+        if (!partToUpgrade) return;
+        const currentLevel = partToUpgrade.level;
+        const cost = OMG.getUpgradeCost(partToUpgrade.type, currentLevel, partToUpgrade);
+        if (normalCoins < cost) { alert('Normal 코인 부족'); return; }
+        setNormalCoins((prev) => prev - cost);
+        setIsUpgrading(true);
+        setActiveUpgradingPart(partToUpgrade.type);
+        setUpgradeStatus('upgrading');
+        setUpgradeMessage(`강화 중... ${partToUpgrade.type.toUpperCase()} +${currentLevel}강`);
+        setTimeout(() => {
+          const prob = OMG.getUpgradeProbability(partToUpgrade.type, currentLevel, partToUpgrade, probBonusRate);
+          let result = Math.random() <= prob ? 'success' : (currentLevel <= 4 ? 'fail_keep' : currentLevel <= 6 ? 'fail_drop' : (Math.random() <= (currentLevel >= 9 ? 0.9 : currentLevel === 8 ? 0.7 : 0.5) ? 'exploded' : 'fail_drop'));
+          setIsUpgrading(false);
+          setUpgradeStatus(result);
+          if (result === 'success') {
+            setInventory((prev) => prev.map(p => p.id === itemId ? OMG.applyTierStats(p, currentLevel + 1) : p));
+            setUpgradeMessage(`🎉 강화 성공! +${currentLevel + 1}강`);
+          } else if (result === 'fail_keep') {
+            setUpgradeMessage('⚠️ 강화 실패 (유지)');
+          } else if (result === 'fail_drop') {
+            setInventory((prev) => prev.map(p => p.id === itemId ? OMG.applyTierStats(p, Math.max(1, currentLevel - 1)) : p));
+            setUpgradeMessage('📉 등급 하락');
+          } else {
+            setInventory((prev) => prev.filter(p => p.id !== itemId));
+            setUpgradeMessage('💥 부품 파괴');
+          }
+          setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 3500);
+        }, 600);
+      };
+
+      const handleRebirth = () => {
+        if (gpu.level < 10) { alert('GPU 10강 필요'); return; }
+        if (!confirm('환생 시 부품·미네랄·Normal 코인이 초기화됩니다. SCA 코인/센터 효과는 유지됩니다.')) return;
+        const scaReward = OMG.calcRebirthScaReward(gpu.level, rebirthCount);
+        setScaCoins((prev) => prev + scaReward);
+        setRebirthCount((prev) => prev + 1);
+        setMinerals(OMG.calcRebirthStartMinerals(scaUpgrades));
+        setNormalCoins(0);
+        setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR4' });
+        setGpu({ level: 1 });
+        setRam({ level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' });
+        setCooler({ level: 1, coolingCapacity: 100, coolerKind: 'air' });
+        setMotherboard({ socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR4', shieldIncrease: 300 });
+        setStorage({ type: 'HDD', capacityGb: 60, level: 1, storageKind: 'hdd' });
+        setInventory([
+          { id: 'inv-cpu-1', type: 'cpu', level: 1, manufacturer: 'Intel', ddrGeneration: 'DDR4' },
+          { id: 'inv-gpu-1', type: 'gpu', level: 1 },
+          { id: 'inv-ram-1', type: 'ram', level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' },
+          { id: 'inv-cooler-1', type: 'cooler', level: 1, coolingCapacity: 100, coolerKind: 'air' },
+          { id: 'inv-storage-1', type: 'storage', level: 1, storageType: 'HDD', storageKind: 'hdd', capacityGb: 60 }
+        ]);
+        const g0 = OMG.WORK_HUNTING_GROUNDS[0];
+        setHuntingGround({ name: g0.name, multiplier: g0.multiplier, mineralBase: g0.mineralBase, groundIndex: 0 });
+        const dt = OMG.DOWNLOAD_TARGETS[0];
+        setDownloadTarget({ name: dt.name, sizeMb: dt.sizeMb, requiredGb: dt.requiredGb, groundIndex: dt.groundIndex });
+        setUpgradeMessage(`✨ 환생 완료 — SCA +${scaReward}C`);
+        setUpgradeStatus('success');
+      };
+
+      const handlePurchaseMotherboard = (board) => {
+        if (normalCoins < board.cost) { alert('Normal 코인 부족'); return; }
+        setNormalCoins((prev) => prev - board.cost);
+        setMotherboard({ socketManufacturer: board.socketManufacturer, supportedDdrGeneration: board.supportedDdrGeneration, shieldIncrease: board.shieldIncrease });
+      };
+
+            // 2. 보관 장비 스왑 장착 핸들러
       const handleEquipComponent = (itemId) => {
         const partToEquip = inventory.find(p => p.id === itemId);
         if (!partToEquip) return;
@@ -629,177 +634,6 @@
         }, 3000);
       };
 
-      // 2.5. 인벤토리 부품 판매 핸들러
-      const handleSellComponent = (itemId) => {
-        const part = inventory.find(p => p.id === itemId);
-        if (!part) return;
-
-        // 판매 가격: 1강 기준 50M + 강화 단계당 50M 추가 환급
-        const sellPrice = 50 + (part.level - 1) * 50;
-        setMinerals(prev => prev + sellPrice);
-        setInventory(prev => prev.filter(p => p.id !== itemId));
-
-        setUpgradeStatus('success');
-        setUpgradeMessage(`💰 [부품 판매] ${part.type.toUpperCase()} +${part.level}강 장비를 판매하여 +${sellPrice}M 미네랄을 획득했습니다.`);
-        setTimeout(() => {
-          setUpgradeStatus(null);
-          setUpgradeMessage('');
-        }, 3000);
-      };
-
-      // 3. 인벤토리 부품 강화 핸들러
-      const handleInventoryUpgrade = (itemId) => {
-        if (isUpgrading) return;
-
-        const partToUpgrade = inventory.find(p => p.id === itemId);
-        if (!partToUpgrade) return;
-
-        const currentLevel = partToUpgrade.level;
-        const cost = getUpgradeCost(currentLevel);
-
-        if (minerals < cost) {
-          alert('미네랄이 부족합니다.');
-          return;
-        }
-
-        setMinerals(prev => prev - cost);
-        setIsUpgrading(true);
-        setActiveUpgradingPart(partToUpgrade.type);
-        setUpgradeStatus('upgrading');
-        setUpgradeMessage(`보관함 ${partToUpgrade.type.toUpperCase()} +${currentLevel}강 주입 중... (창고 강화)`);
-
-        setTimeout(() => {
-          const prob = getUpgradeProbability(currentLevel);
-          const rand = Math.random();
-          
-          let result = 'success';
-          if (rand <= prob) {
-            result = 'success';
-          } else {
-            if (currentLevel <= 4) {
-              result = 'fail_keep';
-            } else if (currentLevel <= 6) {
-              result = 'fail_drop';
-            } else {
-              // 7강 실패 시 50% 폭사, 8강 실패 시 70% 폭사, 9강 실패 시 90% 폭사, 10강 이상 100% 폭사
-              const explodeChance = currentLevel === 7 ? 0.5 : currentLevel === 8 ? 0.7 : currentLevel === 9 ? 0.9 : 1.0;
-              if (Math.random() <= explodeChance) {
-                result = 'exploded';
-              } else {
-                result = 'fail_drop';
-              }
-            }
-          }
-
-          setIsUpgrading(false);
-          setUpgradeStatus(result);
-
-          if (result === 'success') {
-            const nextLvl = currentLevel + 1;
-            setUpgradeMessage(`🎉 [강화 성공] 보관함 ${partToUpgrade.type.toUpperCase()} 강화 성공! (+${nextLvl}강)`);
-            
-            setInventory(prev => prev.map(p => {
-              if (p.id !== itemId) return p;
-              const upgraded = { ...p, level: nextLvl };
-              
-              if (p.type === 'cooler') {
-                upgraded.coolingCapacity = p.coolingCapacity + 25;
-              } else if (p.type === 'ram') {
-                upgraded.clockMhz = p.clockMhz + 400;
-                upgraded.capacityGb = p.capacityGb + 8;
-              } else if (p.type === 'storage') {
-                upgraded.capacityGb = p.capacityGb + 250;
-                if (nextLvl >= 5) {
-                  upgraded.storageType = 'SSD';
-                }
-              }
-              return upgraded;
-            }));
-          } else if (result === 'fail_keep') {
-            setUpgradeMessage(`⚠️ [강화 실패] 업그레이드 실패. 창고 내 부품이 보존되었습니다.`);
-          } else if (result === 'fail_drop') {
-            const prevLvl = Math.max(1, currentLevel - 1);
-            setUpgradeMessage(`📉 [등급 하락] 전원 불일치로 등급이 하락했습니다. (+${prevLvl}강)`);
-            
-            setInventory(prev => prev.map(p => {
-              if (p.id !== itemId) return p;
-              const degraded = { ...p, level: prevLvl };
-              
-              if (p.type === 'cooler') {
-                degraded.coolingCapacity = Math.max(30, p.coolingCapacity - 25);
-              } else if (p.type === 'ram') {
-                degraded.clockMhz = Math.max(2400, p.clockMhz - 400);
-                degraded.capacityGb = Math.max(8, p.capacityGb - 8);
-              } else if (p.type === 'storage') {
-                degraded.capacityGb = Math.max(250, p.capacityGb - 250);
-              }
-              return degraded;
-            }));
-          } else if (result === 'exploded') {
-            setUpgradeMessage(`💥 [창고 부품 파괴] 아아..! 창고의 부품이 과전압 합선으로 완전히 폭파되었습니다!`);
-            // 인벤토리 목록에서 완전 영구 영점/삭제
-            setInventory(prev => prev.filter(p => p.id !== itemId));
-          }
-
-          setTimeout(() => {
-            setUpgradeStatus(null);
-            setUpgradeMessage('');
-          }, 4000);
-        }, 600);
-      };
-
-      // GPU 환생 처리 핸들러
-      const handleRebirth = () => {
-        if (gpu.level < 10) {
-          alert('환생은 GPU가 10강에 도달해야만 가능합니다.');
-          return;
-        }
-
-        const confirmRebirth = confirm('정말 GPU 환생을 수행하시겠습니까?\n\n환생 시 모든 부품 레벨과 미네랄이 리셋되지만, SCA 클라우드 코인 +10개 획득 및 영구 자동 미네랄 수급 버프(+50% 복리 증가)가 상시 활성화됩니다.');
-        if (!confirmRebirth) return;
-
-        setScaCoins(prev => prev + 10);
-        setRebirthCount(prev => prev + 1);
-        setMinerals(0);
-
-        setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR4' });
-        setGpu({ level: 1 });
-        setRam({ level: 1, clockMhz: 2400, capacityGb: 8, ddrGeneration: 'DDR4' });
-        setCooler({ level: 1, coolingCapacity: 30 });
-        setMotherboard({ socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR4', shieldIncrease: 300 });
-        setStorage({ type: 'HDD', capacityGb: 250, level: 1 });
-        setInventory([
-          { id: 'inv-cpu-1', type: 'cpu', level: 1, manufacturer: 'Intel', ddrGeneration: 'DDR4' },
-          { id: 'inv-gpu-1', type: 'gpu', level: 1 },
-          { id: 'inv-ram-1', type: 'ram', level: 1, clockMhz: 2400, capacityGb: 8, ddrGeneration: 'DDR4' },
-          { id: 'inv-cooler-1', type: 'cooler', level: 1, coolingCapacity: 30 },
-          { id: 'inv-storage-1', type: 'storage', level: 1, storageType: 'HDD', capacityGb: 250 }
-        ]);
-        setHuntingGround({ name: '테이블 탑 조립소 (1단계)', multiplier: 1.0 });
-
-        setUpgradeStatus('success');
-        setUpgradeMessage(`✨ [환생 성공] 차원 소켓 개방 완료! 영구 수급 배율 x${(1 + (rebirthCount + 1)*0.5).toFixed(1)} 증가.`);
-        
-        setTimeout(() => {
-          setUpgradeStatus(null);
-          setUpgradeMessage('');
-        }, 5000);
-      };
-
-      // 메인보드 완제품 변경 구매 핸들러
-      const handlePurchaseMotherboard = (socketM, ddrGen, shieldVal, cost) => {
-        if (minerals < cost) {
-          alert('미네랄이 부족합니다.');
-          return;
-        }
-        setMinerals(prev => prev - cost);
-        setMotherboard({
-          socketManufacturer: socketM,
-          supportedDdrGeneration: ddrGen,
-          shieldIncrease: shieldVal
-        });
-      };
-
       // ----------------------------------------------------------------------
       // 8. 상위 사냥터(게임) 다운로드 진행도 시뮬레이션
       // ----------------------------------------------------------------------
@@ -823,16 +657,10 @@
             if (nextSize >= downloadTarget.sizeMb) {
               clearInterval(interval);
               setIsDownloading(false);
-              setHuntingGround({
-                name: downloadTarget.name,
-                multiplier: downloadTarget.multiplier
-              });
-              setDownloadTarget({
-                name: '데이터 웜홀 센터 (3단계)',
-                sizeMb: 25000,
-                requiredGb: 1000,
-                multiplier: 5.0
-              });
+              const ground = OMG.WORK_HUNTING_GROUNDS[downloadTarget.groundIndex];
+              setHuntingGround({ name: ground.name, multiplier: ground.multiplier, mineralBase: ground.mineralBase, groundIndex: downloadTarget.groundIndex });
+              const nextTarget = OMG.DOWNLOAD_TARGETS.find(t => t.groundIndex === downloadTarget.groundIndex + 1);
+              if (nextTarget) setDownloadTarget({ name: nextTarget.name, sizeMb: nextTarget.sizeMb, requiredGb: nextTarget.requiredGb, groundIndex: nextTarget.groundIndex });
               return 100;
             }
             return (nextSize / downloadTarget.sizeMb) * 100;
@@ -933,15 +761,15 @@
             </div>
 
             <div className="flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border border-slate-800">
-              <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">MINERALS</span>
+              <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">MINERALS (원)</span>
               <span className="text-lg font-bold text-emerald-400 font-mono flex items-center space-x-1">
                 <span>{minerals.toLocaleString()}</span>
-                <span className="text-xs text-emerald-500/60 ml-1">M</span>
+                <span className="text-xs text-emerald-500/60 ml-1">/ 10,000→1C</span>
               </span>
             </div>
 
             <div className="flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border border-slate-800">
-              <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">NORMAL COINS</span>
+              <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">NORMAL COINS (가스)</span>
               <span className="text-lg font-bold text-cyan-400 font-mono">
                 {normalCoins.toLocaleString()}
               </span>
@@ -957,6 +785,28 @@
               </span>
             </div>
           </header>
+          <div className="mb-4 flex gap-2 flex-wrap">
+            <button onClick={() => setShowScaCenter(v => !v)} className="px-3 py-2 text-xs font-mono border border-cyan-500/30 rounded text-cyan-300">🏛️ SCA 센터</button>
+            <button onClick={() => setIsPartyHunting(v => !v)} className="px-3 py-2 text-xs font-mono border border-emerald-500/30 rounded text-emerald-300">👥 파티 사냥 {isPartyHunting ? 'ON' : 'OFF'}</button>
+          </div>
+          {showScaCenter && (
+            <section className="mb-4 p-4 border border-cyan-500/20 rounded-xl grid grid-cols-2 md:grid-cols-4 gap-2">
+              {OMG.SCA_SHOP_ITEMS.map(item => (
+                <button key={item.id} onClick={() => handlePurchaseScaItem(item)} className="p-2 bg-slate-950 border border-slate-800 rounded text-[10px] font-mono text-left">
+                  <div>{item.name}</div><div className="text-cyan-400">{item.cost} SCA</div>
+                </button>
+              ))}
+            </section>
+          )}
+          {isPartyHunting && (
+            <section className="mb-4 p-4 border border-emerald-500/20 rounded-xl grid grid-cols-3 md:grid-cols-5 gap-2">
+              {OMG.PARTY_HUNTING_TIERS.map((tier, idx) => (
+                <button key={tier.name} onClick={() => setPartyHuntingTier(idx)} className={`p-2 rounded border text-[9px] font-mono ${partyHuntingTier===idx?'border-emerald-500':'border-slate-800'}`}>
+                  {tier.name}<br/>+{tier.mineralPerTick}원 / +{tier.scaCoins}SCA
+                </button>
+              ))}
+            </section>
+          )}
 
           {/* ================================================================== */}
           {/* 강화 플래시 스크린 */}
@@ -1190,7 +1040,7 @@
                       <div>
                         <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 기본 1강 부품 팩 보급소 (Warehouse Supply)</span>
                         <p className="text-xs text-slate-400">
-                          미네랄을 지불하여 1강 스펙의 부품 상자를 조달받아 인벤토리 창고에 채웁니다. 창고에서 조심스럽게 강화한 뒤 메인 컴퓨터에 스왑 장착하세요.
+                          미네랄 10,000원이 Normal 코인(가스)으로 자동 환전됩니다. 코인으로 인벤토리 창고에 채웁니다. 창고에서 조심스럽게 강화한 뒤 메인 컴퓨터에 스왑 장착하세요.
                         </p>
                       </div>
                       {gpu.level >= 10 && (
@@ -1211,7 +1061,7 @@
                         >
                           <span className="text-lg">🧠</span>
                           <span className="text-[10px] font-bold text-slate-200">CPU 1강 팩</span>
-                          <span className="text-[10px] text-emerald-400 font-mono font-bold">100 M</span>
+                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.getUpgradeCost('cpu', 0, { type: 'cpu', manufacturer: cpuBuyManufacturer })} C</span>
                         </button>
                         <button
                           onClick={() => setAutoBuyCpu(p => !p)}
@@ -1231,7 +1081,7 @@
                         >
                           <span className="text-lg">🎮</span>
                           <span className="text-[10px] font-bold text-slate-200">GPU 1강 팩</span>
-                          <span className="text-[10px] text-emerald-400 font-mono font-bold">100 M</span>
+                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.getUpgradeCost('gpu', 0, { type: 'gpu' })} C</span>
                         </button>
                         <button
                           onClick={() => setAutoBuyGpu(p => !p)}
@@ -1251,7 +1101,7 @@
                         >
                           <span className="text-lg">⚡</span>
                           <span className="text-[10px] font-bold text-slate-200">RAM 1강 팩</span>
-                          <span className="text-[10px] text-emerald-400 font-mono font-bold">100 M</span>
+                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.getUpgradeCost('ram', 0, { type: 'ram' })} C</span>
                         </button>
                         <button
                           onClick={() => setAutoBuyRam(p => !p)}
@@ -1271,7 +1121,7 @@
                         >
                           <span className="text-lg">❄️</span>
                           <span className="text-[10px] font-bold text-slate-200">Cooler 1강 팩</span>
-                          <span className="text-[10px] text-emerald-400 font-mono font-bold">100 M</span>
+                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.getUpgradeCost('cooler', 0, { type: 'cooler', coolerKind: coolerBuyKind })} C</span>
                         </button>
                         <button
                           onClick={() => setAutoBuyCooler(p => !p)}
@@ -1291,7 +1141,7 @@
                         >
                           <span className="text-lg">💾</span>
                           <span className="text-[10px] font-bold text-slate-200">Storage 1강 팩</span>
-                          <span className="text-[10px] text-emerald-400 font-mono font-bold">100 M</span>
+                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.getUpgradeCost('storage', 0, { type: 'storage', storageKind: storageBuyKind })} C</span>
                         </button>
                         <button
                           onClick={() => setAutoBuyStorage(p => !p)}
@@ -1330,7 +1180,7 @@
                           let badgeStyle = '';
 
                           if (p.type === 'cpu') {
-                            partName = getCpuName(p.level);
+                            partName = getCpuName(p.level, p.manufacturer);
                             specDetail = `호환: ${p.manufacturer} / ${p.ddrGeneration}`;
                             badgeText = 'CPU';
                             badgeStyle = 'bg-emerald-950/50 text-emerald-400 border border-emerald-500/20';
@@ -1340,12 +1190,12 @@
                             badgeText = 'GPU';
                             badgeStyle = 'bg-cyan-950/50 text-cyan-400 border border-cyan-500/20';
                           } else if (p.type === 'ram') {
-                            partName = getRamName(p.level);
+                            partName = getRamName(p.level, p);
                             specDetail = `클럭: ${p.clockMhz}Mhz / ${p.capacityGb}GB / ${p.ddrGeneration}`;
                             badgeText = 'RAM';
                             badgeStyle = 'bg-emerald-950/50 text-emerald-400 border border-emerald-500/20';
                           } else if (p.type === 'cooler') {
-                            partName = getCoolerName(p.level);
+                            partName = getCoolerName(p.level, p);
                             specDetail = `쿨링: ${p.coolingCapacity}W / 방어력: +${p.level * 3}`;
                             badgeText = 'COOLER';
                             badgeStyle = 'bg-rose-950/50 text-rose-400 border border-rose-500/20';
@@ -1356,8 +1206,8 @@
                             badgeStyle = 'bg-slate-800 text-slate-300';
                           }
 
-                          const cost = getUpgradeCost(p.level);
-                          const prob = getUpgradeProbability(p.level);
+                          const cost = p.level >= OMG.getMaxLevel(p.type, p) ? null : getUpgradeCost(p.type, p.level, p);
+                          const prob = cost ? getUpgradeProbability(p.type, p.level, p) : 0;
 
                           return (
                             <div key={p.id} className="p-3 bg-slate-900/60 rounded border border-slate-800 hover:border-slate-700 transition flex flex-col justify-between space-y-2">
@@ -1381,7 +1231,7 @@
                                   disabled={isUpgrading}
                                   className="flex-1 py-1 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-[9px] font-bold font-mono transition disabled:opacity-50 text-center truncate"
                                 >
-                                  강화: {cost.toLocaleString()}M
+                                  {cost ? `강화: ${cost}C` : '최고강'}
                                 </button>
                                 <button 
                                   onClick={() => handleEquipComponent(p.id)}
@@ -1411,35 +1261,17 @@
                         소켓과 DDR 지원 규격을 내 컴퓨터 부품과 **일치하도록 직접 매치**하여 완제품으로 구매하세요. (오조립 시 페널티 발생 가능)
                       </p>
                     </div>
-                    <div className="grid grid-cols-3 gap-2.5 pt-2.5 border-t border-slate-900">
-                      <button 
-                        onClick={() => handlePurchaseMotherboard('Intel', 'DDR4', 500, 500)}
-                        className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/30 rounded flex flex-col items-center justify-center transition text-center"
-                      >
-                        <span className="text-[10px] font-bold text-slate-200">인텔 호환 보드</span>
-                        <span className="text-[9px] text-cyan-400 font-mono">DDR4 / 실드+500</span>
-                        <span className="text-[10px] text-emerald-400 font-mono font-bold mt-1">500 M</span>
-                      </button>
-                      <button 
-                        onClick={() => handlePurchaseMotherboard('Intel', 'DDR5', 1000, 1000)}
-                        className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/30 rounded flex flex-col items-center justify-center transition text-center"
-                      >
-                        <span className="text-[10px] font-bold text-slate-200">인텔 하이엔드</span>
-                        <span className="text-[9px] text-cyan-400 font-mono">DDR5 / 실드+1000</span>
-                        <span className="text-[10px] text-emerald-400 font-mono font-bold mt-1">1,000 M</span>
-                      </button>
-                      <button 
-                        onClick={() => handlePurchaseMotherboard('AMD', 'DDR5', 1200, 1200)}
-                        className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/30 rounded flex flex-col items-center justify-center transition text-center"
-                      >
-                        <span className="text-[10px] font-bold text-slate-200">AMD 프리미엄</span>
-                        <span className="text-[9px] text-cyan-400 font-mono">DDR5 / 실드+1200</span>
-                        <span className="text-[10px] text-emerald-400 font-mono font-bold mt-1">1,200 M</span>
-                      </button>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 pt-2.5 border-t border-slate-900">
+                      {OMG.MOTHERBOARDS.map(board => (
+                        <button key={board.name} onClick={() => handlePurchaseMotherboard(board)} className="p-2 bg-slate-900 border border-slate-800 rounded text-center">
+                          <span className="text-[10px] font-bold text-slate-200">{board.name}</span>
+                          <span className="text-[9px] text-cyan-400 font-mono block">{board.cost} C</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
 
-                  {/* 저장장치 교체 상점 */}
+                                    {/* 저장장치 교체 상점 */}
                   <div className="p-4 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center col-span-2">
                     <div className="max-w-[70%]">
                       <span className="text-xs font-bold text-emerald-400 font-mono block mb-1">STORAGE ENGINE EXCHANGE</span>
@@ -1448,25 +1280,13 @@
                       </p>
                     </div>
                     <div className="flex space-x-2">
-                      <button 
-                        onClick={() => {
-                          if (minerals >= 600) {
-                            setMinerals(p => p - 600);
-                            setStorage(prev => ({ ...prev, type: 'SSD', capacityGb: prev.capacityGb + 500 }));
-                          } else alert('미네랄이 부족합니다.');
-                        }}
-                        className="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/30 rounded flex flex-col items-center transition"
-                      >
-                        <span className="text-[10px] font-bold text-slate-300">SSD 교체</span>
-                        <span className="text-[9px] text-emerald-400 font-bold mt-1">600 M</span>
+                      <button onClick={() => { const c = OMG.getUpgradeCost('storage', 0, { type: 'storage', storageKind: 'nvme' }); if (normalCoins >= c) { setNormalCoins(p=>p-c); setStorage({ type: 'SSD', storageKind: 'nvme', level: 1, capacityGb: 250 }); } else alert('Normal 코인 부족'); }} className="px-3 py-2 bg-slate-900 border border-slate-800 rounded flex flex-col items-center">
+                        <span className="text-[10px] font-bold text-slate-300">NVMe 1강</span>
+                        <span className="text-[9px] text-cyan-400 font-bold mt-1">{OMG.getUpgradeCost('storage', 0, { type: 'storage', storageKind: 'nvme' })} C</span>
                       </button>
-                      <button 
-                        onClick={() => handleUpgrade(storage, setStorage, 'storage')}
-                        disabled={isUpgrading}
-                        className="px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded flex flex-col items-center justify-center transition disabled:opacity-50"
-                      >
+                      <button onClick={() => { const sl = storage.level||1; const kind = storage.storageKind||'hdd'; const c = OMG.getUpgradeCost('storage', sl, { type: 'storage', storageKind: kind }); if (normalCoins < c) return alert('Normal 코인 부족'); setNormalCoins(p=>p-c); const u = OMG.applyTierStats({ type: 'storage', storageKind: kind, storageType: storage.type, level: sl }, sl+1); setStorage({ type: u.storageType, storageKind: kind, level: u.level, capacityGb: u.capacityGb }); }} className="px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded flex flex-col items-center text-emerald-400">
                         <span className="text-[10px] font-bold">용량 강화</span>
-                        <span className="text-[9px] mt-1">{getUpgradeCost(storage.level || 1).toLocaleString()} M</span>
+                        <span className="text-[9px] mt-1">{OMG.getUpgradeCost('storage', storage.level || 1, { type: 'storage', storageKind: storage.storageKind || 'hdd' })} C</span>
                       </button>
                     </div>
                   </div>
