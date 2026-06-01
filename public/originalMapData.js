@@ -514,9 +514,10 @@
   }
 
   function calcDownloadSpeedMb(storage, scaUpgrades) {
-    const cap = (storage && storage.capacityGb) || 60;
-    const base = DOWNLOAD_BASE_MB + cap * 0.01;
-    return Math.round(base * getStorageDownloadMultiplier(storage) * calcDownloadSpeedBonus(scaUpgrades || {}) * 10) / 10;
+    // 원작 §3.8: 다운로드 속도는 드라이브 종류 배수(HDD x1 / SSD·NVMe x4)와
+    // SCA '다운로드 속도 +10%' 업그레이드에만 비례한다. 용량(capacityGb)이나
+    // 강화 레벨에 의한 속도 가산은 원작에 없으므로 적용하지 않는다.
+    return Math.round(DOWNLOAD_BASE_MB * getStorageDownloadMultiplier(storage) * calcDownloadSpeedBonus(scaUpgrades || {}) * 10) / 10;
   }
 
   /** 테이블 cost = 미네랄(원) 그대로 */
