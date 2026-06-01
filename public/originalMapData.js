@@ -66,32 +66,32 @@
 
   const COOLER_AIR = [
     { level: 1, name: '인텔 기본 번들 (초코파이)', cost: 1, prob: 0.50, coolingCapacity: 100 },
-    { level: 2, name: '구리 히트싱크 공랭', cost: 500, prob: 0.45, coolingCapacity: 250 },
-    { level: 3, name: '보급형 타워 싱글팬', cost: 1500, prob: 0.40, coolingCapacity: 450 },
-    { level: 4, name: '듀얼타워 대장급 (NH-D15)', cost: 5000, prob: 0.35, coolingCapacity: 700 },
-    { level: 5, name: '듀얼타워 RGB 공랭', cost: 15000, prob: 0.30, coolingCapacity: 1000 },
+    { level: 2, name: '구리 히트싱크 공랭', cost: 5, prob: 0.45, coolingCapacity: 250 },
+    { level: 3, name: '보급형 타워 싱글팬', cost: 15, prob: 0.40, coolingCapacity: 450 },
+    { level: 4, name: '듀얼타워 대장급 (NH-D15)', cost: 40, prob: 0.35, coolingCapacity: 700 },
+    { level: 5, name: '듀얼타워 RGB 공랭', cost: 80, prob: 0.30, coolingCapacity: 1000 },
   ];
 
   const COOLER_WATER = [
-    { level: 1, name: '120mm 1열 수랭', cost: 300000, prob: 0.40, coolingCapacity: 600 },
-    { level: 2, name: '240mm 2열 AIO', cost: 500000, prob: 0.35, coolingCapacity: 900 },
-    { level: 3, name: '360mm 3열 RGB 수랭', cost: 800000, prob: 0.30, coolingCapacity: 1300 },
-    { level: 4, name: '커스텀 수로 오픈형', cost: 1200000, prob: 0.25, coolingCapacity: 1800 },
-    { level: 5, name: '외장 MORA 라디에이터', cost: 2000000, prob: 0.20, coolingCapacity: 2500 },
+    { level: 1, name: '120mm 1열 수랭', cost: 20, prob: 0.40, coolingCapacity: 600 },
+    { level: 2, name: '240mm 2열 AIO', cost: 50, prob: 0.35, coolingCapacity: 900 },
+    { level: 3, name: '360mm 3열 RGB 수랭', cost: 120, prob: 0.30, coolingCapacity: 1300 },
+    { level: 4, name: '커스텀 수로 오픈형', cost: 250, prob: 0.25, coolingCapacity: 1800 },
+    { level: 5, name: '외장 MORA 라디에이터', cost: 500, prob: 0.20, coolingCapacity: 2500 },
   ];
 
   const HDD = [
     { level: 1, name: 'HDD 60GB', cost: 1, prob: 0.50, capacityGb: 60, storageType: 'HDD' },
-    { level: 2, name: 'HDD 250GB', cost: 50000, prob: 0.45, capacityGb: 250, storageType: 'HDD' },
-    { level: 3, name: 'HDD 500GB', cost: 150000, prob: 0.40, capacityGb: 500, storageType: 'HDD' },
-    { level: 4, name: 'HDD 1TB', cost: 400000, prob: 0.35, capacityGb: 1000, storageType: 'HDD' },
+    { level: 2, name: 'HDD 250GB', cost: 5, prob: 0.45, capacityGb: 250, storageType: 'HDD' },
+    { level: 3, name: 'HDD 500GB', cost: 15, prob: 0.40, capacityGb: 500, storageType: 'HDD' },
+    { level: 4, name: 'HDD 1TB', cost: 40, prob: 0.35, capacityGb: 1000, storageType: 'HDD' },
   ];
 
   const NVME = [
-    { level: 1, name: 'M.2 NVMe 250GB', cost: 300000, prob: 0.45, capacityGb: 250, storageType: 'SSD' },
-    { level: 2, name: 'M.2 NVMe 500GB', cost: 500000, prob: 0.40, capacityGb: 500, storageType: 'SSD' },
-    { level: 3, name: 'M.2 NVMe 1TB', cost: 800000, prob: 0.35, capacityGb: 1000, storageType: 'SSD' },
-    { level: 4, name: 'M.2 NVMe 2TB', cost: 2000000, prob: 0.30, capacityGb: 2000, storageType: 'SSD' },
+    { level: 1, name: 'M.2 NVMe 250GB', cost: 10, prob: 0.45, capacityGb: 250, storageType: 'SSD' },
+    { level: 2, name: 'M.2 NVMe 500GB', cost: 30, prob: 0.40, capacityGb: 500, storageType: 'SSD' },
+    { level: 3, name: 'M.2 NVMe 1TB', cost: 80, prob: 0.35, capacityGb: 1000, storageType: 'SSD' },
+    { level: 4, name: 'M.2 NVMe 2TB', cost: 200, prob: 0.30, capacityGb: 2000, storageType: 'SSD' },
   ];
 
   const MOTHERBOARDS = [
@@ -103,13 +103,13 @@
     { name: 'AMD X670E (DDR5)', socketManufacturer: 'AMD', supportedDdrGeneration: 'DDR5', shieldIncrease: 800, cost: 2500000 },
   ];
 
-  /** 작업(Work) — 유닛당 RAM · 킬(틱)당 mineralPerUnit · 다운로드 무관 */
+    /** 작업(Work) — mineralPerUnit + GPU/RAM/CPU/실드 스펙 게이트 */
   const WORK_TASKS = [
-    { name: '간단한 문서작업', taskIndex: 0, ramPerUnitGb: 1, mineralPerUnit: 1 },
-    { name: '2D/3D 그래픽 작업', taskIndex: 1, ramPerUnitGb: 1, mineralPerUnit: 10 },
-    { name: '간단한 AI 작업', taskIndex: 2, ramPerUnitGb: 2, mineralPerUnit: 30 },
-    { name: '3D 그래픽 / 전문 편집', taskIndex: 3, ramPerUnitGb: 4, mineralPerUnit: 100 },
-    { name: '고사양 AI / 렌더링', taskIndex: 4, ramPerUnitGb: 8, mineralPerUnit: 500 },
+    { name: '간단한 문서작업', taskIndex: 0, ramPerUnitGb: 1, mineralPerUnit: 1, requiredRamGb: 1, requiredGpuLevel: 1, requiredRamLevel: 1, requiredCpuCores: 1, requiredShield: 0 },
+    { name: '2D/3D 그래픽 작업', taskIndex: 1, ramPerUnitGb: 1, mineralPerUnit: 10, requiredRamGb: 4, requiredGpuLevel: 2, requiredRamLevel: 2, requiredCpuCores: 1, requiredShield: 0 },
+    { name: '간단한 AI 작업', taskIndex: 2, ramPerUnitGb: 2, mineralPerUnit: 30, requiredRamGb: 4, requiredGpuLevel: 3, requiredRamLevel: 3, requiredCpuCores: 2, requiredShield: 0 },
+    { name: '3D 그래픽 / 전문 편집', taskIndex: 3, ramPerUnitGb: 4, mineralPerUnit: 100, requiredRamGb: 8, requiredGpuLevel: 4, requiredRamLevel: 5, requiredCpuCores: 4, requiredShield: 30 },
+    { name: '고사양 AI / 렌더링', taskIndex: 4, ramPerUnitGb: 8, mineralPerUnit: 500, requiredRamGb: 16, requiredGpuLevel: 6, requiredRamLevel: 7, requiredCpuCores: 6, requiredShield: 100 },
   ];
 
   /** 게임 사냥(Gaming) — 다운로드 해금 · CPU 코어 = 유닛 수 · 작업과 동시 */
@@ -173,6 +173,67 @@
     { name: 'FIFA 온라인', sizeMb: 80000, requiredGb: 120, mineralCost: 500000, gameIndex: 6 },
     { name: '배틀그라운드', sizeMb: 200000, requiredGb: 500, mineralCost: 5000000, gameIndex: 7 },
   ];
+
+  const MAX_RAM_INVENTORY = 4;
+
+  function getShopTierCost(type, level, part) {
+    const tier = getTier(type, part, level);
+    return tier && tier.cost != null ? tier.cost : Infinity;
+  }
+
+  function getShopSellPrice(type, level, part) {
+    const cost = getShopTierCost(type, level, part);
+    return cost === Infinity ? 0 : Math.floor(cost * 0.5);
+  }
+
+  function getShopCatalog(type, part) {
+    return getPartTable(type, part).map((row) => ({
+      level: row.level,
+      name: row.name,
+      costC: row.cost,
+      prob: row.prob,
+      cores: row.cores,
+      cooling: row.cooling,
+      capacityGb: row.capacityGb,
+    }));
+  }
+
+  function countRamInInventory(inventory) {
+    return (inventory || []).filter((p) => p.type === 'ram').length;
+  }
+
+  function canPurchaseRam(inventory) {
+    return countRamInInventory(inventory) < MAX_RAM_INVENTORY;
+  }
+
+  function buildInventoryPart(type, level, partMeta) {
+    const meta = Object.assign({ type }, partMeta || {});
+    const id = `inv-${type}-${Math.random().toString(36).substring(2, 9)}`;
+    let newPart = { id, type, level };
+    if (type === 'cpu') {
+      const t = getTier('cpu', meta, level);
+      newPart.manufacturer = meta.manufacturer || 'Intel';
+      newPart.ddrGeneration = meta.ddrGeneration || 'DDR3';
+      if (t && t.name) newPart.name = t.name;
+    } else if (type === 'gpu') {
+      const t = getTier('gpu', meta, level);
+      if (t && t.name) newPart.name = t.name;
+    } else if (type === 'ram') {
+      const t = getTier('ram', meta, level);
+      newPart.clockMhz = t.clockMhz;
+      newPart.capacityGb = t.capacityGb;
+      newPart.ddrGeneration = t.ddrGeneration;
+    } else if (type === 'cooler') {
+      newPart.coolerKind = meta.coolerKind || 'air';
+      newPart.coolingCapacity = getTier('cooler', newPart, level).coolingCapacity;
+    } else if (type === 'storage') {
+      newPart.storageKind = meta.storageKind || 'hdd';
+      const t = getTier('storage', newPart, level);
+      newPart.storageType = t.storageType;
+      newPart.capacityGb = t.capacityGb;
+    }
+    return newPart;
+  }
 
   function getPartTable(type, part) {
     if (type === 'cpu') return part && part.manufacturer === 'AMD' ? AMD_CPU : INTEL_CPU;
@@ -381,7 +442,68 @@
     return GPU_RAM_PER_UNIT_GB[lv - 1];
   }
 
-  function getWorkTask(taskIndex) {
+function getPartLevel(part) {
+    return Math.max(1, (part && part.level) || 1);
+  }
+
+  /**
+   * 작업 티어 스펙 검사 — CPU 코어, RAM 용량·강, GPU 강, (고티어) 메인보드 실드
+   */
+  function evaluateWorkTaskSpec(parts, taskIndex) {
+    const task = getWorkTask(taskIndex);
+    const cpu = (parts && parts.cpu) || { level: 1 };
+    const gpu = (parts && parts.gpu) || { level: 1 };
+    const ram = (parts && parts.ram) || { level: 1, capacityGb: 1 };
+    const motherboard = (parts && parts.motherboard) || { shieldIncrease: 0 };
+
+    const gpuLevel = getPartLevel(gpu);
+    const ramLevel = getPartLevel(ram);
+    const ramGb = getRamCapacityGb(ram);
+    const cpuCores = getCpuCores(cpu);
+    const shield = motherboard.shieldIncrease || 0;
+    const minRamGb = task.requiredRamGb || task.ramPerUnitGb || 1;
+
+    const failures = [];
+    if (gpuLevel < task.requiredGpuLevel) {
+      failures.push(`GPU ${task.requiredGpuLevel}강 필요 (현재 ${gpuLevel}강)`);
+    }
+    if (ramLevel < task.requiredRamLevel) {
+      failures.push(`RAM ${task.requiredRamLevel}강 필요 (현재 ${ramLevel}강)`);
+    }
+    if (cpuCores < task.requiredCpuCores) {
+      failures.push(`CPU 코어 ${task.requiredCpuCores} 필요 (현재 ${cpuCores})`);
+    }
+    if (ramGb < minRamGb) {
+      failures.push(`RAM ${minRamGb}GB 필요 (현재 ${ramGb}GB)`);
+    }
+    if ((task.requiredShield || 0) > 0 && shield < task.requiredShield) {
+      failures.push(`고정 실드 ${task.requiredShield} 필요 (현재 ${shield})`);
+    }
+
+    const ramPerUnit = task.ramPerUnitGb || 1;
+    const maxWorkByRam = Math.floor(ramGb / ramPerUnit);
+    const activeWorkUnits = Math.max(0, Math.min(cpuCores, maxWorkByRam));
+
+    return {
+      ok: failures.length === 0,
+      failures,
+      task,
+      gpuLevel,
+      ramLevel,
+      ramGb,
+      cpuCores,
+      shield,
+      activeWorkUnits,
+      ramPerUnit,
+    };
+  }
+
+  function getWorkTaskSpecReason(parts, taskIndex) {
+    const ev = evaluateWorkTaskSpec(parts, taskIndex);
+    return ev.ok ? '' : ev.failures.join(' · ');
+  }
+
+    function getWorkTask(taskIndex) {
     const idx = Math.max(0, Math.min(WORK_TASKS.length - 1, taskIndex || 0));
     return WORK_TASKS[idx];
   }
@@ -395,33 +517,34 @@
     return DOWNLOAD_TARGETS.find((t) => t.gameIndex === downloadTarget.gameIndex) || downloadTarget;
   }
 
-  /**
-   * RAM: 작업 = 유닛당 ramPerUnit × 배치 수 (CPU·RAM 제한)
-   * 게이밍 = CPU 코어만 (저장공간·다운로드 별도) — 원작 가이드
-   */
+  /** RAM: 작업 점유 후 남은 용량으로 사냥 유닛 수 계산 (작업·게임 동시) */
   function calcRamAllocation(parts, workTaskIndex, maxUnitsOverride) {
     const totalRam = getRamCapacityGb(parts && parts.ram);
     const maxByCpu = maxUnitsOverride != null ? maxUnitsOverride : getCpuCores(parts && parts.cpu);
-    const work = getWorkTask(workTaskIndex);
-    const ramPerWorkUnit = work.ramPerUnitGb;
-    const maxWorkByRam = ramPerWorkUnit > 0 ? Math.floor(totalRam / ramPerWorkUnit) : 0;
-    const activeWorkUnits = Math.max(0, Math.min(maxByCpu, maxWorkByRam));
-    const workRamUsed = activeWorkUnits * ramPerWorkUnit;
-    const activeHuntingUnits = Math.max(0, maxByCpu);
+    const workSpec = evaluateWorkTaskSpec(parts, workTaskIndex);
+    const work = workSpec.task;
+    const workRamUsed = workSpec.ok ? workSpec.activeWorkUnits * (work.ramPerUnitGb || 1) : (work.requiredRamGb || 0);
+    const huntRamFree = Math.max(0, totalRam - workRamUsed);
+    const ramPerUnit = getGpuRamPerUnit(parts && parts.gpu);
+    const maxByRam = ramPerUnit > 0 ? Math.floor(huntRamFree / ramPerUnit) : 0;
+    const activeHuntingUnits = Math.max(0, Math.min(maxByRam, maxByCpu));
     return {
       totalRam,
       workRamUsed,
-      ramPerWorkUnit,
-      activeWorkUnits,
+      huntRamFree,
+      ramPerUnit,
+      maxByRam,
       maxByCpu,
       activeHuntingUnits,
-      canRunWork: activeWorkUnits > 0,
+      activeWorkUnits: workSpec.ok ? workSpec.activeWorkUnits : 0,
+      canRunWork: workSpec.ok && workSpec.activeWorkUnits > 0,
+      workSpecOk: workSpec.ok,
+      workSpecFailures: workSpec.failures,
     };
   }
 
   function canSelectWorkTask(parts, taskIndex) {
-    const task = getWorkTask(taskIndex);
-    return getRamCapacityGb(parts && parts.ram) >= task.ramPerUnitGb;
+    return evaluateWorkTaskSpec(parts, taskIndex).ok;
   }
 
   function toDownloadTargetSnapshot(target) {
@@ -486,11 +609,11 @@
   }
 
   function calcWorkIncomePerTick(parts, workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride) {
-    const task = getWorkTask(workTaskIndex);
-    const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride);
-    if (!alloc.canRunWork || alloc.activeWorkUnits <= 0) return 0;
+    const spec = evaluateWorkTaskSpec(parts, workTaskIndex);
+    if (!spec.ok || spec.activeWorkUnits <= 0) return 0;
+    const task = spec.task;
     return Math.round(
-      task.mineralPerUnit * alloc.activeWorkUnits *
+      task.mineralPerUnit * spec.activeWorkUnits *
       (mineralMultiplier || 1) * (rebirthIncomeMult || 1) * (1 + (incomeBonusRate || 0))
     );
   }
@@ -520,8 +643,10 @@
     REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
     calcGameSpeedFrames, calcGameSpeedMultiplier, calcGpuGrade, calcGpuAttackFrames,
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
+    MAX_RAM_INVENTORY, getShopTierCost, getShopSellPrice, getShopCatalog, countRamInInventory, canPurchaseRam, buildInventoryPart,
     costToMinerals, formatMineral, formatManwon, getPurchaseCostMinerals,
     getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getWorkTask, getGameHunt, getDownloadTargetMeta,
+    getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
     calcHuntIncomePerTick, calcWorkIncomePerTick, toDownloadTargetSnapshot,
     createIntelCpu11InventoryItem,
