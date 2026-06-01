@@ -118,6 +118,12 @@
     { name: '파티 2-3', mineralPerTick: 2500, scaCoins: 7500 },
   ];
 
+  const GAME_SPEED_BASE = 3;
+  const GAME_SPEED_MAX = 13;
+  const GPU_GRADE_NAMES = ['엔트리', '메인스트림', '퍼포먼스', '하이엔드'];
+  const GPU_GRADE_ATTACK_FRAMES = [20, 16, 12, 8];
+  const DOWNLOAD_BASE_MB = 25;
+
   const SCA_SHOP_ITEMS = [
     { id: 'rebirthMineral500', name: '환생 시작 미네랄 +500', cost: 500, maxPurchases: 1 },
     { id: 'rebirthMineralMax200', name: '환생 미네랄 최대 +200', cost: 800, maxPurchases: 5 },
@@ -126,7 +132,9 @@
     { id: 'huntIncome1', name: '사냥터 수입 +1%', cost: 12000, maxPurchases: 10 },
     { id: 'gameSpeed1', name: '게임 배속 +1프레임', cost: 25000, maxPurchases: 10 },
     { id: 'upgradeProb01', name: '강화 확률 +0.1%', cost: 30000, maxPurchases: 10 },
-    { id: 'gpuGradeUp', name: 'GPU 등급 증가', cost: 40000, maxPurchases: 1 },
+    { id: 'downloadSpeed10', name: '다운로드 속도 +10%', cost: 35000, maxPurchases: 10 },
+    { id: 'gpuGradeUp', name: 'GPU 등급 증가 (하이엔드)', cost: 40000, maxPurchases: 1 },
+    { id: 'intelCpu11', name: 'Intel CPU 11강 (Core i5-11600K)', cost: 50000, maxPurchases: 1 },
   ];
 
   const DOWNLOAD_TARGETS = [
@@ -201,6 +209,39 @@
 
   const REBIRTH_MINERAL_CAP = 1000000;
 
+  // 환생수치 구간표 (제공된 표 기준)
+  // % 계산은 '보정 이전 환생수치' 기준
+  const REBIRTH_REWARD_TIERS = [
+    { min: 0, max: 5_000_000, scaBase: 50_000, scaRate: 0.01, correction: { type: 'add', value: 5_000_000 } },
+    { min: 5_000_000, max: 10_000_000, scaBase: 100_000, scaRate: 0.01, correction: { type: 'add', value: 7_000_000 } },
+    { min: 10_000_000, max: 20_000_000, scaBase: 200_000, scaRate: 0.005, correction: { type: 'add', value: 10_000_000 } },
+    { min: 20_000_000, max: 40_000_000, scaBase: 300_000, scaRate: 0.005, correction: { type: 'mul', value: 1.40 }, extra: { incomeCoupons: 100, speedCoupons: 5 } },
+    { min: 40_000_000, max: 100_000_000, scaBase: 500_000, scaRate: 0.002, correction: { type: 'mul', value: 1.30 } },
+    { min: 100_000_000, max: 300_000_000, scaBase: 700_000, scaRate: 0.001, correction: { type: 'mul', value: 1.25 } },
+    { min: 300_000_000, max: Infinity, scaBase: 1_000_000, scaRate: 0.001, correction: { type: 'mul', value: 1.25 } },
+  ];
+
+  function getRebirthRewardTier(baseRebirthStat) {
+    const s = Math.max(0, baseRebirthStat || 0);
+    return REBIRTH_REWARD_TIERS.find((t) => s >= t.min && s < t.max) || REBIRTH_REWARD_TIERS[REBIRTH_REWARD_TIERS.length - 1];
+  }
+
+  function calcRebirthOutcome(parts, prevRebirthStat) {
+    const statGain = calcRebirthStatGain(parts);
+    const baseStat = Math.max(0, (prevRebirthStat || 0)) + statGain;
+    const tier = getRebirthRewardTier(baseStat);
+    const scaReward = calcRebirthScaRewardByRebirthStat(baseStat);
+    const correctedStat = applyRebirthStatCorrection(baseStat);
+    return {
+      statGain,
+      baseStat,
+      correctedStat,
+      scaReward,
+      tier,
+      extra: tier.extra || null,
+    };
+  }
+
   function calcRebirthPerformanceScore(parts) {
     const cpu = parts.cpu || { level: 1 };
     const gpu = parts.gpu || { level: 1 };
@@ -216,7 +257,12 @@
     return calcRebirthPerformanceScore(parts);
   }
 
-  function calcRebirthScaReward(parts) {
+  function calcRebirthScaReward(parts, prevRebirthStat) {
+    // 기존 호출부 호환: prevRebirthStat가 있으면 표 기반, 없으면 성능점수 기반 근사
+    if (typeof prevRebirthStat === 'number') {
+      const statGain = calcRebirthStatGain(parts);
+      return calcRebirthScaRewardByRebirthStat(prevRebirthStat + statGain);
+    }
     const score = calcRebirthPerformanceScore(parts);
     return Math.max(10, Math.floor(score / 100));
   }
@@ -239,13 +285,66 @@
   function calcIncomeBonus(scaUpgrades) { return (scaUpgrades.huntIncome1 || 0) * 0.01; }
   function calcProbBonus(scaUpgrades) { return (scaUpgrades.upgradeProb01 || 0) * 0.001; }
 
+  /** v1.1.9: 기본 3프레임 + 구매당 +1, 최대 13 */
+  function calcGameSpeedFrames(scaUpgrades) {
+    return Math.min(GAME_SPEED_MAX, GAME_SPEED_BASE + (scaUpgrades.gameSpeed1 || 0));
+  }
+
+  function calcGameSpeedMultiplier(scaUpgrades) {
+    return calcGameSpeedFrames(scaUpgrades) / GAME_SPEED_BASE;
+  }
+
+  /** v1.1.6~1.1.9: 엔트리→하이엔드, 공속 프레임 20/16/12/8 */
+  function calcGpuGrade(scaUpgrades) {
+    return scaUpgrades.gpuGradeUp ? GPU_GRADE_ATTACK_FRAMES.length - 1 : 0;
+  }
+
+  function calcGpuAttackFrames(scaUpgrades) {
+    return GPU_GRADE_ATTACK_FRAMES[calcGpuGrade(scaUpgrades)];
+  }
+
+  function getStorageDownloadMultiplier(storage) {
+    const kind = storage && (storage.storageKind || (storage.type === 'SSD' ? 'nvme' : 'hdd'));
+    return kind === 'nvme' || kind === 'ssd' || (storage && storage.type === 'SSD') ? 4 : 1;
+  }
+
+  function calcDownloadSpeedBonus(scaUpgrades) {
+    return 1 + (scaUpgrades.downloadSpeed10 || 0) * 0.1;
+  }
+
+  /** §3.8 HDD x1 / SSD·NVMe x4 + SCA 다운로드 +10% */
+  function calcDownloadSpeedMb(storage, scaUpgrades) {
+    const cap = (storage && storage.capacityGb) || 60;
+    const base = DOWNLOAD_BASE_MB + cap * 0.01;
+    const speed = base * getStorageDownloadMultiplier(storage) * calcDownloadSpeedBonus(scaUpgrades || {});
+    return Math.round(speed * 10) / 10;
+  }
+
+  function createIntelCpu11InventoryItem() {
+    const tier = INTEL_CPU.find((row) => row.level === 11);
+    return {
+      id: 'inv-cpu-sca11-' + Math.random().toString(36).substring(2, 9),
+      type: 'cpu',
+      level: 11,
+      manufacturer: 'Intel',
+      ddrGeneration: 'DDR4',
+      name: tier ? tier.name : 'Core i5-11600K',
+    };
+  }
+
   global.OriginalMapGame = {
-    MINERAL_PER_COIN, REBIRTH_MINERAL_CAP, INTEL_CPU, AMD_CPU, GPU, RAM, COOLER_AIR, COOLER_WATER, HDD, NVME,
+    MINERAL_PER_COIN, REBIRTH_MINERAL_CAP, GAME_SPEED_BASE, GAME_SPEED_MAX,
+    GPU_GRADE_NAMES, GPU_GRADE_ATTACK_FRAMES, DOWNLOAD_BASE_MB,
+    INTEL_CPU, AMD_CPU, GPU, RAM, COOLER_AIR, COOLER_WATER, HDD, NVME,
     MOTHERBOARDS, WORK_HUNTING_GROUNDS, PARTY_HUNTING_TIERS, SCA_SHOP_ITEMS, DOWNLOAD_TARGETS,
     getPartTable, getMaxLevel, getTier, getUpgradeCost, getUpgradeProbability, getPartName,
     applyTierStats, getCpuCoolingRequired, getCpuCores, convertMineralsToCoins,
     calcRebirthPerformanceScore, calcRebirthStatGain, calcRebirthScaReward,
     calcRebirthStartMinerals, calcRebirthIncomeMultiplier,
     calcIncomeBonus, calcProbBonus,
+    REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
+    calcGameSpeedFrames, calcGameSpeedMultiplier, calcGpuGrade, calcGpuAttackFrames,
+    getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
+    createIntelCpu11InventoryItem,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
