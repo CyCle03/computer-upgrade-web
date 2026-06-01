@@ -145,7 +145,7 @@
   ];
 
   const GAME_SPEED_BASE = 3;
-  const GAME_SPEED_MAX = 13;
+  const GAME_SPEED_MAX = 15;
   /** SCA/EUD Wait 주기 상한. 배속 N ≠ 실시간 N배 — 배율 = (REF−BASE) / (REF−N) */
   const GAME_SPEED_FRAME_REF = 29;
   const GPU_GRADE_NAMES = ['엔트리', '메인스트림', '퍼포먼스', '하이엔드'];
@@ -160,7 +160,7 @@
     { id: 'rebirthMineralMax2000', name: '환생 미네랄 최대 +2,000', cost: 5000, maxPurchases: 3 },
     { id: 'rebirthMineralMax7500', name: '환생 미네랄 최대 +7,500', cost: 8000, maxPurchases: 2 },
     { id: 'huntIncome1', name: '사냥터 수입 +1%', cost: 12000, maxPurchases: 10 },
-    { id: 'gameSpeed1', name: '게임 배속 +1프레임', cost: 25000, maxPurchases: 10 },
+    { id: 'gameSpeed1', name: '게임 배속 +1프레임', cost: 25000, maxPurchases: 12 },
     { id: 'upgradeProb01', name: '강화 확률 +0.1%', cost: 30000, maxPurchases: 10 },
     { id: 'downloadSpeed10', name: '다운로드 속도 +10%', cost: 35000, maxPurchases: 10 },
     { id: 'gpuGradeUp', name: 'GPU 등급 증가 (하이엔드)', cost: 40000, maxPurchases: 1 },
@@ -402,8 +402,8 @@
   }
 
   /**
-   * SCA 게임 배속 배율. 13배속방 ≠ 실시간 13배.
-   * 예: BASE 3 → 13일 때 (29−3)/(29−13) = 1.625배 (구버전 13/3=4.33배 아님)
+   * SCA 게임 배속 배율. N배속 ≠ 실시간 N배.
+   * 예: BASE 3 → 15(상한)일 때 (29−3)/(29−15) = 26/14 ≈ 1.857배 (구버전 N/3 사용 금지)
    */
   function calcGameSpeedMultiplier(scaUpgrades) {
     const frames = calcGameSpeedFrames(scaUpgrades);
