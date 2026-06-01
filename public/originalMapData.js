@@ -144,7 +144,8 @@
     { name: '파티 2-3', mineralPerTick: 2500, scaCoins: 7500 },
   ];
 
-  const GAME_SPEED_BASE = 3;
+  // 원작: 기본수치 29에서 「배속 수치」만큼 차감 → 속도배율 = 29 / (29 - 배속수치). 배속수치 최대 13.
+  const GAME_SPEED_BASE = 29;
   const GAME_SPEED_MAX = 13;
   const GPU_GRADE_NAMES = ['엔트리', '메인스트림', '퍼포먼스', '하이엔드'];
   const GPU_GRADE_ATTACK_FRAMES = [20, 16, 12, 8];
@@ -176,6 +177,25 @@
 
   const MAX_RAM_INVENTORY = 4;
 
+  /**
+   * 부품별 상점 직접 구매 가능 강(레벨) 목록 — 원작 공식 스프레드시트의 「가격」 기준.
+   * 원작은 각 부품마다 가격이 매겨진 특정 강만 직접 구매할 수 있고, 그 외 강은 강화로만 도달한다.
+   *   - Intel CPU: 1·4·7·10·11강 (11강은 4C)
+   *   - AMD CPU: 1·3강
+   *   - GPU: 1·3·5·7강 (7강은 2C)
+   *   - RAM: 1·5·10강 (10강은 2C)
+   *   - 쿨러(공랭/수랭): 1강 (이후 강화)
+   *   - 드라이브(HDD/NVMe): 1강 (이후 강화)
+   *   - 메인보드: 완제품 구매(강화 불가)로 별도 처리
+   */
+  const SHOP_PURCHASABLE_LEVELS = {
+    cpu: { Intel: [1, 4, 7, 10, 11], AMD: [1, 3] },
+    gpu: [1, 3, 5, 7],
+    ram: [1, 5, 10],
+    cooler: [1],
+    storage: [1],
+  };
+
   function getShopTierCost(type, level, part) {
     const tier = getTier(type, part, level);
     return tier && tier.cost != null ? tier.cost : Infinity;
@@ -186,7 +206,31 @@
     return cost === Infinity ? 0 : Math.floor(cost * 0.5);
   }
 
+  /** 부품(변형 포함)별 직접 구매 가능한 강 목록 */
+  function getPurchasableLevels(type, part) {
+    const maxLevel = getMaxLevel(type, part);
+    let levels = SHOP_PURCHASABLE_LEVELS[type];
+    if (levels && !Array.isArray(levels)) {
+      const key = type === 'cpu' ? ((part && part.manufacturer) || 'Intel') : null;
+      levels = (key != null && levels[key]) || [];
+    }
+    if (!levels) return [];
+    return levels.filter((lv) => lv >= 1 && lv <= maxLevel);
+  }
+
+  /** 부품별 직접 구매 가능한 최고 강 (안내 메시지용) */
+  function getPurchasableMaxLevel(type, part) {
+    const levels = getPurchasableLevels(type, part);
+    return levels.length ? Math.max.apply(null, levels) : 0;
+  }
+
+  /** 해당 강을 상점에서 직접 구매할 수 있는지 */
+  function isPurchasableLevel(type, level, part) {
+    return getPurchasableLevels(type, part).indexOf(level) !== -1;
+  }
+
   function getShopCatalog(type, part) {
+    const buyable = getPurchasableLevels(type, part);
     return getPartTable(type, part).map((row) => ({
       level: row.level,
       name: row.name,
@@ -195,6 +239,7 @@
       cores: row.cores,
       cooling: row.cooling,
       capacityGb: row.capacityGb,
+      purchasable: buyable.indexOf(row.level) !== -1,
     }));
   }
 
@@ -300,46 +345,44 @@
 
   const REBIRTH_MINERAL_CAP = 1000000;
 
-  const REBIRTH_REWARD_TIERS = [
-    { min: 0, max: 5_000_000, scaBase: 50_000, scaRate: 0.01, correction: { type: 'add', value: 5_000_000 } },
-    { min: 5_000_000, max: 10_000_000, scaBase: 100_000, scaRate: 0.01, correction: { type: 'add', value: 7_000_000 } },
-    { min: 10_000_000, max: 20_000_000, scaBase: 200_000, scaRate: 0.005, correction: { type: 'add', value: 10_000_000 } },
-    { min: 20_000_000, max: 40_000_000, scaBase: 300_000, scaRate: 0.005, correction: { type: 'mul', value: 1.40 }, extra: { incomeCoupons: 100, speedCoupons: 5 } },
-    { min: 40_000_000, max: 100_000_000, scaBase: 500_000, scaRate: 0.002, correction: { type: 'mul', value: 1.30 } },
-    { min: 100_000_000, max: 300_000_000, scaBase: 700_000, scaRate: 0.001, correction: { type: 'mul', value: 1.25 } },
-    { min: 300_000_000, max: Infinity, scaBase: 1_000_000, scaRate: 0.001, correction: { type: 'mul', value: 1.25 } },
+  /**
+   * 환생수치 계수표 (원작 「기타 정보」 시트).
+   * 누적 환생수치 구간별 계수값 — SCA 코인 보상에 곱한다.
+   */
+  const REBIRTH_COEFFICIENT_TIERS = [
+    { min: 0, max: 1, coeff: 1.0 },              // 0
+    { min: 1, max: 1_000_000, coeff: 1.1 },      // 0 ~ 100만
+    { min: 1_000_000, max: 3_000_000, coeff: 1.2 },     // 100만 ~ 300만
+    { min: 3_000_000, max: 10_000_000, coeff: 1.3 },    // 300만 ~ 1000만
+    { min: 10_000_000, max: 30_000_000, coeff: 1.4 },   // 1000만 ~ 3000만
+    { min: 30_000_000, max: 100_000_000, coeff: 1.5 },  // 3000만 ~ 1억
+    { min: 100_000_000, max: 300_000_000, coeff: 1.7 }, // 1억 ~ 3억
+    { min: 300_000_000, max: Infinity, coeff: 2.0 },    // 3억 ~
   ];
 
-  function getRebirthRewardTier(baseRebirthStat) {
-    const s = Math.max(0, baseRebirthStat || 0);
-    return REBIRTH_REWARD_TIERS.find((t) => s >= t.min && s < t.max) || REBIRTH_REWARD_TIERS[REBIRTH_REWARD_TIERS.length - 1];
+  /** 환생수치 → 계수값 */
+  function getRebirthCoefficient(rebirthStat) {
+    const s = Math.max(0, Math.floor(rebirthStat || 0));
+    const tier = REBIRTH_COEFFICIENT_TIERS.find((t) => s >= t.min && s < t.max);
+    return tier ? tier.coeff : REBIRTH_COEFFICIENT_TIERS[REBIRTH_COEFFICIENT_TIERS.length - 1].coeff;
   }
 
-  function calcRebirthScaRewardByRebirthStat(baseRebirthStat) {
-    const s = Math.max(0, baseRebirthStat || 0);
-    const tier = getRebirthRewardTier(s);
-    return Math.max(0, Math.floor(tier.scaBase + s * tier.scaRate));
+  /** 메인보드 번호 — 장착한 메인보드의 방어력(쉴드) 순위(1부터). 원작의 메인보드 1~N 번호 근사. */
+  function getMotherboardNumber(motherboard) {
+    if (!motherboard) return 0;
+    const shield = motherboard.shieldIncrease || 0;
+    const sortedShields = MOTHERBOARDS.map((b) => b.shieldIncrease).sort((a, b) => a - b);
+    let rank = 0;
+    for (let i = 0; i < sortedShields.length; i += 1) {
+      if (shield >= sortedShields[i]) rank = i + 1;
+    }
+    return rank;
   }
 
-  function applyRebirthStatCorrection(baseRebirthStat) {
-    const s = Math.max(0, baseRebirthStat || 0);
-    const tier = getRebirthRewardTier(s);
-    const corr = tier.correction || null;
-    if (!corr) return s;
-    if (corr.type === 'add') return s + corr.value;
-    if (corr.type === 'mul') return Math.floor(s * corr.value);
-    return s;
-  }
-
-  function calcRebirthOutcome(parts, prevRebirthStat) {
-    const statGain = calcRebirthStatGain(parts);
-    const baseStat = Math.max(0, (prevRebirthStat || 0)) + statGain;
-    const tier = getRebirthRewardTier(baseStat);
-    const scaReward = calcRebirthScaRewardByRebirthStat(baseStat);
-    const correctedStat = applyRebirthStatCorrection(baseStat);
-    return { statGain, baseStat, correctedStat, scaReward, tier, extra: tier.extra || null };
-  }
-
+  /**
+   * 성능수치 — 장착 부품 성능 합산(원작 컴퓨터 스펙 수치 근사).
+   * 원작 시트의 부품별 성능값을 웹 데이터 기준으로 합산한다.
+   */
   function calcRebirthPerformanceScore(parts) {
     const cpu = parts.cpu || { level: 1 };
     const gpu = parts.gpu || { level: 1 };
@@ -351,14 +394,50 @@
     return cpuPerf + gpu.level * 800 + ram.level * 200 + cooler.level * 150 + storage.level * 100;
   }
 
-  function calcRebirthStatGain(parts) { return calcRebirthPerformanceScore(parts); }
-
-  function calcRebirthScaReward(parts, prevRebirthStat) {
-    if (typeof prevRebirthStat === 'number') {
-      return calcRebirthScaRewardByRebirthStat(prevRebirthStat + calcRebirthStatGain(parts));
-    }
-    return Math.max(10, Math.floor(calcRebirthPerformanceScore(parts) / 100));
+  /**
+   * 환생수치(획득분) = (CPU강화수 × (메인보드번호 + 램강화수 + 게임다운로드개수 + 환생횟수)) × 성능수치 / 10
+   */
+  function calcRebirthStat(ctx) {
+    const c = ctx || {};
+    const cpuLevel = Math.max(0, c.cpuLevel || 0);
+    const ramLevel = Math.max(0, c.ramLevel || 0);
+    const mainboardNumber = Math.max(0, c.mainboardNumber || 0);
+    const downloadCount = Math.max(0, c.downloadCount || 0);
+    const rebirthCount = Math.max(0, c.rebirthCount || 0);
+    const perf = Math.max(0, c.performanceScore || 0);
+    const factor = mainboardNumber + ramLevel + downloadCount + rebirthCount;
+    return Math.max(0, Math.floor((cpuLevel * factor * perf) / 10));
   }
+
+  /** SCA 코인 = 성능수치 × 계수값(환생수치) */
+  function calcScaCoinReward(performanceScore, rebirthStat) {
+    return Math.max(0, Math.floor((performanceScore || 0) * getRebirthCoefficient(rebirthStat)));
+  }
+
+  /**
+   * 환생 결과 계산.
+   * @param parts 장착 부품 { cpu, gpu, ram, cooler, storage }
+   * @param opts  { mainboardNumber, downloadCount, rebirthCount, prevRebirthStat }
+   */
+  function calcRebirthOutcome(parts, opts) {
+    const o = opts || {};
+    const performanceScore = calcRebirthPerformanceScore(parts);
+    const statGain = calcRebirthStat({
+      cpuLevel: (parts.cpu && parts.cpu.level) || 0,
+      ramLevel: (parts.ram && parts.ram.level) || 0,
+      mainboardNumber: o.mainboardNumber || 0,
+      downloadCount: o.downloadCount || 0,
+      rebirthCount: o.rebirthCount || 0,
+      performanceScore,
+    });
+    const baseStat = Math.max(0, o.prevRebirthStat || 0) + statGain;
+    const coeff = getRebirthCoefficient(baseStat);
+    const scaReward = calcScaCoinReward(performanceScore, baseStat);
+    // 원작은 환생수치를 그대로 누적한다(별도 보정 없음).
+    return { statGain, baseStat, correctedStat: baseStat, scaReward, performanceScore, coeff };
+  }
+
+  function calcRebirthStatGain(parts) { return calcRebirthPerformanceScore(parts); }
 
   function calcRebirthStartMinerals(scaUpgrades) {
     const u = scaUpgrades || {};
@@ -377,12 +456,19 @@
   function calcIncomeBonus(scaUpgrades) { return (scaUpgrades.huntIncome1 || 0) * 0.01; }
   function calcProbBonus(scaUpgrades) { return (scaUpgrades.upgradeProb01 || 0) * 0.001; }
 
-  function calcGameSpeedFrames(scaUpgrades) {
-    return Math.min(GAME_SPEED_MAX, GAME_SPEED_BASE + (scaUpgrades.gameSpeed1 || 0));
+  /** 「배속 수치」 — SCA 상점 배속 구매 개수 (최대 13) */
+  function calcGameSpeedLevel(scaUpgrades) {
+    return Math.min(GAME_SPEED_MAX, (scaUpgrades && scaUpgrades.gameSpeed1) || 0);
   }
 
+  /** 실제 게임 프레임수치 = 29 - 배속수치 (낮을수록 빠름) */
+  function calcGameSpeedFrames(scaUpgrades) {
+    return GAME_SPEED_BASE - calcGameSpeedLevel(scaUpgrades);
+  }
+
+  /** 속도배율 = 29 / (29 - 배속수치) */
   function calcGameSpeedMultiplier(scaUpgrades) {
-    return calcGameSpeedFrames(scaUpgrades) / GAME_SPEED_BASE;
+    return GAME_SPEED_BASE / calcGameSpeedFrames(scaUpgrades);
   }
 
   function calcGpuGrade(scaUpgrades) {
@@ -637,13 +723,14 @@ function getPartLevel(part) {
     MOTHERBOARDS, WORK_TASKS, GAME_HUNTING, WORK_HUNTING_GROUNDS, PARTY_HUNTING_TIERS, SCA_SHOP_ITEMS, DOWNLOAD_TARGETS, GPU_RAM_PER_UNIT_GB,
     getPartTable, getMaxLevel, getTier, getUpgradeCost, getUpgradeProbability, getPartName,
     applyTierStats, getCpuCoolingRequired, getCpuCores, convertMineralsToCoins,
-    calcRebirthPerformanceScore, calcRebirthStatGain, calcRebirthScaReward,
+    calcRebirthPerformanceScore, calcRebirthStatGain, calcRebirthStat, calcScaCoinReward,
     calcRebirthStartMinerals, calcRebirthIncomeMultiplier,
     calcIncomeBonus, calcProbBonus,
-    REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
-    calcGameSpeedFrames, calcGameSpeedMultiplier, calcGpuGrade, calcGpuAttackFrames,
+    REBIRTH_COEFFICIENT_TIERS, getRebirthCoefficient, getMotherboardNumber, calcRebirthOutcome,
+    calcGameSpeedLevel, calcGameSpeedFrames, calcGameSpeedMultiplier, calcGpuGrade, calcGpuAttackFrames,
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
-    MAX_RAM_INVENTORY, getShopTierCost, getShopSellPrice, getShopCatalog, countRamInInventory, canPurchaseRam, buildInventoryPart,
+    MAX_RAM_INVENTORY, SHOP_PURCHASABLE_LEVELS, getShopTierCost, getShopSellPrice, getShopCatalog,
+    getPurchasableLevels, getPurchasableMaxLevel, isPurchasableLevel, countRamInInventory, canPurchaseRam, buildInventoryPart,
     costToMinerals, formatMineral, formatManwon, getPurchaseCostMinerals,
     getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getWorkTask, getGameHunt, getDownloadTargetMeta,
     getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
