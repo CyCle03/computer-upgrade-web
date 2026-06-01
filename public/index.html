@@ -145,6 +145,11 @@
         if (legacy) { try { return JSON.parse(legacy).groundIndex ?? 0; } catch (e) {} }
         return 0;
       });
+      const [workUnitMode, setWorkUnitMode] = useState(() => localStorage.getItem('sca_workUnitMode') || 'auto');
+      const [manualWorkUnits, setManualWorkUnits] = useState(() => {
+        const saved = localStorage.getItem('sca_manualWorkUnits');
+        return saved !== null ? parseInt(saved, 10) : 1;
+      });
       const [unlockedGameIndex, setUnlockedGameIndex] = useState(() => {
         const saved = localStorage.getItem('sca_unlockedGameIndex');
         return saved !== null ? parseInt(saved, 10) : -1;
@@ -248,14 +253,15 @@
         }
         return limit;
       }, [cpu, motherboard]);
-      const ramAlloc = useMemo(
-        () => OMG.calcRamAllocation(workParts, workTaskIndex, effectiveUnitLimit),
-        [workParts, workTaskIndex, effectiveUnitLimit]
-      );
       const workSpecStatus = useMemo(
         () => OMG.evaluateWorkTaskSpec(workParts, workTaskIndex),
         [workParts, workTaskIndex]
       );
+      const maxWorkUnits = workSpecStatus.activeWorkUnits || 0;
+      const workMineralMultiplier = useMemo(() => {
+        const cpuHeatDemand = OMG.getCpuCoolingRequired(cpu);
+        return cpuHeatDemand > cooler.coolingCapacity ? 0.5 : 1.0;
+      }, [cpu, cooler]);
       const currentWorkTask = useMemo(() => OMG.getWorkTask(workTaskIndex), [workTaskIndex]);
       const activeGame = useMemo(
         () => (unlockedGameIndex >= 0 ? OMG.getGameHunt(unlockedGameIndex) : null),
@@ -296,7 +302,10 @@
         }
 
         // E. RAM 분배: 작업 점유 후 남은 RAM으로 사냥 유닛 (GPU 1기당 RAM × CPU 코어)
-        const ramAllocation = OMG.calcRamAllocation(workParts, workTaskIndex, effectiveUnitLimit);
+        const _workUnitsForSpecs = workUnitMode === 'auto'
+          ? OMG.calcOptimalWorkUnits(workParts, workTaskIndex, unlockedGameIndex, effectiveUnitLimit, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading)
+          : Math.min(Math.max(0, manualWorkUnits), workSpecStatus.activeWorkUnits || 0);
+        const ramAllocation = OMG.calcRamAllocation(workParts, workTaskIndex, effectiveUnitLimit, _workUnitsForSpecs);
         const maxHuntingUnits = ramAllocation.activeHuntingUnits;
 
         // F. 유닛 체력 및 메인보드 고정 실드
@@ -345,7 +354,29 @@
             mineralMultiplier
           }
         };
-      }, [cpu, gpu, ram, cooler, motherboard, storage, scaUpgrades, gpuAttackFrames, gpuGrade, workParts, workTaskIndex, effectiveUnitLimit]);
+      }, [cpu, gpu, ram, cooler, motherboard, storage, scaUpgrades, gpuAttackFrames, gpuGrade, workParts, workTaskIndex, effectiveUnitLimit, workUnitMode, manualWorkUnits, workSpecStatus, unlockedGameIndex, rebirthIncomeMult, incomeBonusRate, isDownloading]);
+
+      const effectiveWorkUnits = useMemo(() => {
+        if (!workSpecStatus.ok || maxWorkUnits <= 0) return 0;
+        if (workUnitMode === 'auto') {
+          return OMG.calcOptimalWorkUnits(
+            workParts, workTaskIndex, unlockedGameIndex, effectiveUnitLimit,
+            workMineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading
+          );
+        }
+        return Math.min(Math.max(0, manualWorkUnits), maxWorkUnits);
+      }, [workParts, workTaskIndex, workUnitMode, manualWorkUnits, maxWorkUnits, workSpecStatus.ok, unlockedGameIndex, effectiveUnitLimit, workMineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading]);
+
+      const ramAlloc = useMemo(
+        () => OMG.calcRamAllocation(workParts, workTaskIndex, effectiveUnitLimit, effectiveWorkUnits),
+        [workParts, workTaskIndex, effectiveUnitLimit, effectiveWorkUnits]
+      );
+
+      useEffect(() => {
+        if (manualWorkUnits > maxWorkUnits) {
+          setManualWorkUnits(maxWorkUnits);
+        }
+      }, [maxWorkUnits, manualWorkUnits]);
 
       useEffect(() => {
         if (localStorage.getItem('sca_rebirthStatMigrated')) return;
@@ -405,22 +436,23 @@
             specs.penalties.mineralMultiplier,
             rebirthIncomeMult,
             incomeBonusRate,
-            effectiveUnitLimit
+            effectiveUnitLimit,
+            effectiveWorkUnits
           );
           if (earn > 0) setMinerals((p) => p + earn);
         }, tickMs);
         return () => clearInterval(interval);
-      }, [specs, workParts, workTaskIndex, rebirthIncomeMult, incomeBonusRate, isPartyHunting, gameSpeedMult, gpuAttackFrames, scaUpgrades, effectiveUnitLimit]);
+      }, [specs, workParts, workTaskIndex, rebirthIncomeMult, incomeBonusRate, isPartyHunting, gameSpeedMult, gpuAttackFrames, scaUpgrades, effectiveUnitLimit, effectiveWorkUnits]);
 
       useEffect(() => {
         const tickMs = OMG.calcIncomeEventIntervalMs(scaUpgrades, gpuAttackFrames);
         const interval = setInterval(() => {
           if (isDownloading) return;
-          const earn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit);
+          const earn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit, effectiveWorkUnits);
           if (earn > 0) setMinerals((p) => p + earn);
         }, tickMs);
         return () => clearInterval(interval);
-      }, [workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, gameSpeedMult, gpuAttackFrames, scaUpgrades, isDownloading, effectiveUnitLimit]);
+      }, [workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, gameSpeedMult, gpuAttackFrames, scaUpgrades, isDownloading, effectiveUnitLimit, effectiveWorkUnits]);
       useEffect(() => {
         if (!isPartyHunting) return;
         const tier = OMG.PARTY_HUNTING_TIERS[partyHuntingTier];
@@ -451,6 +483,8 @@
         localStorage.setItem('sca_motherboard', JSON.stringify(motherboard));
         localStorage.setItem('sca_storage', JSON.stringify(storage));
         localStorage.setItem('sca_workTaskIndex', String(workTaskIndex));
+        localStorage.setItem('sca_workUnitMode', workUnitMode);
+        localStorage.setItem('sca_manualWorkUnits', String(manualWorkUnits));
         localStorage.setItem('sca_unlockedGameIndex', String(unlockedGameIndex));
         localStorage.setItem('sca_downloadTarget', JSON.stringify(downloadTarget));
         localStorage.setItem('sca_inventory', JSON.stringify(inventory));
@@ -459,7 +493,7 @@
         localStorage.setItem('sca_autoBuyRam', autoBuyRam.toString());
         localStorage.setItem('sca_autoBuyCooler', autoBuyCooler.toString());
         localStorage.setItem('sca_autoBuyStorage', autoBuyStorage.toString());
-      }, [minerals, scaCoins, rebirthCount, rebirthStat, autoTargetLevels, scaUpgrades, partyHuntingTier, cpu, gpu, ram, cooler, motherboard, storage, workTaskIndex, unlockedGameIndex, downloadTarget, inventory, autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage]);
+      }, [minerals, scaCoins, rebirthCount, rebirthStat, autoTargetLevels, scaUpgrades, partyHuntingTier, cpu, gpu, ram, cooler, motherboard, storage, workTaskIndex, workUnitMode, manualWorkUnits, unlockedGameIndex, downloadTarget, inventory, autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage]);
 
       // ----------------------------------------------------------------------
       // 6.6. 가상 사냥터 실시간 전투 매트릭스 로그 생성기 (스타1 콘솔 싱크)
@@ -474,8 +508,8 @@
             const mEarn = Math.round(tier.mineralPerTick * (1 + incomeBonusRate));
             newLog = `[${time}] 👥 파티 :: ${tier.name} +${mEarn}원 +${tier.scaCoins}C`;
           } else {
-            const workEarn = OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate, effectiveUnitLimit);
-            const huntEarn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit);
+            const workEarn = OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate, effectiveUnitLimit, effectiveWorkUnits);
+            const huntEarn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit, effectiveWorkUnits);
             const gameName = activeGame ? activeGame.name : '게임 없음';
             newLog = `[${time}] 💼작업 +${workEarn}원 · 🎮${gameName} ${specs.maxHuntingUnits}기 +${huntEarn}원`;
           }
@@ -486,7 +520,7 @@
           });
         }, 1500);
         return () => clearInterval(interval);
-      }, [cpu.level, specs, workParts, workTaskIndex, unlockedGameIndex, activeGame, rebirthIncomeMult, incomeBonusRate, isPartyHunting, partyHuntingTier, effectiveUnitLimit, isDownloading]);
+      }, [cpu.level, specs, workParts, workTaskIndex, unlockedGameIndex, activeGame, rebirthIncomeMult, incomeBonusRate, isPartyHunting, partyHuntingTier, effectiveUnitLimit, effectiveWorkUnits, isDownloading]);
 
       // ----------------------------------------------------------------------
       // 6.7. 지능형 자동 구매 및 자동 강화(Auto Buy & Upgrade) 통합 루프 엔진
@@ -1445,9 +1479,18 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         );
                       })}
                     </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                      <span>배치</span>
+                      <button type="button" disabled={workUnitMode === 'auto' || maxWorkUnits <= 0} onClick={() => setManualWorkUnits((n) => Math.max(0, n - 1))} className="px-2 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-40">◀</button>
+                      <strong className="text-emerald-400 font-mono">{effectiveWorkUnits}기</strong>
+                      <span className="text-slate-500">/ {maxWorkUnits}기</span>
+                      <button type="button" disabled={workUnitMode === 'auto' || maxWorkUnits <= 0} onClick={() => setManualWorkUnits((n) => Math.min(maxWorkUnits, n + 1))} className="px-2 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-40">▶</button>
+                      <button type="button" onClick={() => setWorkUnitMode('auto')} className={`px-2 py-0.5 rounded border text-[10px] font-mono ${workUnitMode === 'auto' ? 'bg-amber-500/20 border-amber-500 text-amber-300' : 'border-slate-700 text-slate-400'}`}>자동 최적</button>
+                      <button type="button" onClick={() => { setWorkUnitMode('manual'); setManualWorkUnits(effectiveWorkUnits); }} className={`px-2 py-0.5 rounded border text-[10px] font-mono ${workUnitMode === 'manual' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300' : 'border-slate-700 text-slate-400'}`}>수동</button>
+                    </div>
                     <p className="text-xs text-slate-400">
-                      틱당 <strong className="text-emerald-400">{OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate, effectiveUnitLimit).toLocaleString()}원</strong>
-                      {isPartyHunting ? ' · 파티 ON — 작업 중단' : ramAlloc.canRunWork ? ` · ${ramAlloc.activeWorkUnits || 0}기` : workSpecStatus.failures.length ? ` · ${workSpecStatus.failures[0]}` : ' · 스펙 부족'}
+                      틱당 <strong className="text-emerald-400">{OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate, effectiveUnitLimit, effectiveWorkUnits).toLocaleString()}원</strong>
+                      {isPartyHunting ? ' · 파티 ON — 작업 중단' : ramAlloc.canRunWork ? (workUnitMode === 'auto' ? ` · 자동 ${effectiveWorkUnits}기` : ` · ${effectiveWorkUnits}기`) : workSpecStatus.failures.length ? ` · ${workSpecStatus.failures[0]}` : ' · 스펙 부족'}
                     </p>
                   </div>
                   <div className="p-4 bg-slate-950/60 rounded border border-cyan-900/40 space-y-3">
@@ -1456,7 +1499,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     <p className="text-xs text-slate-400">
                       배치 <strong className="text-cyan-400">{specs.maxHuntingUnits}기</strong>
                       (RAM {specs.huntRamFree}GB / GPU {specs.gpuRamPerUnit}GB·기 · CPU {specs.ramAllocation.maxByCpu}코어)
-                      · 틱당 <strong className="text-cyan-400">{OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit).toLocaleString()}원</strong>
+                      · 틱당 <strong className="text-cyan-400">{OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit, effectiveWorkUnits).toLocaleString()}원</strong>
                     </p>
                     {downloadTarget ? (
                       <>
