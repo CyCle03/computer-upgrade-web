@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { testConnection } from './db';
+import { isDbReady, testConnection } from './db';
 import { RewardService } from './rewardService';
 import { ClaimRewardRequest } from './types';
 import { setupSocketServer } from './socketServer';
@@ -11,29 +11,37 @@ dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
-// 미들웨어 설정
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// 헬스 체크 엔드포인트
-app.get('/health', (req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: new Date() });
+app.get('/health', (_req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    db: isDbReady() ? 'connected' : 'unavailable',
+    timestamp: new Date(),
+  });
 });
 
-/**
- * 일일 마일스톤 보상 수령 API 엔드포인트
- * 
- * [요청 Body]
- * - userId: string (UUID)
- * - currentFloor: number (10~100 사이, 10의 배수)
- */
 app.post('/api/raid/claim', async (req: Request, res: Response) => {
+  if (!isDbReady()) {
+    const ok = await testConnection();
+    if (!ok) {
+      return res.status(503).json({
+        success: false,
+        message: '데이터베이스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.',
+        claimedCoins: 0,
+        newHighestFloor: 0,
+        currentTotalCoins: 0,
+      });
+    }
+  }
+
   const { userId, currentFloor } = req.body as ClaimRewardRequest;
 
-  // 기본 DTO 검증
   if (!userId) {
     return res.status(400).json({
       success: false,
@@ -55,32 +63,23 @@ app.post('/api/raid/claim', async (req: Request, res: Response) => {
   }
 
   try {
-    // 환경 변수 설정에 따라 수동 TX 처리 혹은 DB RPC 처리 선택 가능 (Supabase 유연성 확보)
     const useRpc = process.env.USE_RPC === 'true';
-    let result;
-
-    if (useRpc) {
-      console.log(`[RaidAPI] Processing reward claim via DB RPC Function for User: ${userId}, Floor: ${currentFloor}`);
-      result = await RewardService.claimRewardWithRpc(userId, currentFloor);
-    } else {
-      console.log(`[RaidAPI] Processing reward claim via Manual DB Transaction for User: ${userId}, Floor: ${currentFloor}`);
-      result = await RewardService.claimRewardWithTx(userId, currentFloor);
-    }
+    const result = useRpc
+      ? await RewardService.claimRewardWithRpc(userId, currentFloor)
+      : await RewardService.claimRewardWithTx(userId, currentFloor);
 
     if (!result.success) {
       return res.status(400).json(result);
     }
 
     return res.status(200).json(result);
-
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('[RaidAPI] Error occurred while claiming reward:', error);
-    
-    // 내부 서버 에러 시 500 응답
     return res.status(500).json({
       success: false,
       message: '서버 내부 오류가 발생하여 보상 처리에 실패했습니다.',
-      error: error.message || String(error),
+      error: message,
       claimedCoins: 0,
       newHighestFloor: 0,
       currentTotalCoins: 0,
@@ -88,26 +87,22 @@ app.post('/api/raid/claim', async (req: Request, res: Response) => {
   }
 });
 
-// 서버 초기화 함수
-async function startServer() {
-  // DB 서버 접속 유효성 먼저 검사
-  const dbConnected = await testConnection();
-  
-  if (!dbConnected) {
-    console.error('[Server] Critical: Database is not reachable. Shutting down...');
-    process.exit(1);
-  }
-
-  // Socket.io 소켓 서버 마운트
+function startServer() {
   setupSocketServer(httpServer);
 
-  httpServer.listen(PORT, () => {
-    console.log(`==================================================`);
-    console.log(`[Server] 'Computer Upgrade' Web Backend + Socket Server is running`);
-    console.log(`[Server] Local URL: http://localhost:${PORT}`);
+  httpServer.listen(PORT, HOST, () => {
+    console.log('==================================================');
+    console.log("[Server] 'Computer Upgrade' Web Backend + Socket Server is running");
+    console.log(`[Server] Listening on http://${HOST}:${PORT}`);
     console.log(`[Server] Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`[Server] Mode: ${process.env.USE_RPC === 'true' ? 'Supabase RPC Mode' : 'PostgreSQL Express TX Mode'}`);
-    console.log(`==================================================`);
+    console.log('==================================================');
+  });
+
+  testConnection().then((ok) => {
+    if (!ok) {
+      console.warn('[Server] Database unavailable — static UI is still served; raid API will return 503 until DB connects.');
+    }
   });
 }
 

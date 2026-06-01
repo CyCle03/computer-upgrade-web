@@ -257,8 +257,8 @@
         [unlockedGameIndex]
       );
       const downloadValidation = useMemo(
-        () => OMG.validateDownloadStart(workParts, unlockedGameIndex, downloadTarget, isDownloading),
-        [workParts, unlockedGameIndex, downloadTarget, isDownloading]
+        () => OMG.validateDownloadStart(workParts, unlockedGameIndex, downloadTarget, isDownloading, minerals),
+        [workParts, unlockedGameIndex, downloadTarget, isDownloading, minerals]
       );
 
       const getCpuName = (level, m) => OMG.getPartName('cpu', level, { type: 'cpu', manufacturer: m || cpu.manufacturer });
@@ -405,21 +405,23 @@
             workTaskIndex,
             specs.penalties.mineralMultiplier,
             rebirthIncomeMult,
-            incomeBonusRate
+            incomeBonusRate,
+            effectiveUnitLimit
           );
           if (earn > 0) setMinerals((p) => p + earn);
         }, tickMs);
         return () => clearInterval(interval);
-      }, [specs, workParts, workTaskIndex, rebirthIncomeMult, incomeBonusRate, isPartyHunting, gameSpeedMult]);
+      }, [specs, workParts, workTaskIndex, rebirthIncomeMult, incomeBonusRate, isPartyHunting, gameSpeedMult, effectiveUnitLimit]);
 
       useEffect(() => {
         const tickMs = Math.max(50, Math.round(1000 / gameSpeedMult));
         const interval = setInterval(() => {
-          const earn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate);
+          if (isDownloading) return;
+          const earn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit);
           if (earn > 0) setMinerals((p) => p + earn);
         }, tickMs);
         return () => clearInterval(interval);
-      }, [workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, gameSpeedMult]);
+      }, [workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, gameSpeedMult, isDownloading, effectiveUnitLimit]);
       useEffect(() => {
         if (!isPartyHunting) return;
         const tier = OMG.PARTY_HUNTING_TIERS[partyHuntingTier];
@@ -474,8 +476,8 @@
             const mEarn = Math.round(tier.mineralPerTick * (1 + incomeBonusRate));
             newLog = `[${time}] 👥 파티 :: ${tier.name} +${mEarn}원 +${tier.scaCoins}C`;
           } else {
-            const workEarn = OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate);
-            const huntEarn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate);
+            const workEarn = OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate, effectiveUnitLimit);
+            const huntEarn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit);
             const gameName = activeGame ? activeGame.name : '게임 없음';
             newLog = `[${time}] 💼작업 +${workEarn}원 · 🎮${gameName} ${specs.maxHuntingUnits}기 +${huntEarn}원`;
           }
@@ -486,7 +488,7 @@
           });
         }, 1500);
         return () => clearInterval(interval);
-      }, [cpu.level, specs, workParts, workTaskIndex, unlockedGameIndex, activeGame, rebirthIncomeMult, incomeBonusRate, isPartyHunting, partyHuntingTier]);
+      }, [cpu.level, specs, workParts, workTaskIndex, unlockedGameIndex, activeGame, rebirthIncomeMult, incomeBonusRate, isPartyHunting, partyHuntingTier, effectiveUnitLimit, isDownloading]);
 
       // ----------------------------------------------------------------------
       // 6.7. 지능형 자동 구매 및 자동 강화(Auto Buy & Upgrade) 통합 루프 엔진
@@ -668,7 +670,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setWorkTaskIndex(0);
         setUnlockedGameIndex(-1);
         const dt = OMG.DOWNLOAD_TARGETS[0];
-        setDownloadTarget({ name: dt.name, sizeMb: dt.sizeMb, requiredGb: dt.requiredGb, gameIndex: dt.gameIndex });
+        setDownloadTarget({ name: dt.name, sizeMb: dt.sizeMb, requiredGb: dt.requiredGb, mineralCost: dt.mineralCost || 0, gameIndex: dt.gameIndex });
         setIsDownloading(false);
         setDownloadProgress(0);
         setIsPartyHunting(false);
@@ -679,7 +681,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
 
       const handlePurchaseMotherboard = (board) => {
         const mbCost = OMG.costToMinerals(board.cost);
-        if (minerals < mbCost) { alert(`미네랄 부족 (필요 ${OMG.formatMineral(mbCost)} · ${board.cost}C)`); return; }
+        if (minerals < mbCost) { alert(`미네랄 부족 (필요 ${OMG.formatMineral(mbCost)})`); return; }
         setMinerals((prev) => prev - mbCost);
         setMotherboard({ socketManufacturer: board.socketManufacturer, supportedDdrGeneration: board.supportedDdrGeneration, shieldIncrease: board.shieldIncrease });
       };
@@ -771,10 +773,13 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       // 8. 상위 사냥터(게임) 다운로드 진행도 시뮬레이션
       // ----------------------------------------------------------------------
       const startDownload = () => {
-        const check = OMG.validateDownloadStart(workParts, unlockedGameIndex, downloadTarget, isDownloading);
+        const check = OMG.validateDownloadStart(workParts, unlockedGameIndex, downloadTarget, isDownloading, minerals);
         if (!check.ok) {
           alert(check.reason);
           return;
+        }
+        if (check.mineralCost > 0) {
+          setMinerals((prev) => prev - check.mineralCost);
         }
         setIsDownloading(true);
         setDownloadProgress(0);
@@ -798,6 +803,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   name: nextTarget.name,
                   sizeMb: nextTarget.sizeMb,
                   requiredGb: nextTarget.requiredGb,
+                  mineralCost: nextTarget.mineralCost || 0,
                   gameIndex: nextTarget.gameIndex,
                 });
               } else {
@@ -1267,7 +1273,6 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   </div>
 
                   {/* ================================================================== */}
-                  {/* 보유 장비 창고 (인벤토리) */}                  {/* ================================================================== */}
                   {/* 보유 장비 창고 (인벤토리) */}
                   {/* ================================================================== */}
                   <div className="p-4 bg-slate-950/60 rounded border border-slate-800 col-span-2 space-y-3.5 mt-2 animate-fade-in">
@@ -1376,7 +1381,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       {OMG.MOTHERBOARDS.map(board => (
                         <button key={board.name} onClick={() => handlePurchaseMotherboard(board)} className="p-2 bg-slate-900 border border-slate-800 rounded text-center">
                           <span className="text-[10px] font-bold text-slate-200">{board.name}</span>
-                          <span className="text-[9px] text-cyan-400 font-mono block">{OMG.formatManwon(board.cost)}</span>
+                          <span className="text-[9px] text-cyan-400 font-mono block">{OMG.formatMineral(board.cost)}</span>
                         </button>
                       ))}
                     </div>
@@ -1439,7 +1444,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       })}
                     </div>
                     <p className="text-xs text-slate-400">
-                      틱당 <strong className="text-emerald-400">{OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate).toLocaleString()}원</strong>
+                      틱당 <strong className="text-emerald-400">{OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate, effectiveUnitLimit).toLocaleString()}원</strong>
                       {isPartyHunting ? ' · 파티 ON — 작업 중단' : ramAlloc.canRunWork ? ` · ${ramAlloc.activeWorkUnits || 0}기` : workSpecStatus.failures.length ? ` · ${workSpecStatus.failures[0]}` : ' · 스펙 부족'}
                     </p>
                   </div>
@@ -1449,11 +1454,11 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     <p className="text-xs text-slate-400">
                       배치 <strong className="text-cyan-400">{specs.maxHuntingUnits}기</strong>
                       (RAM {specs.huntRamFree}GB / GPU {specs.gpuRamPerUnit}GB·기 · CPU {specs.ramAllocation.maxByCpu}코어)
-                      · 틱당 <strong className="text-cyan-400">{OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate).toLocaleString()}원</strong>
+                      · 틱당 <strong className="text-cyan-400">{OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit).toLocaleString()}원</strong>
                     </p>
                     {downloadTarget ? (
                       <>
-                        <div className="text-[10px] font-mono text-slate-400">다음 다운로드: <strong>{downloadTarget.name}</strong> · 저장 {downloadTarget.requiredGb}GB</div>
+                        <div className="text-[10px] font-mono text-slate-400">다운로드: <strong>{downloadTarget.name}</strong> · 저장 {downloadTarget.requiredGb}GB · {OMG.formatMineral(downloadTarget.mineralCost || 0)}</div>
                         <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
                           <div className="bg-cyan-500 h-full transition-all" style={{ width: `${downloadProgress}%` }} />
                         </div>
