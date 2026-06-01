@@ -514,9 +514,17 @@
             const owned = inventory.filter(p => p.type === type);
             
             if (owned.length === 0) {
-              const buyMeta = { type, manufacturer: type === 'cpu' ? cpuBuyManufacturer : undefined, coolerKind: type === 'cooler' ? coolerBuyKind : undefined, storageKind: type === 'storage' ? storageBuyKind : undefined };
-              if (minerals >= OMG.getPurchaseCostMinerals(type, 0, buyMeta)) { handleBuyComponentPack(type); break; }
-              setAuto(false); break;
+              if (type === 'ram' && !OMG.canPurchaseRam(inventory)) {
+                setAuto(false);
+                setCombatLogs(prev => [...prev.slice(-7), `⚠️ [SYSTEM] RAM 창고 한도(${OMG.MAX_RAM_INVENTORY}개)로 ${type.toUpperCase()} 자동 구매가 중단되었습니다.`]);
+                break;
+              }
+              const buyMeta = getComponentBuyMeta(type);
+              const costC = OMG.getShopTierCost(type, 1, buyMeta);
+              if (normalCoins >= costC) { handleBuyComponentPack(type, 1); break; }
+              setAuto(false);
+              setCombatLogs(prev => [...prev.slice(-7), `⚠️ [SYSTEM] Normal 코인 부족으로 ${type.toUpperCase()} 자동 구매가 중단되었습니다.`]);
+              break;
             } else {
               const goal = autoTargetLevels[type] || 1;
               const target = owned.filter(p => p.level < goal && p.level < OMG.getMaxLevel(type, p)).sort((a, b) => b.level - a.level)[0];
@@ -534,7 +542,7 @@
         }, 650);
 
         return () => clearInterval(interval);
-      }, [autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage, autoTargetLevels, isUpgrading, inventory, minerals, cpuBuyManufacturer, coolerBuyKind, storageBuyKind]);
+      }, [autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage, autoTargetLevels, isUpgrading, inventory, normalCoins, cpuBuyManufacturer, coolerBuyKind, storageBuyKind]);
 
       // ----------------------------------------------------------------------
       // 7. V1.2.9 원작 강화 (Normal 코인)
@@ -551,6 +559,13 @@
         });
       };
 
+      const getComponentBuyMeta = (type) => ({
+        type,
+        manufacturer: type === 'cpu' ? cpuBuyManufacturer : undefined,
+        coolerKind: type === 'cooler' ? coolerBuyKind : undefined,
+        storageKind: type === 'storage' ? storageBuyKind : undefined,
+      });
+
       const handlePurchaseScaItem = (item) => {
         const bought = scaUpgrades[item.id] || 0;
         if (bought >= item.maxPurchases) { alert('최대 구매 횟수 도달'); return; }
@@ -564,32 +579,38 @@
         }
       };
 
-      const handleBuyComponentPack = (type) => {
-        const buyMeta = { type, manufacturer: type === 'cpu' ? cpuBuyManufacturer : undefined, coolerKind: type === 'cooler' ? coolerBuyKind : undefined, storageKind: type === 'storage' ? storageBuyKind : undefined };
-        const cost = OMG.getUpgradeCost(type, 0, buyMeta);
-        const mineralCost = OMG.costToMinerals(cost);
-        if (minerals < mineralCost) { alert(`미네랄 부족 (필요 ${OMG.formatManwon(cost)})`); return; }
-        setMinerals((prev) => prev - mineralCost);
-        const newId = `inv-${type}-${Math.random().toString(36).substring(2, 9)}`;
-        let newPart = { id: newId, type, level: 1 };
-        if (type === 'cpu') { newPart.manufacturer = cpuBuyManufacturer; newPart.ddrGeneration = motherboard.supportedDdrGeneration || 'DDR3'; }
-        else if (type === 'ram') { const t = OMG.getTier('ram', newPart, 1); newPart.clockMhz = t.clockMhz; newPart.capacityGb = t.capacityGb; newPart.ddrGeneration = t.ddrGeneration; }
-        else if (type === 'cooler') { newPart.coolerKind = coolerBuyKind; newPart.coolingCapacity = OMG.getTier('cooler', newPart, 1).coolingCapacity; }
-        else if (type === 'storage') { newPart.storageKind = storageBuyKind; const t = OMG.getTier('storage', newPart, 1); newPart.storageType = t.storageType; newPart.capacityGb = t.capacityGb; }
+      const handleBuyComponentPack = (type, level = 1) => {
+        if (type === 'ram' && !OMG.canPurchaseRam(inventory)) {
+          alert(`RAM은 최대 ${OMG.MAX_RAM_INVENTORY}개까지 창고에 보관할 수 있습니다.`);
+          return;
+        }
+        const buyMeta = getComponentBuyMeta(type);
+        const costC = OMG.getShopTierCost(type, level, buyMeta);
+        if (normalCoins < costC) {
+          alert(`Normal 코인 부족 (필요 ${costC}C · 보유 ${normalCoins.toLocaleString()}C)`);
+          return;
+        }
+        setNormalCoins((prev) => prev - costC);
+        const newPart = OMG.buildInventoryPart(type, level, {
+          manufacturer: cpuBuyManufacturer,
+          ddrGeneration: motherboard.supportedDdrGeneration || 'DDR3',
+          coolerKind: coolerBuyKind,
+          storageKind: storageBuyKind,
+        });
         setInventory((prev) => [...prev, newPart]);
+        const tierName = OMG.getPartName(type, level, newPart);
         setUpgradeStatus('success');
-        setUpgradeMessage(`📦 [구매] ${type.toUpperCase()} 1강 (-${OMG.formatManwon(cost)})`);
+        setUpgradeMessage(`📦 [구매] ${tierName} (+${level}강, -${costC}C)`);
         setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 2500);
       };
 
       const handleSellComponent = (itemId) => {
         const part = inventory.find(p => p.id === itemId);
         if (!part) return;
-        const sellManwon = Math.max(1, Math.floor(OMG.getUpgradeCost(part.type, Math.max(0, part.level - 1), part) * 0.5));
-        const sellPrice = OMG.costToMinerals(sellManwon);
-        setMinerals((prev) => prev + sellPrice);
+        const sellC = OMG.getShopSellPrice(part.type, part.level, part);
+        setNormalCoins((prev) => prev + sellC);
         setInventory((prev) => prev.filter(p => p.id !== itemId));
-        setUpgradeMessage(`💰 판매 +${sellPrice.toLocaleString()}원`);
+        setUpgradeMessage(`💰 [판매] +${sellC}C (${OMG.getPartName(part.type, part.level, part)})`);
         setUpgradeStatus('success');
         setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 2500);
       };
@@ -1110,9 +1131,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <div className="p-4 bg-slate-950/60 rounded border border-slate-800 col-span-2 space-y-3.5 animate-fade-in">
                     <div className="flex justify-between items-center">
                       <div>
-                        <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 기본 1강 부품 팩 보급소 (Warehouse Supply)</span>
+                        <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 부품 상점 — 티어별 직접 구매 (Normal 코인)</span>
                         <p className="text-xs text-slate-400">
-                          미네랄 10,000원이 Normal 코인(가스)으로 자동 환전됩니다. 코인으로 인벤토리 창고에 채웁니다. 창고에서 조심스럽게 강화한 뒤 메인 컴퓨터에 스왑 장착하세요.
+                          미네랄 10,000원이 Normal 코인(C)으로 자동 환전됩니다. 원작처럼 1~최고강까지 원하는 티어를 코인으로 바로 구매할 수 있습니다. RAM은 창고 최대 4개 · 판매 시 구매가의 50% 환급.
                         </p>
                       </div>
                       {gpu.level >= 10 && (
@@ -1125,135 +1146,128 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       )}
                     </div>
                     
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-2.5 border-t border-slate-900">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 pt-2.5 border-t border-slate-900">
                       <div className="flex flex-col space-y-1">
-                        <button 
-                          onClick={() => handleBuyComponentPack('cpu')}
-                          className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/30 rounded flex flex-col items-center justify-center transition text-center space-y-2 w-full"
-                        >
-                          <span className="text-lg">🧠</span>
-                          <span className="text-[10px] font-bold text-slate-200">CPU 1강 팩</span>
-                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.getUpgradeCost('cpu', 0, { type: 'cpu', manufacturer: cpuBuyManufacturer })} C</span>
-                        </button>
-                        <button
-                          onClick={() => setAutoBuyCpu(p => !p)}
-                          className={`py-1 text-[9px] font-bold font-mono rounded border transition flex items-center justify-center space-x-1 ${
-                            autoBuyCpu ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 neon-border-emerald animate-pulse' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-400'
-                          }`}
-                        >
-                          <span className={autoBuyCpu ? 'animate-spin' : ''}>🤖</span>
-                          <span>{autoBuyCpu ? 'AUTO ON' : 'AUTO OFF'}</span>
+                        <button onClick={() => setAutoBuyCpu(p => !p)} className={`py-1.5 text-[9px] font-bold font-mono rounded border transition flex items-center justify-center space-x-1 ${autoBuyCpu ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-slate-950 border-slate-800 text-slate-500'}`}>
+                          <span>🧠 CPU {autoBuyCpu ? 'AUTO ON' : 'AUTO OFF'}</span>
                         </button>
                         <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
-                          <button type="button" onClick={() => adjustAutoTarget('cpu', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">−</button>
-                          <span className="text-slate-400">목표 {autoTargetLevels.cpu}강</span>
-                          <button type="button" onClick={() => adjustAutoTarget('cpu', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">+</button>
+                          <button type="button" onClick={() => adjustAutoTarget('cpu', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">−</button>
+                          <span>목표 {autoTargetLevels.cpu}강</span>
+                          <button type="button" onClick={() => adjustAutoTarget('cpu', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">+</button>
                         </div>
                       </div>
-                      
                       <div className="flex flex-col space-y-1">
-                        <button 
-                          onClick={() => handleBuyComponentPack('gpu')}
-                          className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/30 rounded flex flex-col items-center justify-center transition text-center space-y-2 w-full"
-                        >
-                          <span className="text-lg">🎮</span>
-                          <span className="text-[10px] font-bold text-slate-200">GPU 1강 팩</span>
-                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.getUpgradeCost('gpu', 0, { type: 'gpu' })} C</span>
-                        </button>
-                        <button
-                          onClick={() => setAutoBuyGpu(p => !p)}
-                          className={`py-1 text-[9px] font-bold font-mono rounded border transition flex items-center justify-center space-x-1 ${
-                            autoBuyGpu ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400 neon-border-cyan animate-pulse' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-400'
-                          }`}
-                        >
-                          <span className={autoBuyGpu ? 'animate-spin' : ''}>🤖</span>
-                          <span>{autoBuyGpu ? 'AUTO ON' : 'AUTO OFF'}</span>
+                        <button onClick={() => setAutoBuyGpu(p => !p)} className={`py-1.5 text-[9px] font-bold font-mono rounded border transition flex items-center justify-center space-x-1 ${autoBuyGpu ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400' : 'bg-slate-950 border-slate-800 text-slate-500'}`}>
+                          <span>🎮 GPU {autoBuyGpu ? 'AUTO ON' : 'AUTO OFF'}</span>
                         </button>
                         <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
-                          <button type="button" onClick={() => adjustAutoTarget('gpu', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">−</button>
-                          <span className="text-slate-400">목표 {autoTargetLevels.gpu}강</span>
-                          <button type="button" onClick={() => adjustAutoTarget('gpu', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">+</button>
+                          <button type="button" onClick={() => adjustAutoTarget('gpu', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">−</button>
+                          <span>목표 {autoTargetLevels.gpu}강</span>
+                          <button type="button" onClick={() => adjustAutoTarget('gpu', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">+</button>
                         </div>
                       </div>
-                      
                       <div className="flex flex-col space-y-1">
-                        <button 
-                          onClick={() => handleBuyComponentPack('ram')}
-                          className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/30 rounded flex flex-col items-center justify-center transition text-center space-y-2 w-full"
-                        >
-                          <span className="text-lg">⚡</span>
-                          <span className="text-[10px] font-bold text-slate-200">RAM 1강 팩</span>
-                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.getUpgradeCost('ram', 0, { type: 'ram' })} C</span>
-                        </button>
-                        <button
-                          onClick={() => setAutoBuyRam(p => !p)}
-                          className={`py-1 text-[9px] font-bold font-mono rounded border transition flex items-center justify-center space-x-1 ${
-                            autoBuyRam ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 neon-border-emerald animate-pulse' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-400'
-                          }`}
-                        >
-                          <span className={autoBuyRam ? 'animate-spin' : ''}>🤖</span>
-                          <span>{autoBuyRam ? 'AUTO ON' : 'AUTO OFF'}</span>
+                        <button onClick={() => setAutoBuyRam(p => !p)} className={`py-1.5 text-[9px] font-bold font-mono rounded border transition flex items-center justify-center space-x-1 ${autoBuyRam ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-slate-950 border-slate-800 text-slate-500'}`}>
+                          <span>⚡ RAM {autoBuyRam ? 'AUTO ON' : 'AUTO OFF'}</span>
                         </button>
                         <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
-                          <button type="button" onClick={() => adjustAutoTarget('ram', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">−</button>
-                          <span className="text-slate-400">목표 {autoTargetLevels.ram}강</span>
-                          <button type="button" onClick={() => adjustAutoTarget('ram', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">+</button>
+                          <button type="button" onClick={() => adjustAutoTarget('ram', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">−</button>
+                          <span>목표 {autoTargetLevels.ram}강</span>
+                          <button type="button" onClick={() => adjustAutoTarget('ram', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">+</button>
                         </div>
                       </div>
-                      
                       <div className="flex flex-col space-y-1">
-                        <button 
-                          onClick={() => handleBuyComponentPack('cooler')}
-                          className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-rose-500/30 rounded flex flex-col items-center justify-center transition text-center space-y-2 w-full"
-                        >
-                          <span className="text-lg">❄️</span>
-                          <span className="text-[10px] font-bold text-slate-200">Cooler 1강 팩</span>
-                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.getUpgradeCost('cooler', 0, { type: 'cooler', coolerKind: coolerBuyKind })} C</span>
-                        </button>
-                        <button
-                          onClick={() => setAutoBuyCooler(p => !p)}
-                          className={`py-1 text-[9px] font-bold font-mono rounded border transition flex items-center justify-center space-x-1 ${
-                            autoBuyCooler ? 'bg-rose-500/20 border-rose-500 text-rose-400 neon-border-rose animate-pulse' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-400'
-                          }`}
-                        >
-                          <span className={autoBuyCooler ? 'animate-spin' : ''}>🤖</span>
-                          <span>{autoBuyCooler ? 'AUTO ON' : 'AUTO OFF'}</span>
+                        <button onClick={() => setAutoBuyCooler(p => !p)} className={`py-1.5 text-[9px] font-bold font-mono rounded border transition flex items-center justify-center space-x-1 ${autoBuyCooler ? 'bg-rose-500/20 border-rose-500 text-rose-400' : 'bg-slate-950 border-slate-800 text-slate-500'}`}>
+                          <span>❄️ Cooler {autoBuyCooler ? 'AUTO ON' : 'AUTO OFF'}</span>
                         </button>
                         <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
-                          <button type="button" onClick={() => adjustAutoTarget('cooler', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">−</button>
-                          <span className="text-slate-400">목표 {autoTargetLevels.cooler}강</span>
-                          <button type="button" onClick={() => adjustAutoTarget('cooler', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">+</button>
+                          <button type="button" onClick={() => adjustAutoTarget('cooler', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">−</button>
+                          <span>목표 {autoTargetLevels.cooler}강</span>
+                          <button type="button" onClick={() => adjustAutoTarget('cooler', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">+</button>
                         </div>
                       </div>
+                      <div className="flex flex-col space-y-1">
+                        <button onClick={() => setAutoBuyStorage(p => !p)} className={`py-1.5 text-[9px] font-bold font-mono rounded border transition flex items-center justify-center space-x-1 ${autoBuyStorage ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400' : 'bg-slate-950 border-slate-800 text-slate-500'}`}>
+                          <span>💾 Storage {autoBuyStorage ? 'AUTO ON' : 'AUTO OFF'}</span>
+                        </button>
+                        <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
+                          <button type="button" onClick={() => adjustAutoTarget('storage', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">−</button>
+                          <span>목표 {autoTargetLevels.storage}강</span>
+                          <button type="button" onClick={() => adjustAutoTarget('storage', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">+</button>
+                        </div>
+                      </div>
+                    </div>
 
-                      <div className="flex flex-col space-y-1">
-                        <button 
-                          onClick={() => handleBuyComponentPack('storage')}
-                          className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/30 rounded flex flex-col items-center justify-center transition text-center space-y-2 w-full"
-                        >
-                          <span className="text-lg">💾</span>
-                          <span className="text-[10px] font-bold text-slate-200">Storage 1강 팩</span>
-                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.getUpgradeCost('storage', 0, { type: 'storage', storageKind: storageBuyKind })} C</span>
-                        </button>
-                        <button
-                          onClick={() => setAutoBuyStorage(p => !p)}
-                          className={`py-1 text-[9px] font-bold font-mono rounded border transition flex items-center justify-center space-x-1 ${
-                            autoBuyStorage ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400 neon-border-cyan animate-pulse' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-400'
-                          }`}
-                        >
-                          <span className={autoBuyStorage ? 'animate-spin' : ''}>🤖</span>
-                          <span>{autoBuyStorage ? 'AUTO ON' : 'AUTO OFF'}</span>
-                        </button>
-                        <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
-                          <button type="button" onClick={() => adjustAutoTarget('storage', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">−</button>
-                          <span className="text-slate-400">목표 {autoTargetLevels.storage}강</span>
-                          <button type="button" onClick={() => adjustAutoTarget('storage', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">+</button>
-                        </div>
-                      </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 pt-3 border-t border-slate-900">
+                      {[
+                        { type: 'cpu', emoji: '🧠', label: 'CPU', variants: (
+                          <div className="flex gap-1 mb-2">
+                            {['Intel', 'AMD'].map((m) => (
+                              <button key={m} type="button" onClick={() => setCpuBuyManufacturer(m)} className={`px-2 py-0.5 text-[9px] font-mono rounded border ${cpuBuyManufacturer === m ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{m}</button>
+                            ))}
+                          </div>
+                        ) },
+                        { type: 'gpu', emoji: '🎮', label: 'GPU', variants: null },
+                        { type: 'ram', emoji: '⚡', label: 'RAM', variants: (
+                          <p className="text-[9px] font-mono text-slate-500 mb-2">보관 {OMG.countRamInInventory(inventory)}/{OMG.MAX_RAM_INVENTORY}개</p>
+                        ) },
+                        { type: 'cooler', emoji: '❄️', label: 'Cooler', variants: (
+                          <div className="flex gap-1 mb-2">
+                            {[['air', '공랭'], ['water', '수랭']].map(([k, label]) => (
+                              <button key={k} type="button" onClick={() => setCoolerBuyKind(k)} className={`px-2 py-0.5 text-[9px] font-mono rounded border ${coolerBuyKind === k ? 'bg-rose-500/20 border-rose-500 text-rose-300' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{label}</button>
+                            ))}
+                          </div>
+                        ) },
+                        { type: 'storage', emoji: '💾', label: 'Storage', variants: (
+                          <div className="flex gap-1 mb-2">
+                            {[['hdd', 'HDD'], ['nvme', 'NVMe']].map(([k, label]) => (
+                              <button key={k} type="button" onClick={() => setStorageBuyKind(k)} className={`px-2 py-0.5 text-[9px] font-mono rounded border ${storageBuyKind === k ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{label}</button>
+                            ))}
+                          </div>
+                        ) },
+                      ].map(({ type, emoji, label, variants }) => {
+                        const meta = getComponentBuyMeta(type);
+                        const catalog = OMG.getShopCatalog(type, meta);
+                        const ramFull = type === 'ram' && !OMG.canPurchaseRam(inventory);
+                        return (
+                          <div key={type} className="p-3 bg-slate-900/40 rounded border border-slate-800 space-y-1">
+                            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1">
+                              <span className="text-[10px] font-bold text-slate-200 font-mono">{emoji} {label}</span>
+                              <span className="text-[9px] text-slate-500 font-mono">{catalog.length}티어</span>
+                            </div>
+                            {variants}
+                            <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5">
+                              {catalog.map((row) => {
+                                const affordable = normalCoins >= row.costC;
+                                const disabled = ramFull || !affordable;
+                                return (
+                                  <button
+                                    key={row.level}
+                                    type="button"
+                                    disabled={disabled}
+                                    onClick={() => handleBuyComponentPack(type, row.level)}
+                                    title={row.name}
+                                    className={`w-full flex items-center justify-between px-2 py-1 rounded text-[9px] font-mono border transition text-left ${
+                                      disabled
+                                        ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed opacity-60'
+                                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-cyan-500/40 hover:text-cyan-200'
+                                    }`}
+                                  >
+                                    <span className="truncate mr-2">+{row.level}강 {row.name}</span>
+                                    <span className={`shrink-0 font-bold ${affordable ? 'text-cyan-400' : 'text-rose-400/80'}`}>{row.costC}C</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
                   {/* ================================================================== */}
+                  {/* 보유 장비 창고 (인벤토리) */}                  {/* ================================================================== */}
                   {/* 보유 장비 창고 (인벤토리) */}
                   {/* ================================================================== */}
                   <div className="p-4 bg-slate-950/60 rounded border border-slate-800 col-span-2 space-y-3.5 mt-2 animate-fade-in">
@@ -1261,12 +1275,12 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       <span className="text-xs font-bold text-emerald-400 font-mono tracking-widest uppercase flex items-center space-x-1.5 font-bold">
                         <span>📦 내 보유 장비 창고 (Inventory Warehouse)</span>
                       </span>
-                      <span className="text-[10px] text-slate-500 font-mono">보관 개수: {inventory.length}개</span>
+                      <span className="text-[10px] text-slate-500 font-mono">보관 {inventory.length}개 · RAM {OMG.countRamInInventory(inventory)}/{OMG.MAX_RAM_INVENTORY}</span>
                     </div>
 
                     {inventory.length === 0 ? (
                       <div className="py-8 text-center text-xs text-slate-600 font-mono border border-slate-900 border-dashed rounded">
-                        창고에 보관 중인 여비 장비가 없습니다. 위의 부품 팩 보급소에서 신규 1강 팩을 조달받으세요.
+                        창고에 보관 중인 여비 장비가 없습니다. 위 상점에서 원하는 강 티어를 구매하세요.
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1">
@@ -1340,7 +1354,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                                   onClick={() => handleSellComponent(p.id)}
                                   className="flex-1 py-1 bg-rose-500/10 hover:bg-rose-500 hover:text-slate-950 text-rose-400 border border-rose-500/30 rounded text-[9px] font-bold font-mono transition text-center truncate"
                                 >
-                                  💰 {50 + (p.level - 1) * 50}M
+                                  💰 {OMG.getShopSellPrice(p.type, p.level, p)}C
                                 </button>
                               </div>
                             </div>

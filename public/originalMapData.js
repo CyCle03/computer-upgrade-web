@@ -144,6 +144,7 @@
   const GPU_GRADE_NAMES = ['엔트리', '메인스트림', '퍼포먼스', '하이엔드'];
   const GPU_GRADE_ATTACK_FRAMES = [20, 16, 12, 8];
   const DOWNLOAD_BASE_MB = 25;
+  const MAX_RAM_INVENTORY = 4;  // 원작: RAM 최대 4개 구매·보관
 
   const SCA_SHOP_ITEMS = [
     { id: 'rebirthMineral500', name: '환생 시작 미네랄 +500', cost: 500, maxPurchases: 1 },
@@ -163,6 +164,67 @@
     { name: '스타크래프트 8K 게이밍', sizeMb: 50000, requiredGb: 2000, gameIndex: 1 },
     { name: '사이버펑크 2077', sizeMb: 150000, requiredGb: 4000, gameIndex: 2 },
   ];
+
+  /** 상점: 해당 강 티어 직접 구매가 (Normal 코인 C) — 원작 가이드 표의 구매가 */
+  function getShopTierCost(type, level, part) {
+    const tier = getTier(type, part, level);
+    return tier && tier.cost != null ? tier.cost : Infinity;
+  }
+
+  /** 상점: 해당 티어 판매 환급 (구매가의 50%, Normal 코인 C) */
+  function getShopSellPrice(type, level, part) {
+    const cost = getShopTierCost(type, level, part);
+    return cost === Infinity ? 0 : Math.floor(cost * 0.5);
+  }
+
+  function getShopCatalog(type, part) {
+    return getPartTable(type, part).map((row) => ({
+      level: row.level,
+      name: row.name,
+      costC: row.cost,
+      prob: row.prob,
+      cores: row.cores,
+      cooling: row.cooling,
+      capacityGb: row.capacityGb,
+    }));
+  }
+
+  function countRamInInventory(inventory) {
+    return (inventory || []).filter((p) => p.type === 'ram').length;
+  }
+
+  function canPurchaseRam(inventory) {
+    return countRamInInventory(inventory) < MAX_RAM_INVENTORY;
+  }
+
+  function buildInventoryPart(type, level, partMeta) {
+    const meta = Object.assign({ type }, partMeta || {});
+    const id = `inv-${type}-${Math.random().toString(36).substring(2, 9)}`;
+    let newPart = { id, type, level };
+    if (type === 'cpu') {
+      const t = getTier('cpu', meta, level);
+      newPart.manufacturer = meta.manufacturer || 'Intel';
+      newPart.ddrGeneration = meta.ddrGeneration || 'DDR3';
+      if (t && t.name) newPart.name = t.name;
+    } else if (type === 'gpu') {
+      const t = getTier('gpu', meta, level);
+      if (t && t.name) newPart.name = t.name;
+    } else if (type === 'ram') {
+      const t = getTier('ram', meta, level);
+      newPart.clockMhz = t.clockMhz;
+      newPart.capacityGb = t.capacityGb;
+      newPart.ddrGeneration = t.ddrGeneration;
+    } else if (type === 'cooler') {
+      newPart.coolerKind = meta.coolerKind || 'air';
+      newPart.coolingCapacity = getTier('cooler', newPart, level).coolingCapacity;
+    } else if (type === 'storage') {
+      newPart.storageKind = meta.storageKind || 'hdd';
+      const t = getTier('storage', newPart, level);
+      newPart.storageType = t.storageType;
+      newPart.capacityGb = t.capacityGb;
+    }
+    return newPart;
+  }
 
   function getPartTable(type, part) {
     if (type === 'cpu') return part && part.manufacturer === 'AMD' ? AMD_CPU : INTEL_CPU;
@@ -562,6 +624,7 @@
     REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
     calcGameSpeedFrames, calcGameSpeedMultiplier, calcGpuGrade, calcGpuAttackFrames,
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
+    MAX_RAM_INVENTORY, getShopTierCost, getShopSellPrice, getShopCatalog, countRamInInventory, canPurchaseRam, buildInventoryPart,
     costToMinerals, formatManwon, getPurchaseCostMinerals,
     getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getWorkTask, getGameHunt,
     getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
