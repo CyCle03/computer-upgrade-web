@@ -111,11 +111,11 @@
       });
       const [cooler, setCooler] = useState(() => {
         const saved = localStorage.getItem('sca_cooler');
-        return saved !== null ? JSON.parse(saved) : { level: 1, coolingCapacity: 100, coolerKind: 'air' };
+        return saved !== null ? JSON.parse(saved) : { level: 1, coolingCapacity: 500, coolerKind: 'air' };
       });
       const [motherboard, setMotherboard] = useState(() => {
         const saved = localStorage.getItem('sca_motherboard');
-        return saved !== null ? JSON.parse(saved) : { socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 200 };
+        return saved !== null ? JSON.parse(saved) : { socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 0 };
       });
       const [storage, setStorage] = useState(() => {
         const saved = localStorage.getItem('sca_storage');
@@ -129,7 +129,7 @@
           { id: 'inv-cpu-1', type: 'cpu', level: 1, manufacturer: 'Intel', ddrGeneration: 'DDR3' },
           { id: 'inv-gpu-1', type: 'gpu', level: 1 },
           { id: 'inv-ram-1', type: 'ram', level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' },
-          { id: 'inv-cooler-1', type: 'cooler', level: 1, coolingCapacity: 100, coolerKind: 'air' },
+          { id: 'inv-cooler-1', type: 'cooler', level: 1, coolingCapacity: 500, coolerKind: 'air' },
           { id: 'inv-storage-1', type: 'storage', level: 1, storageType: 'HDD', storageKind: 'hdd', capacityGb: 60 }
         ];
       });
@@ -356,7 +356,7 @@
 
       useEffect(() => {
         if (cooler.level === 1 && cooler.coolingCapacity === 30) {
-          setCooler(c => ({ ...c, coolingCapacity: 100, coolerKind: c.coolerKind || 'air' }));
+          setCooler(c => ({ ...c, coolingCapacity: 500, coolerKind: c.coolerKind || 'air' }));
         }
       }, []);
 
@@ -653,14 +653,14 @@
 setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setGpu({ level: 1 });
         setRam({ level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' });
-        setCooler({ level: 1, coolingCapacity: 100, coolerKind: 'air' });
-        setMotherboard({ socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 200 });
+        setCooler({ level: 1, coolingCapacity: 500, coolerKind: 'air' });
+        setMotherboard({ socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 0 });
         setStorage({ type: 'HDD', capacityGb: 60, level: 1, storageKind: 'hdd' });
         setInventory([
           { id: 'inv-cpu-1', type: 'cpu', level: 1, manufacturer: 'Intel', ddrGeneration: 'DDR3' },
           { id: 'inv-gpu-1', type: 'gpu', level: 1 },
           { id: 'inv-ram-1', type: 'ram', level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' },
-          { id: 'inv-cooler-1', type: 'cooler', level: 1, coolingCapacity: 100, coolerKind: 'air' },
+          { id: 'inv-cooler-1', type: 'cooler', level: 1, coolingCapacity: 500, coolerKind: 'air' },
           { id: 'inv-storage-1', type: 'storage', level: 1, storageType: 'HDD', storageKind: 'hdd', capacityGb: 60 }
         ]);
         setWorkTaskIndex(0);
