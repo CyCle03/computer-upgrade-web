@@ -199,22 +199,59 @@
     return { coins, remainder: minerals % MINERAL_PER_COIN };
   }
 
-  function calcRebirthScaReward(gpuLevel, rebirthCount) {
-    return Math.max(10, Math.floor(gpuLevel * 2 + rebirthCount * 5));
+  const REBIRTH_MINERAL_CAP = 30000;
+
+  function calcRebirthPerformanceScore(parts) {
+    const cpu = parts.cpu || { level: 1 };
+    const gpu = parts.gpu || { level: 1 };
+    const ram = parts.ram || { level: 1 };
+    const cooler = parts.cooler || { level: 1 };
+    const storage = parts.storage || { level: 1 };
+    const cpuTier = getTier('cpu', cpu, cpu.level);
+    const cpuPerf = cpuTier && cpuTier.perf ? cpuTier.perf : cpu.level * 10;
+    return cpuPerf + gpu.level * 800 + ram.level * 200 + cooler.level * 150 + storage.level * 100;
   }
 
-  function calcRebirthStartMinerals(scaUpgrades) {
-    return scaUpgrades.rebirthMineral500 ? 500 : 0;
+  function calcRebirthStatGain(parts) {
+    return calcRebirthPerformanceScore(parts);
+  }
+
+  function calcRebirthScaReward(parts) {
+    const score = calcRebirthPerformanceScore(parts);
+    return Math.max(10, Math.floor(score / 100));
+  }
+
+  function calcRebirthMineralRange(scaUpgrades) {
+    const u = scaUpgrades || {};
+    const start = u.rebirthMineral500 ? 500 : 0;
+    const maxBonus =
+      (u.rebirthMineralMax200 || 0) * 200 +
+      (u.rebirthMineralMax2000 || 0) * 2000 +
+      (u.rebirthMineralMax7500 || 0) * 7500;
+    const max = Math.min(REBIRTH_MINERAL_CAP, Math.max(start, start + maxBonus));
+    return { min: start, max };
+  }
+
+  function rollRebirthStartMinerals(scaUpgrades) {
+    const range = calcRebirthMineralRange(scaUpgrades);
+    if (range.max <= range.min) return range.min;
+    return range.min + Math.floor(Math.random() * (range.max - range.min + 1));
+  }
+
+  function calcRebirthIncomeMultiplier(rebirthStat) {
+    return 1 + Math.min((rebirthStat || 0) * 0.00005, 10);
   }
 
   function calcIncomeBonus(scaUpgrades) { return (scaUpgrades.huntIncome1 || 0) * 0.01; }
   function calcProbBonus(scaUpgrades) { return (scaUpgrades.upgradeProb01 || 0) * 0.001; }
 
   global.OriginalMapGame = {
-    MINERAL_PER_COIN, INTEL_CPU, AMD_CPU, GPU, RAM, COOLER_AIR, COOLER_WATER, HDD, NVME,
+    MINERAL_PER_COIN, REBIRTH_MINERAL_CAP, INTEL_CPU, AMD_CPU, GPU, RAM, COOLER_AIR, COOLER_WATER, HDD, NVME,
     MOTHERBOARDS, WORK_HUNTING_GROUNDS, PARTY_HUNTING_TIERS, SCA_SHOP_ITEMS, DOWNLOAD_TARGETS,
     getPartTable, getMaxLevel, getTier, getUpgradeCost, getUpgradeProbability, getPartName,
     applyTierStats, getCpuCoolingRequired, getCpuCores, convertMineralsToCoins,
-    calcRebirthScaReward, calcRebirthStartMinerals, calcIncomeBonus, calcProbBonus,
+    calcRebirthPerformanceScore, calcRebirthStatGain, calcRebirthScaReward,
+    calcRebirthMineralRange, rollRebirthStartMinerals, calcRebirthIncomeMultiplier,
+    calcIncomeBonus, calcProbBonus,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -72,6 +72,16 @@
         const saved = localStorage.getItem('sca_rebirthCount');
         return saved !== null ? parseInt(saved, 10) : 0;
       });
+      const [rebirthStat, setRebirthStat] = useState(() => {
+        const saved = localStorage.getItem('sca_rebirthStat');
+        return saved !== null ? parseInt(saved, 10) : 0;
+      });
+      const defaultAutoTargets = { cpu: 1, gpu: 1, ram: 1, cooler: 1, storage: 1 };
+      const [autoTargetLevels, setAutoTargetLevels] = useState(() => {
+        try {
+          return { ...defaultAutoTargets, ...JSON.parse(localStorage.getItem('sca_autoTargetLevels') || '{}') };
+        } catch (e) { return defaultAutoTargets; }
+      });
       const [scaUpgrades, setScaUpgrades] = useState(() => JSON.parse(localStorage.getItem('sca_scaUpgrades') || '{}'));
       const [showScaCenter, setShowScaCenter] = useState(false);
       const [partyHuntingTier, setPartyHuntingTier] = useState(0);
@@ -210,6 +220,7 @@
       // ----------------------------------------------------------------------
       const incomeBonusRate = useMemo(() => OMG.calcIncomeBonus(scaUpgrades), [scaUpgrades]);
       const probBonusRate = useMemo(() => OMG.calcProbBonus(scaUpgrades), [scaUpgrades]);
+      const rebirthIncomeMult = useMemo(() => OMG.calcRebirthIncomeMultiplier(rebirthStat), [rebirthStat]);
       const getCpuName = (level, m) => OMG.getPartName('cpu', level, { type: 'cpu', manufacturer: m || cpu.manufacturer });
       const getGpuName = (level) => OMG.getPartName('gpu', level, { type: 'gpu' });
       const getRamName = (level, part) => OMG.getPartName('ram', level, part || ram);
@@ -287,6 +298,14 @@
       }, [cpu, gpu, ram, cooler, motherboard, storage]);
 
       useEffect(() => {
+        if (localStorage.getItem('sca_rebirthStatMigrated')) return;
+        if (rebirthCount > 0 && rebirthStat === 0) {
+          setRebirthStat(rebirthCount * 10000);
+        }
+        localStorage.setItem('sca_rebirthStatMigrated', '1');
+      }, []);
+
+      useEffect(() => {
         if (cooler.level === 1 && cooler.coolingCapacity === 30) {
           setCooler(c => ({ ...c, coolingCapacity: 100, coolerKind: c.coolerKind || 'air' }));
         }
@@ -302,10 +321,10 @@
         if (isPartyHunting) return;
         const interval = setInterval(() => {
           const base = huntingGround.mineralBase || 10 * huntingGround.multiplier;
-          setMinerals(p => p + Math.round(base * specs.penalties.mineralMultiplier * (1 + rebirthCount * 0.5) * (1 + incomeBonusRate)));
+          setMinerals(p => p + Math.round(base * specs.penalties.mineralMultiplier * rebirthIncomeMult * (1 + incomeBonusRate)));
         }, 1000);
         return () => clearInterval(interval);
-      }, [specs, huntingGround, rebirthCount, incomeBonusRate, isPartyHunting]);
+      }, [specs, huntingGround, rebirthIncomeMult, incomeBonusRate, isPartyHunting]);
       useEffect(() => {
         if (!isPartyHunting) return;
         const tier = OMG.PARTY_HUNTING_TIERS[partyHuntingTier];
@@ -325,6 +344,8 @@
         localStorage.setItem('sca_normalCoins', normalCoins.toString());
         localStorage.setItem('sca_scaCoins', scaCoins.toString());
         localStorage.setItem('sca_rebirthCount', rebirthCount.toString());
+        localStorage.setItem('sca_rebirthStat', rebirthStat.toString());
+        localStorage.setItem('sca_autoTargetLevels', JSON.stringify(autoTargetLevels));
         localStorage.setItem('sca_scaUpgrades', JSON.stringify(scaUpgrades));
         localStorage.setItem('sca_partyHuntingTier', String(partyHuntingTier));
         localStorage.setItem('sca_cpu', JSON.stringify(cpu));
@@ -341,7 +362,7 @@
         localStorage.setItem('sca_autoBuyRam', autoBuyRam.toString());
         localStorage.setItem('sca_autoBuyCooler', autoBuyCooler.toString());
         localStorage.setItem('sca_autoBuyStorage', autoBuyStorage.toString());
-      }, [minerals, normalCoins, scaCoins, rebirthCount, scaUpgrades, partyHuntingTier, cpu, gpu, ram, cooler, motherboard, storage, huntingGround, downloadTarget, inventory, autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage]);
+      }, [minerals, normalCoins, scaCoins, rebirthCount, rebirthStat, autoTargetLevels, scaUpgrades, partyHuntingTier, cpu, gpu, ram, cooler, motherboard, storage, huntingGround, downloadTarget, inventory, autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage]);
 
       // ----------------------------------------------------------------------
       // 6.6. 가상 사냥터 실시간 전투 매트릭스 로그 생성기 (스타1 콘솔 싱크)
@@ -357,7 +378,7 @@
             newLog = `[${time}] 👥 파티 :: ${tier.name} +${mEarn}원 +${tier.scaCoins}C`;
           } else {
             const base = huntingGround.mineralBase || 10 * huntingGround.multiplier;
-            const earn = Math.round(base * specs.penalties.mineralMultiplier * (1 + rebirthCount * 0.5) * (1 + incomeBonusRate));
+            const earn = Math.round(base * specs.penalties.mineralMultiplier * rebirthIncomeMult * (1 + incomeBonusRate));
             newLog = `[${time}] 💼 작업 :: ${huntingGround.name} 자동 수입 +${earn}원`;
           }
           setCombatLogs(prev => {
@@ -367,7 +388,7 @@
           });
         }, 1500);
         return () => clearInterval(interval);
-      }, [cpu.level, specs, huntingGround, rebirthCount, incomeBonusRate, isPartyHunting, partyHuntingTier]);
+      }, [cpu.level, specs, huntingGround, rebirthIncomeMult, incomeBonusRate, isPartyHunting, partyHuntingTier]);
 
       // ----------------------------------------------------------------------
       // 6.7. 지능형 자동 구매 및 자동 강화(Auto Buy & Upgrade) 통합 루프 엔진
@@ -399,15 +420,15 @@
               if (normalCoins >= OMG.getUpgradeCost(type, 0, buyMeta)) { handleBuyComponentPack(type); break; }
               setAuto(false); break;
             } else {
-              const target = owned.filter(p => p.level < OMG.getMaxLevel(type, p)).sort((a, b) => b.level - a.level)[0];
+              const goal = autoTargetLevels[type] || 1;
+              const target = owned.filter(p => p.level < goal && p.level < OMG.getMaxLevel(type, p)).sort((a, b) => b.level - a.level)[0];
               if (target) {
                 const cost = OMG.getUpgradeCost(target.type, target.level, target);
                 if (normalCoins >= cost) { handleInventoryUpgrade(target.id); break; }
                 setAuto(false); break;
               } else {
-                // 더 이상 10강 미만의 예비 부품이 없을 경우 완성 정지
                 setAuto(false);
-                setCombatLogs(prev => [...prev.slice(-7), `🎉 [SYSTEM] 인벤토리에 이미 10강 이상의 ${type.toUpperCase()} 부품이 있어 자동 강화를 마칩니다.`]);
+                setCombatLogs(prev => [...prev.slice(-7), `🎉 [SYSTEM] ${type.toUpperCase()} 자동강화 목표 ${goal}강 달성.`]);
                 break;
               }
             }
@@ -415,13 +436,22 @@
         }, 650);
 
         return () => clearInterval(interval);
-      }, [autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage, isUpgrading, inventory, normalCoins, cpuBuyManufacturer, coolerBuyKind, storageBuyKind]);
+      }, [autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage, autoTargetLevels, isUpgrading, inventory, normalCoins, cpuBuyManufacturer, coolerBuyKind, storageBuyKind]);
 
       // ----------------------------------------------------------------------
       // 7. V1.2.9 원작 강화 (Normal 코인)
       // ----------------------------------------------------------------------
       const getUpgradeCost = (type, level, part) => OMG.getUpgradeCost(type, level, part || { type });
       const getUpgradeProbability = (type, level, part) => OMG.getUpgradeProbability(type, level, part || { type }, probBonusRate);
+
+      const adjustAutoTarget = (type, delta) => {
+        setAutoTargetLevels(prev => {
+          const sample = inventory.find(p => p.type === type) || { type };
+          const maxLv = OMG.getMaxLevel(type, sample);
+          const next = Math.max(1, Math.min(maxLv, (prev[type] || 1) + delta));
+          return { ...prev, [type]: next };
+        });
+      };
 
       const handlePurchaseScaItem = (item) => {
         const bought = scaUpgrades[item.id] || 0;
@@ -494,11 +524,15 @@
 
       const handleRebirth = () => {
         if (gpu.level < 10) { alert('GPU 10강 필요'); return; }
-        if (!confirm('환생 시 부품·미네랄·Normal 코인이 초기화됩니다. SCA 코인/센터 효과는 유지됩니다.')) return;
-        const scaReward = OMG.calcRebirthScaReward(gpu.level, rebirthCount);
+        if (!confirm('환생 시 부품·미네랄·Normal 코인이 초기화됩니다. SCA 코인/센터·환생 수치는 유지됩니다.')) return;
+        const parts = { cpu, gpu, ram, cooler, storage };
+        const statGain = OMG.calcRebirthStatGain(parts);
+        const scaReward = OMG.calcRebirthScaReward(parts);
+        const startMinerals = OMG.rollRebirthStartMinerals(scaUpgrades);
         setScaCoins((prev) => prev + scaReward);
+        setRebirthStat((prev) => prev + statGain);
         setRebirthCount((prev) => prev + 1);
-        setMinerals(OMG.calcRebirthStartMinerals(scaUpgrades));
+        setMinerals(startMinerals);
         setNormalCoins(0);
         setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR4' });
         setGpu({ level: 1 });
@@ -517,7 +551,8 @@
         setHuntingGround({ name: g0.name, multiplier: g0.multiplier, mineralBase: g0.mineralBase, groundIndex: 0 });
         const dt = OMG.DOWNLOAD_TARGETS[0];
         setDownloadTarget({ name: dt.name, sizeMb: dt.sizeMb, requiredGb: dt.requiredGb, groundIndex: dt.groundIndex });
-        setUpgradeMessage(`✨ 환생 완료 — SCA +${scaReward}C`);
+        const mineralRange = OMG.calcRebirthMineralRange(scaUpgrades);
+        setUpgradeMessage(`✨ 환생 +${statGain.toLocaleString()} 환생수치 · SCA +${scaReward}C · 미네랄 ${startMinerals.toLocaleString()}원 (${mineralRange.min}~${mineralRange.max})`);
         setUpgradeStatus('success');
       };
 
@@ -726,7 +761,7 @@
               </div>
               <div>
                 <h1 className="text-sm text-slate-400 uppercase tracking-widest font-semibold">복원 제어 터미널</h1>
-                <p className="text-xs text-emerald-500 font-mono">REBIRTH LEVEL: {rebirthCount} (x{(1 + rebirthCount * 0.5).toFixed(1)} BUFF)</p>
+                <p className="text-xs text-emerald-500 font-mono">환생 {rebirthCount}회 · 환생수치 {rebirthStat.toLocaleString()} · 수입 x{rebirthIncomeMult.toFixed(2)}</p>
               </div>
             </div>
 
@@ -760,11 +795,17 @@
           </div>
           {showScaCenter && (
             <section className="mb-4 p-4 border border-cyan-500/20 rounded-xl grid grid-cols-2 md:grid-cols-4 gap-2">
-              {OMG.SCA_SHOP_ITEMS.map(item => (
-                <button key={item.id} onClick={() => handlePurchaseScaItem(item)} className="p-2 bg-slate-950 border border-slate-800 rounded text-[10px] font-mono text-left">
-                  <div>{item.name}</div><div className="text-cyan-400">{item.cost} SCA</div>
-                </button>
-              ))}
+              {OMG.SCA_SHOP_ITEMS.map(item => {
+                const bought = scaUpgrades[item.id] || 0;
+                const soldOut = bought >= item.maxPurchases;
+                return (
+                  <button key={item.id} onClick={() => handlePurchaseScaItem(item)} disabled={soldOut} className={`p-2 bg-slate-950 border rounded text-[10px] font-mono text-left ${soldOut ? 'border-slate-900 opacity-40' : 'border-slate-800 hover:border-cyan-500/40'}`}>
+                    <div>{item.name}</div>
+                    <div className="text-cyan-400">{item.cost} SCA</div>
+                    <div className="text-slate-500 mt-1">{bought}/{item.maxPurchases}</div>
+                  </button>
+                );
+              })}
             </section>
           )}
 
@@ -985,6 +1026,11 @@
                           <span className={autoBuyCpu ? 'animate-spin' : ''}>🤖</span>
                           <span>{autoBuyCpu ? 'AUTO ON' : 'AUTO OFF'}</span>
                         </button>
+                        <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
+                          <button type="button" onClick={() => adjustAutoTarget('cpu', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">−</button>
+                          <span className="text-slate-400">목표 {autoTargetLevels.cpu}강</span>
+                          <button type="button" onClick={() => adjustAutoTarget('cpu', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">+</button>
+                        </div>
                       </div>
                       
                       <div className="flex flex-col space-y-1">
@@ -1005,6 +1051,11 @@
                           <span className={autoBuyGpu ? 'animate-spin' : ''}>🤖</span>
                           <span>{autoBuyGpu ? 'AUTO ON' : 'AUTO OFF'}</span>
                         </button>
+                        <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
+                          <button type="button" onClick={() => adjustAutoTarget('gpu', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">−</button>
+                          <span className="text-slate-400">목표 {autoTargetLevels.gpu}강</span>
+                          <button type="button" onClick={() => adjustAutoTarget('gpu', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">+</button>
+                        </div>
                       </div>
                       
                       <div className="flex flex-col space-y-1">
@@ -1025,6 +1076,11 @@
                           <span className={autoBuyRam ? 'animate-spin' : ''}>🤖</span>
                           <span>{autoBuyRam ? 'AUTO ON' : 'AUTO OFF'}</span>
                         </button>
+                        <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
+                          <button type="button" onClick={() => adjustAutoTarget('ram', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">−</button>
+                          <span className="text-slate-400">목표 {autoTargetLevels.ram}강</span>
+                          <button type="button" onClick={() => adjustAutoTarget('ram', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">+</button>
+                        </div>
                       </div>
                       
                       <div className="flex flex-col space-y-1">
@@ -1045,6 +1101,11 @@
                           <span className={autoBuyCooler ? 'animate-spin' : ''}>🤖</span>
                           <span>{autoBuyCooler ? 'AUTO ON' : 'AUTO OFF'}</span>
                         </button>
+                        <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
+                          <button type="button" onClick={() => adjustAutoTarget('cooler', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">−</button>
+                          <span className="text-slate-400">목표 {autoTargetLevels.cooler}강</span>
+                          <button type="button" onClick={() => adjustAutoTarget('cooler', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">+</button>
+                        </div>
                       </div>
 
                       <div className="flex flex-col space-y-1">
@@ -1065,6 +1126,11 @@
                           <span className={autoBuyStorage ? 'animate-spin' : ''}>🤖</span>
                           <span>{autoBuyStorage ? 'AUTO ON' : 'AUTO OFF'}</span>
                         </button>
+                        <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
+                          <button type="button" onClick={() => adjustAutoTarget('storage', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">−</button>
+                          <span className="text-slate-400">목표 {autoTargetLevels.storage}강</span>
+                          <button type="button" onClick={() => adjustAutoTarget('storage', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-slate-300">+</button>
+                        </div>
                       </div>
                     </div>
                   </div>
