@@ -538,11 +538,10 @@
         if (isDownloading) { alert('게임 다운로드 중에는 환생할 수 없습니다. (v1.0.6)'); return; }
         if (!confirm('환생 시 부품·미네랄·Normal 코인이 초기화됩니다. SCA 코인/센터·환생 수치는 유지됩니다.')) return;
         const parts = { cpu, gpu, ram, cooler, storage };
-        const statGain = OMG.calcRebirthStatGain(parts);
-        const scaReward = OMG.calcRebirthScaReward(parts);
+        const outcome = OMG.calcRebirthOutcome(parts, rebirthStat);
         const startMinerals = OMG.calcRebirthStartMinerals(scaUpgrades);
-        setScaCoins((prev) => prev + scaReward);
-        setRebirthStat((prev) => prev + statGain);
+        setScaCoins((prev) => prev + outcome.scaReward);
+        setRebirthStat(outcome.correctedStat);
         setRebirthCount((prev) => prev + 1);
         setMinerals(startMinerals);
         setNormalCoins(0);
@@ -567,7 +566,7 @@
         setDownloadProgress(0);
         setIsPartyHunting(false);
         setAutoTargetLevels(defaultAutoTargets);
-        setUpgradeMessage(`✨ 환생 +${statGain.toLocaleString()} 환생수치 · SCA +${scaReward}C · 시작 미네랄 ${startMinerals.toLocaleString()}원`);
+        setUpgradeMessage(`✨ 환생 +${outcome.statGain.toLocaleString()} (보정 전 ${outcome.baseStat.toLocaleString()} → 보정 후 ${outcome.correctedStat.toLocaleString()}) · SCA +${outcome.scaReward.toLocaleString()}C · 시작 미네랄 ${startMinerals.toLocaleString()}원`);
         setUpgradeStatus('success');
       };
 

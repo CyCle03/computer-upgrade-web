@@ -209,6 +209,56 @@
 
   const REBIRTH_MINERAL_CAP = 1000000;
 
+  // 환생수치 구간표 (제공된 표 기준)
+  // % 계산은 '보정 이전 환생수치' 기준
+  const REBIRTH_REWARD_TIERS = [
+    { min: 0, max: 5_000_000, scaBase: 50_000, scaRate: 0.01, correction: { type: 'add', value: 5_000_000 } },
+    { min: 5_000_000, max: 10_000_000, scaBase: 100_000, scaRate: 0.01, correction: { type: 'add', value: 7_000_000 } },
+    { min: 10_000_000, max: 20_000_000, scaBase: 200_000, scaRate: 0.005, correction: { type: 'add', value: 10_000_000 } },
+    { min: 20_000_000, max: 40_000_000, scaBase: 300_000, scaRate: 0.005, correction: { type: 'mul', value: 1.40 }, extra: { incomeCoupons: 100, speedCoupons: 5 } },
+    { min: 40_000_000, max: 100_000_000, scaBase: 500_000, scaRate: 0.002, correction: { type: 'mul', value: 1.30 } },
+    { min: 100_000_000, max: 300_000_000, scaBase: 700_000, scaRate: 0.001, correction: { type: 'mul', value: 1.25 } },
+    { min: 300_000_000, max: Infinity, scaBase: 1_000_000, scaRate: 0.001, correction: { type: 'mul', value: 1.25 } },
+  ];
+
+  function getRebirthRewardTier(baseRebirthStat) {
+    const s = Math.max(0, baseRebirthStat || 0);
+    return REBIRTH_REWARD_TIERS.find((t) => s >= t.min && s < t.max) || REBIRTH_REWARD_TIERS[REBIRTH_REWARD_TIERS.length - 1];
+  }
+
+  /** 표 기준: SCA = base + (보정 전 환생수치 × rate) */
+  function calcRebirthScaRewardByRebirthStat(baseRebirthStat) {
+    const tier = getRebirthRewardTier(baseRebirthStat);
+    const s = Math.max(0, baseRebirthStat || 0);
+    return Math.max(0, Math.floor(tier.scaBase + s * tier.scaRate));
+  }
+
+  /** 표 기준: 보정 적용 후 환생수치 */
+  function applyRebirthStatCorrection(baseRebirthStat) {
+    const tier = getRebirthRewardTier(baseRebirthStat);
+    const s = Math.max(0, baseRebirthStat || 0);
+    if (tier.correction.type === 'add') return s + tier.correction.value;
+    if (tier.correction.type === 'mul') return Math.floor(s * tier.correction.value);
+    return s;
+  }
+
+  /** 환생 처리 결과(보정 전/후 수치, SCA, 쿠폰) */
+  function calcRebirthOutcome(parts, prevRebirthStat) {
+    const statGain = calcRebirthStatGain(parts);
+    const baseStat = Math.max(0, (prevRebirthStat || 0)) + statGain;
+    const tier = getRebirthRewardTier(baseStat);
+    const scaReward = calcRebirthScaRewardByRebirthStat(baseStat);
+    const correctedStat = applyRebirthStatCorrection(baseStat);
+    return {
+      statGain,
+      baseStat,
+      correctedStat,
+      scaReward,
+      tier,
+      extra: tier.extra || null,
+    };
+  }
+
   function calcRebirthPerformanceScore(parts) {
     const cpu = parts.cpu || { level: 1 };
     const gpu = parts.gpu || { level: 1 };
@@ -224,7 +274,12 @@
     return calcRebirthPerformanceScore(parts);
   }
 
-  function calcRebirthScaReward(parts) {
+  function calcRebirthScaReward(parts, prevRebirthStat) {
+    // 기존 호출부 호환: prevRebirthStat가 있으면 표 기반, 없으면 성능점수 기반 근사
+    if (typeof prevRebirthStat === 'number') {
+      const statGain = calcRebirthStatGain(parts);
+      return calcRebirthScaRewardByRebirthStat(prevRebirthStat + statGain);
+    }
     const score = calcRebirthPerformanceScore(parts);
     return Math.max(10, Math.floor(score / 100));
   }
@@ -304,6 +359,7 @@
     calcRebirthPerformanceScore, calcRebirthStatGain, calcRebirthScaReward,
     calcRebirthStartMinerals, calcRebirthIncomeMultiplier,
     calcIncomeBonus, calcProbBonus,
+    REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
     calcGameSpeedFrames, calcGameSpeedMultiplier, calcGpuGrade, calcGpuAttackFrames,
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
     createIntelCpu11InventoryItem,
