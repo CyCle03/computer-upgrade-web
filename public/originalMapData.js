@@ -98,12 +98,13 @@
     { name: 'AMD X670E (DDR5)', socketManufacturer: 'AMD', supportedDdrGeneration: 'DDR5', shieldIncrease: 900, cost: 100 },
   ];
 
+  // 원작 UI: 작업명 [필요 RAM GB] — tierIndex 0=시작, 상위는 다운로드로만 해금
   const WORK_HUNTING_GROUNDS = [
-    { name: '간단한 문서작업 (1단계)', multiplier: 1.0, mineralBase: 10 },
-    { name: '2D/3D 그래픽 작업 (2단계)', multiplier: 2.5, mineralBase: 25 },
-    { name: 'AI 작업 (3단계)', multiplier: 5.0, mineralBase: 50 },
-    { name: '스타크래프트 8K 게이밍 (4단계)', multiplier: 10.0, mineralBase: 100 },
-    { name: '사이버펑크 2077 (5단계)', multiplier: 20.0, mineralBase: 200 },
+    { name: '간단한 문서작업 (1단계)', multiplier: 1.0, mineralBase: 10, tierIndex: 0, requiredRamGb: 1 },
+    { name: '2D/3D 그래픽 작업 (2단계)', multiplier: 2.5, mineralBase: 25, tierIndex: 1, requiredRamGb: 4 },
+    { name: 'AI 작업 (3단계)', multiplier: 5.0, mineralBase: 50, tierIndex: 2, requiredRamGb: 8 },
+    { name: '스타크래프트 8K 게이밍 (4단계)', multiplier: 10.0, mineralBase: 100, tierIndex: 3, requiredRamGb: 16 },
+    { name: '사이버펑크 2077 (5단계)', multiplier: 20.0, mineralBase: 200, tierIndex: 4, requiredRamGb: 32 },
   ];
 
   const PARTY_HUNTING_TIERS = [
@@ -138,10 +139,10 @@
   ];
 
   const DOWNLOAD_TARGETS = [
-    { name: '2D/3D 그래픽 작업 (2단계)', sizeMb: 5000, requiredGb: 500, groundIndex: 1 },
-    { name: 'AI 작업 (3단계)', sizeMb: 15000, requiredGb: 1000, groundIndex: 2 },
-    { name: '스타크래프트 8K 게이밍 (4단계)', sizeMb: 50000, requiredGb: 2000, groundIndex: 3 },
-    { name: '사이버펑크 2077 (5단계)', sizeMb: 150000, requiredGb: 4000, groundIndex: 4 },
+    { name: '2D/3D 그래픽 작업 (2단계)', sizeMb: 5000, requiredGb: 500, requiredRamGb: 4, groundIndex: 1 },
+    { name: 'AI 작업 (3단계)', sizeMb: 15000, requiredGb: 1000, requiredRamGb: 8, groundIndex: 2 },
+    { name: '스타크래프트 8K 게이밍 (4단계)', sizeMb: 50000, requiredGb: 2000, requiredRamGb: 16, groundIndex: 3 },
+    { name: '사이버펑크 2077 (5단계)', sizeMb: 150000, requiredGb: 4000, requiredRamGb: 32, groundIndex: 4 },
   ];
 
   function getPartTable(type, part) {
@@ -339,6 +340,80 @@
     return Math.round(speed * 10) / 10;
   }
 
+
+  function getRamCapacityGb(ram) {
+    return (ram && ram.capacityGb) || 1;
+  }
+
+  function getStorageCapacityGb(storage) {
+    return (storage && storage.capacityGb) || 60;
+  }
+
+  function getWorkTier(tierIndex) {
+    const idx = Math.max(0, Math.min(WORK_HUNTING_GROUNDS.length - 1, tierIndex || 0));
+    return WORK_HUNTING_GROUNDS[idx];
+  }
+
+  /** 저장값·UI 조작으로 티어가 앞당겨진 경우 원작 순서(다운로드 해금)에 맞게 보정 */
+  function normalizeWorkProgress(huntingGround, downloadTarget) {
+    let groundIdx = Math.max(0, Math.min(WORK_HUNTING_GROUNDS.length - 1, (huntingGround && huntingGround.groundIndex) || 0));
+    let nextTarget = null;
+
+    if (downloadTarget && downloadTarget.groundIndex != null) {
+      const maxAllowed = downloadTarget.groundIndex - 1;
+      if (groundIdx > maxAllowed) groundIdx = maxAllowed;
+      nextTarget = DOWNLOAD_TARGETS.find((t) => t.groundIndex === downloadTarget.groundIndex) || DOWNLOAD_TARGETS[0];
+    } else if (groundIdx < WORK_HUNTING_GROUNDS.length - 1) {
+      nextTarget = DOWNLOAD_TARGETS.find((t) => t.groundIndex === groundIdx + 1) || null;
+    }
+
+    const tier = getWorkTier(groundIdx);
+    return {
+      huntingGround: {
+        name: tier.name,
+        multiplier: tier.multiplier,
+        mineralBase: tier.mineralBase,
+        groundIndex: groundIdx,
+      },
+      downloadTarget: nextTarget
+        ? {
+            name: nextTarget.name,
+            sizeMb: nextTarget.sizeMb,
+            requiredGb: nextTarget.requiredGb,
+            requiredRamGb: nextTarget.requiredRamGb,
+            groundIndex: nextTarget.groundIndex,
+          }
+        : null,
+    };
+  }
+
+  function canRunWorkTier(parts, tierIndex) {
+    const tier = getWorkTier(tierIndex);
+    return getRamCapacityGb(parts && parts.ram) >= tier.requiredRamGb;
+  }
+
+  /** 다운로드 시도 가능 여부 — 스펙·순서·진행 상태 검증 (미달 시 시도 불가) */
+  function validateDownloadStart(parts, huntingGround, downloadTarget, isDownloading) {
+    if (isDownloading) return { ok: false, reason: '이미 다운로드가 진행 중입니다.' };
+    if (!downloadTarget || downloadTarget.groundIndex == null) {
+      return { ok: false, reason: '모든 작업/게임을 다운로드했습니다.' };
+    }
+    const currentIdx = (huntingGround && huntingGround.groundIndex) || 0;
+    if (currentIdx !== downloadTarget.groundIndex - 1) {
+      return { ok: false, reason: '현재 작업 단계를 완료한 뒤에만 다음 다운로드를 시작할 수 있습니다.' };
+    }
+    const storageGb = getStorageCapacityGb(parts && parts.storage);
+    if (storageGb < downloadTarget.requiredGb) {
+      return { ok: false, reason: `저장장치 용량 부족 (필요 ${downloadTarget.requiredGb}GB / 현재 ${storageGb}GB)` };
+    }
+    const ramGb = getRamCapacityGb(parts && parts.ram);
+    const reqRam = downloadTarget.requiredRamGb || getWorkTier(downloadTarget.groundIndex).requiredRamGb;
+    if (ramGb < reqRam) {
+      return { ok: false, reason: `RAM 용량 부족 (필요 ${reqRam}GB / 현재 ${ramGb}GB)` };
+    }
+    return { ok: true, reason: '' };
+  }
+
   function createIntelCpu11InventoryItem() {
     const tier = INTEL_CPU.find((row) => row.level === 11);
     return {
@@ -364,6 +439,8 @@
     REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
     calcGameSpeedFrames, calcGameSpeedMultiplier, calcGpuGrade, calcGpuAttackFrames,
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
+    getRamCapacityGb, getStorageCapacityGb, getWorkTier, normalizeWorkProgress,
+    canRunWorkTier, validateDownloadStart,
     createIntelCpu11InventoryItem,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
