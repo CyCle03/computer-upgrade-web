@@ -199,7 +199,7 @@
     return { coins, remainder: minerals % MINERAL_PER_COIN };
   }
 
-  const REBIRTH_MINERAL_CAP = 30000;
+  const REBIRTH_MINERAL_CAP = 1000000;
 
   function calcRebirthPerformanceScore(parts) {
     const cpu = parts.cpu || { level: 1 };
