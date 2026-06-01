@@ -679,7 +679,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
 
       const handlePurchaseMotherboard = (board) => {
         const mbCost = OMG.costToMinerals(board.cost);
-        if (minerals < mbCost) { alert(`미네랄 부족 (필요 ${OMG.formatManwon(board.cost)})`); return; }
+        if (minerals < mbCost) { alert(`미네랄 부족 (필요 ${OMG.formatMineral(mbCost)} · ${board.cost}C)`); return; }
         setMinerals((prev) => prev - mbCost);
         setMotherboard({ socketManufacturer: board.socketManufacturer, supportedDdrGeneration: board.supportedDdrGeneration, shieldIncrease: board.shieldIncrease });
       };
@@ -900,7 +900,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">MINERALS (원)</span>
               <span className="text-lg font-bold text-emerald-400 font-mono flex items-center space-x-1">
                 <span>{minerals.toLocaleString()}<span className="text-slate-500 text-[10px] ml-1">원</span></span>
-                <span className="text-xs text-emerald-500/60 ml-1">/ 10,000→1C</span>
+                <span className="text-xs text-emerald-500/60 ml-1">/ {OMG.MINERAL_PER_COIN.toLocaleString()}원→1C</span>
               </span>
             </div>
 
@@ -1133,7 +1133,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       <div>
                         <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 부품 상점 — 티어별 직접 구매 (Normal 코인)</span>
                         <p className="text-xs text-slate-400">
-                          미네랄 10,000원이 Normal 코인(C)으로 자동 환전됩니다. 원작처럼 1~최고강까지 원하는 티어를 코인으로 바로 구매할 수 있습니다. RAM은 창고 최대 4개 · 판매 시 구매가의 50% 환급.
+                          미네랄 1,000만원(천만 원)이 Normal 코인(C) 1개로 자동 환전됩니다. 원작처럼 1~최고강까지 원하는 티어를 코인으로 바로 구매할 수 있습니다. RAM은 창고 최대 4개 · 판매 시 구매가의 50% 환급.
                         </p>
                       </div>
                       {gpu.level >= 10 && (

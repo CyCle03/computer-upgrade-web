@@ -2,7 +2,8 @@
  * [SCA] 컴퓨터 강화하기 V1.2.9 — 원본 유즈맵 기준 게임 데이터
  */
 (function (global) {
-  const MINERAL_PER_COIN = 10000;
+  const MINERAL_PER_COIN = 10000000; // 미네랄(원) 천만 = Normal 코인 1
+  const MANWON_MINERALS = 10000; // 표시: 1만원 단위
 
   const INTEL_CPU = [
     { level: 1, name: 'Core i5-760', cost: 1, prob: 0.40, cores: 1, perf: 1, cooling: 100 },
@@ -422,14 +423,25 @@
   }
 
 
-  function costToMinerals(manwonCost) {
-    return Math.max(0, Math.floor((manwonCost || 0) * MINERAL_PER_COIN));
+  /** Normal 코인(C) 구매가 → 미네랄(원) */
+  function costToMinerals(costC) {
+    return Math.max(0, Math.floor((costC || 0) * MINERAL_PER_COIN));
   }
 
-  function formatManwon(manwonCost) {
-    const n = manwonCost || 0;
-    if (n >= 1) return n.toLocaleString() + '만원';
-    return (n * MINERAL_PER_COIN).toLocaleString() + '원';
+  /** 미네랄(원) UI 표기 — 1만 원 이상이면 만원 단위 */
+  function formatMineral(amount) {
+    const n = Math.max(0, Math.floor(amount || 0));
+    if (n >= MANWON_MINERALS) {
+      const man = n / MANWON_MINERALS;
+      return (Number.isInteger(man) ? man.toLocaleString() : man.toFixed(1)) + '만원';
+    }
+    return n.toLocaleString() + '원';
+  }
+
+  /** 상점 cost 필드(Normal 코인 C) 표기 */
+  function formatManwon(costC) {
+    const c = costC || 0;
+    return c.toLocaleString() + 'C (' + formatMineral(costToMinerals(c)) + ')';
   }
 
   function getPurchaseCostMinerals(type, level, part) {
@@ -612,7 +624,7 @@
   }
 
   global.OriginalMapGame = {
-    MINERAL_PER_COIN, REBIRTH_MINERAL_CAP, GAME_SPEED_BASE, GAME_SPEED_MAX,
+    MINERAL_PER_COIN, MANWON_MINERALS, REBIRTH_MINERAL_CAP, GAME_SPEED_BASE, GAME_SPEED_MAX,
     GPU_GRADE_NAMES, GPU_GRADE_ATTACK_FRAMES, DOWNLOAD_BASE_MB,
     INTEL_CPU, AMD_CPU, GPU, RAM, COOLER_AIR, COOLER_WATER, HDD, NVME,
     MOTHERBOARDS, WORK_TASKS, GAME_HUNTING, WORK_HUNTING_GROUNDS, PARTY_HUNTING_TIERS, SCA_SHOP_ITEMS, DOWNLOAD_TARGETS, GPU_RAM_PER_UNIT_GB,
@@ -625,7 +637,7 @@
     calcGameSpeedFrames, calcGameSpeedMultiplier, calcGpuGrade, calcGpuAttackFrames,
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
     MAX_RAM_INVENTORY, getShopTierCost, getShopSellPrice, getShopCatalog, countRamInInventory, canPurchaseRam, buildInventoryPart,
-    costToMinerals, formatManwon, getPurchaseCostMinerals,
+    costToMinerals, formatMineral, formatManwon, getPurchaseCostMinerals,
     getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getWorkTask, getGameHunt,
     getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
