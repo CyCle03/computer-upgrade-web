@@ -226,6 +226,25 @@
     return REBIRTH_REWARD_TIERS.find((t) => s >= t.min && s < t.max) || REBIRTH_REWARD_TIERS[REBIRTH_REWARD_TIERS.length - 1];
   }
 
+  /** 표 기준: SCA 코인 = scaBase + (보정 전 환생수치 * scaRate) */
+  function calcRebirthScaRewardByRebirthStat(baseRebirthStat) {
+    const s = Math.max(0, baseRebirthStat || 0);
+    const tier = getRebirthRewardTier(s);
+    const reward = tier.scaBase + s * tier.scaRate;
+    return Math.max(0, Math.floor(reward));
+  }
+
+  /** 표 기준: 환생수치 보정(가산/퍼센트) */
+  function applyRebirthStatCorrection(baseRebirthStat) {
+    const s = Math.max(0, baseRebirthStat || 0);
+    const tier = getRebirthRewardTier(s);
+    const corr = tier.correction || null;
+    if (!corr) return s;
+    if (corr.type === 'add') return s + corr.value;
+    if (corr.type === 'mul') return Math.floor(s * corr.value);
+    return s;
+  }
+
   function calcRebirthOutcome(parts, prevRebirthStat) {
     const statGain = calcRebirthStatGain(parts);
     const baseStat = Math.max(0, (prevRebirthStat || 0)) + statGain;

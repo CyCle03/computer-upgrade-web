@@ -429,9 +429,9 @@
               const goal = autoTargetLevels[type] || 1;
               const target = owned.filter(p => p.level < goal && p.level < OMG.getMaxLevel(type, p)).sort((a, b) => b.level - a.level)[0];
               if (target) {
-                const cost = OMG.getUpgradeCost(target.type, target.level, target);
-                if (normalCoins >= cost) { handleInventoryUpgrade(target.id); break; }
-                setAuto(false); break;
+                // 원작 규칙: 강화는 비용이 들지 않음(구매/팩만 비용 지불)
+                handleInventoryUpgrade(target.id);
+                break;
               } else {
                 setAuto(false);
                 setCombatLogs(prev => [...prev.slice(-7), `🎉 [SYSTEM] ${type.toUpperCase()} 자동강화 목표 ${goal}강 달성.`]);
@@ -505,29 +505,21 @@
         const partToUpgrade = inventory.find(p => p.id === itemId);
         if (!partToUpgrade) return;
         const currentLevel = partToUpgrade.level;
-        const cost = OMG.getUpgradeCost(partToUpgrade.type, currentLevel, partToUpgrade);
-        if (normalCoins < cost) { alert('Normal 코인 부족'); return; }
-        setNormalCoins((prev) => prev - cost);
         setIsUpgrading(true);
         setActiveUpgradingPart(partToUpgrade.type);
         setUpgradeStatus('upgrading');
         setUpgradeMessage(`강화 중... ${partToUpgrade.type.toUpperCase()} +${currentLevel}강`);
         setTimeout(() => {
           const prob = OMG.getUpgradeProbability(partToUpgrade.type, currentLevel, partToUpgrade, probBonusRate);
-          let result = Math.random() <= prob ? 'success' : (currentLevel <= 4 ? 'fail_keep' : currentLevel <= 6 ? 'fail_drop' : (Math.random() <= (currentLevel >= 9 ? 0.9 : currentLevel === 8 ? 0.7 : 0.5) ? 'exploded' : 'fail_drop'));
+          const result = Math.random() <= prob ? 'success' : 'exploded';
           setIsUpgrading(false);
           setUpgradeStatus(result);
           if (result === 'success') {
             setInventory((prev) => prev.map(p => p.id === itemId ? OMG.applyTierStats(p, currentLevel + 1) : p));
             setUpgradeMessage(`🎉 강화 성공! +${currentLevel + 1}강`);
-          } else if (result === 'fail_keep') {
-            setUpgradeMessage('⚠️ 강화 실패 (유지)');
-          } else if (result === 'fail_drop') {
-            setInventory((prev) => prev.map(p => p.id === itemId ? OMG.applyTierStats(p, Math.max(1, currentLevel - 1)) : p));
-            setUpgradeMessage('📉 등급 하락');
           } else {
             setInventory((prev) => prev.filter(p => p.id !== itemId));
-            setUpgradeMessage('💥 부품 파괴');
+            setUpgradeMessage('💥 [강화 실패] 장비가 폭파되었습니다!');
           }
           setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 3500);
         }, 600);
@@ -536,7 +528,8 @@
       const handleRebirth = () => {
         if (gpu.level < 10) { alert('GPU 10강 필요'); return; }
         if (isDownloading) { alert('게임 다운로드 중에는 환생할 수 없습니다. (v1.0.6)'); return; }
-        if (!confirm('환생 시 부품·미네랄·Normal 코인이 초기화됩니다. SCA 코인/센터·환생 수치는 유지됩니다.')) return;        const parts = { cpu, gpu, ram, cooler, storage };
+        if (!confirm('환생 시 부품·미네랄·Normal 코인이 초기화됩니다. SCA 코인/센터·환생 수치는 유지됩니다.')) return;
+        const parts = { cpu, gpu, ram, cooler, storage };
         const outcome = OMG.calcRebirthOutcome(parts, rebirthStat);
         const startMinerals = OMG.calcRebirthStartMinerals(scaUpgrades);
         setScaCoins((prev) => prev + outcome.scaReward);
