@@ -644,8 +644,10 @@ function getPartLevel(part) {
       ? activeWorkUnits * (work.ramPerUnitGb || 1)
       : (work.requiredRamGb || 0);
     const huntRamFree = Math.max(0, totalRam - workRamUsed);
+    // 게임 사냥 유닛 = CPU 코어 수. 작업 점유 후 잔여 RAM이 있으면 코어 수만큼 배치, 잔여 RAM이 0이면 0기.
+    // GPU당 RAM(GPU_RAM_PER_UNIT_GB)은 가이드 센터 안내용 참고값으로만 노출하고 배치 게이트로 쓰지 않는다.
     const ramPerUnit = getGpuRamPerUnit(parts && parts.gpu);
-    const maxByRam = ramPerUnit > 0 ? Math.floor(huntRamFree / ramPerUnit) : 0;
+    const maxByRam = huntRamFree > 0 ? maxByCpu : 0;
     const activeHuntingUnits = Math.max(0, Math.min(maxByRam, maxByCpu));
     return {
       totalRam,
