@@ -115,7 +115,7 @@
       });
       const [storage, setStorage] = useState(() => {
         const saved = localStorage.getItem('sca_storage');
-        return saved !== null ? JSON.parse(saved) : { type: 'HDD', capacityGb: 250, level: 1 };
+        return saved !== null ? JSON.parse(saved) : { type: 'HDD', capacityGb: 60, level: 1, storageKind: 'hdd' };
       });
 
       const [inventory, setInventory] = useState(() => {
@@ -126,7 +126,7 @@
           { id: 'inv-gpu-1', type: 'gpu', level: 1 },
           { id: 'inv-ram-1', type: 'ram', level: 1, clockMhz: 2400, capacityGb: 8, ddrGeneration: 'DDR4' },
           { id: 'inv-cooler-1', type: 'cooler', level: 1, coolingCapacity: 100, coolerKind: 'air' },
-          { id: 'inv-storage-1', type: 'storage', level: 1, storageType: 'HDD', capacityGb: 250 }
+          { id: 'inv-storage-1', type: 'storage', level: 1, storageType: 'HDD', storageKind: 'hdd', capacityGb: 60 }
         ];
       });
 
@@ -221,6 +221,10 @@
       const incomeBonusRate = useMemo(() => OMG.calcIncomeBonus(scaUpgrades), [scaUpgrades]);
       const probBonusRate = useMemo(() => OMG.calcProbBonus(scaUpgrades), [scaUpgrades]);
       const rebirthIncomeMult = useMemo(() => OMG.calcRebirthIncomeMultiplier(rebirthStat), [rebirthStat]);
+      const gameSpeedFrames = useMemo(() => OMG.calcGameSpeedFrames(scaUpgrades), [scaUpgrades]);
+      const gameSpeedMult = useMemo(() => OMG.calcGameSpeedMultiplier(scaUpgrades), [scaUpgrades]);
+      const gpuGrade = useMemo(() => OMG.calcGpuGrade(scaUpgrades), [scaUpgrades]);
+      const gpuAttackFrames = useMemo(() => OMG.calcGpuAttackFrames(scaUpgrades), [scaUpgrades]);
       const getCpuName = (level, m) => OMG.getPartName('cpu', level, { type: 'cpu', manufacturer: m || cpu.manufacturer });
       const getGpuName = (level) => OMG.getPartName('gpu', level, { type: 'gpu' });
       const getRamName = (level, part) => OMG.getPartName('ram', level, part || ram);
@@ -257,9 +261,8 @@
         const unitHp = 100 * cpu.level;
         const unitShield = motherboard.shieldIncrease;
 
-        // G. 공격 주기
-        const calculatedAttackSpeed = 2.0 - (ram.clockMhz / 4000);
-        const attackSpeedSec = Math.max(0.1, Math.round(calculatedAttackSpeed * 100) / 100);
+        // G. 공격 주기 (v1.1.6: GPU 등급 → 20/16/12/8 프레임)
+        const attackSpeedSec = Math.max(0.1, Math.round((gpuAttackFrames / 24) * 100) / 100);
 
         // H. 데미지 (GPU 기하급수 및 CPU 소환수 등급 결합 시너지 성장)
         const unitDamage = Math.round(10 * Math.pow(1.5, gpu.level - 1) * getSummonUnit(cpu.level).dpsFactor);
@@ -270,12 +273,9 @@
           unitDefense = Math.max(0, Math.floor(unitDefense * 0.5));
         }
 
-        // J. 다운로드 속도 (HDD/SSD 4배 및 용량 비례)
-        let downloadSpeedMb = 25 + (storage.capacityGb * 0.01);
-        if (storage.type === 'SSD') {
-          downloadSpeedMb = 100 + (storage.capacityGb * 0.05); // HDD의 정확한 4배 베이스 적용
-        }
-        downloadSpeedMb = Math.round(downloadSpeedMb * 10) / 10;
+        // J. 다운로드 속도 (§3.8 HDD x1 / NVMe x4 + SCA +10%)
+        const storageDownloadMult = OMG.getStorageDownloadMultiplier(storage);
+        const downloadSpeedMb = OMG.calcDownloadSpeedMb(storage, scaUpgrades);
 
         return {
           unitLimit,
@@ -286,6 +286,10 @@
           unitDamage,
           unitDefense,
           downloadSpeedMb,
+          storageDownloadMult,
+          gpuGrade,
+          gpuAttackFrames,
+          gameSpeedFrames,
           cpuHeatDemand,
           penalties: {
             isOverheated,
@@ -295,7 +299,7 @@
             mineralMultiplier
           }
         };
-      }, [cpu, gpu, ram, cooler, motherboard, storage]);
+      }, [cpu, gpu, ram, cooler, motherboard, storage, scaUpgrades, gpuAttackFrames, gpuGrade]);
 
       useEffect(() => {
         if (localStorage.getItem('sca_rebirthStatMigrated')) return;
@@ -319,22 +323,24 @@
       }, [minerals]);
       useEffect(() => {
         if (isPartyHunting) return;
+        const tickMs = Math.max(50, Math.round(1000 / gameSpeedMult));
         const interval = setInterval(() => {
           const base = huntingGround.mineralBase || 10 * huntingGround.multiplier;
           setMinerals(p => p + Math.round(base * specs.penalties.mineralMultiplier * rebirthIncomeMult * (1 + incomeBonusRate)));
-        }, 1000);
+        }, tickMs);
         return () => clearInterval(interval);
-      }, [specs, huntingGround, rebirthIncomeMult, incomeBonusRate, isPartyHunting]);
+      }, [specs, huntingGround, rebirthIncomeMult, incomeBonusRate, isPartyHunting, gameSpeedMult]);
       useEffect(() => {
         if (!isPartyHunting) return;
         const tier = OMG.PARTY_HUNTING_TIERS[partyHuntingTier];
         if (!tier) return;
+        const tickMs = Math.max(100, Math.round(3000 / gameSpeedMult));
         const iv = setInterval(() => {
           setMinerals(p => p + Math.round(tier.mineralPerTick * (1 + incomeBonusRate)));
           setScaCoins(p => p + tier.scaCoins);
-        }, 3000);
+        }, tickMs);
         return () => clearInterval(iv);
-      }, [isPartyHunting, partyHuntingTier, incomeBonusRate]);
+      }, [isPartyHunting, partyHuntingTier, incomeBonusRate, gameSpeedMult]);
 
       // ----------------------------------------------------------------------
       // 6.5. 게임 진행 상태 로컬 스토리지 실시간 자동 저장 (F5/새로고침 방지)
@@ -459,6 +465,11 @@
         if (scaCoins < item.cost) { alert('SCA 코인 부족'); return; }
         setScaCoins((prev) => prev - item.cost);
         setScaUpgrades((prev) => ({ ...prev, [item.id]: bought + 1 }));
+        if (item.id === 'intelCpu11') {
+          setInventory((prev) => [...prev, OMG.createIntelCpu11InventoryItem()]);
+          setUpgradeMessage('📦 SCA Intel CPU 11강이 창고에 추가되었습니다.');
+          setUpgradeStatus('success');
+        }
       };
 
       const handleBuyComponentPack = (type) => {
@@ -524,6 +535,7 @@
 
       const handleRebirth = () => {
         if (gpu.level < 10) { alert('GPU 10강 필요'); return; }
+        if (isDownloading) { alert('게임 다운로드 중에는 환생할 수 없습니다. (v1.0.6)'); return; }
         if (!confirm('환생 시 부품·미네랄·Normal 코인이 초기화됩니다. SCA 코인/센터·환생 수치는 유지됩니다.')) return;
         const parts = { cpu, gpu, ram, cooler, storage };
         const statGain = OMG.calcRebirthStatGain(parts);
@@ -551,6 +563,10 @@
         setHuntingGround({ name: g0.name, multiplier: g0.multiplier, mineralBase: g0.mineralBase, groundIndex: 0 });
         const dt = OMG.DOWNLOAD_TARGETS[0];
         setDownloadTarget({ name: dt.name, sizeMb: dt.sizeMb, requiredGb: dt.requiredGb, groundIndex: dt.groundIndex });
+        setIsDownloading(false);
+        setDownloadProgress(0);
+        setIsPartyHunting(false);
+        setAutoTargetLevels(defaultAutoTargets);
         setUpgradeMessage(`✨ 환생 +${statGain.toLocaleString()} 환생수치 · SCA +${scaReward}C · 시작 미네랄 ${startMinerals.toLocaleString()}원`);
         setUpgradeStatus('success');
       };
@@ -675,10 +691,10 @@
             }
             return (nextSize / downloadTarget.sizeMb) * 100;
           });
-        }, 100);
+        }, Math.max(20, Math.round(100 / gameSpeedMult)));
 
         return () => clearInterval(interval);
-      }, [isDownloading, specs.downloadSpeedMb, downloadTarget]);
+      }, [isDownloading, specs.downloadSpeedMb, downloadTarget, gameSpeedMult]);
 
       // ----------------------------------------------------------------------
       // 9. 실시간 웹소켓 100층 레이드 방 연결 핸들러
@@ -760,7 +776,7 @@
               </div>
               <div>
                 <h1 className="text-sm text-slate-400 uppercase tracking-widest font-semibold">복원 제어 터미널</h1>
-                <p className="text-xs text-emerald-500 font-mono">환생 {rebirthCount}회 · 환생수치 {rebirthStat.toLocaleString()} · 수입 x{rebirthIncomeMult.toFixed(2)}</p>
+                <p className="text-xs text-emerald-500 font-mono">환생 {rebirthCount}회 · 환생수치 {rebirthStat.toLocaleString()} · 수입 x{rebirthIncomeMult.toFixed(2)} · 배속 {gameSpeedFrames}f</p>
               </div>
             </div>
 
@@ -795,6 +811,7 @@
           {showScaCenter && (
             <section className="mb-4 p-4 border border-cyan-500/20 rounded-xl space-y-3">
               <p className="text-[10px] font-mono text-cyan-300/80">다음 환생 시작 미네랄: <strong>{OMG.calcRebirthStartMinerals(scaUpgrades).toLocaleString()}원</strong> (SCA 상점 구매분 합산 · 상한 {OMG.REBIRTH_MINERAL_CAP.toLocaleString()}원)</p>
+              <p className="text-[10px] font-mono text-cyan-300/70">게임 배속 {gameSpeedFrames}프레임 (x{gameSpeedMult.toFixed(2)}) · GPU {OMG.GPU_GRADE_NAMES[gpuGrade]} ({gpuAttackFrames}f) · 다운로드 x{OMG.calcDownloadSpeedBonus(scaUpgrades).toFixed(1)}</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {OMG.SCA_SHOP_ITEMS.map(item => {
                 const bought = scaUpgrades[item.id] || 0;
@@ -954,7 +971,7 @@
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">공격 주기(공속):</span>
-                    <span className="text-cyan-400 font-bold">{specs.attackSpeedSec}초</span>
+                    <span className="text-cyan-400 font-bold">{specs.attackSpeedSec}초 ({OMG.GPU_GRADE_NAMES[specs.gpuGrade]} {specs.gpuAttackFrames}f)</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">방어력(쿨러반영):</span>
@@ -1306,7 +1323,7 @@
                       </div>
                     </div>
                     <div className="flex justify-between items-center text-[10px] font-mono pt-1">
-                      <span className="text-slate-500">속도: {specs.downloadSpeedMb} MB/s ({storage.type})</span>
+                      <span className="text-slate-500">속도: {specs.downloadSpeedMb} MB/s (x{specs.storageDownloadMult} · {storage.storageKind === 'nvme' || storage.type === 'SSD' ? 'NVMe/SSD' : 'HDD'})</span>
                       {!isDownloading ? (
                         <button onClick={startDownload} className="px-2.5 py-1 bg-cyan-500/10 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 border border-cyan-500/20 rounded font-bold transition text-[10px]">다운로드 시작</button>
                       ) : (
