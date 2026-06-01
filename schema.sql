@@ -40,8 +40,27 @@ CREATE TABLE IF NOT EXISTS daily_raid_progresses (
 -- 인덱스 추가로 검색 성능 및 락 경쟁 최적화
 CREATE INDEX IF NOT EXISTS idx_users_nickname ON users(nickname);
 
+-- 6. 로그인(계정) 지원: 비밀번호 해시 컬럼 추가
+-- 기존(레거시) 닉네임 전용 유저와의 호환을 위해 NULL 허용. 신규 가입 시에만 채워짐.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+
+-- 7. 로그인 세션 토큰 테이블 (Bearer 토큰 → 유저 매핑)
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    token TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id);
+
+-- 8. 계정별 게임 진행도 저장 테이블 (클라이언트 localStorage 전체를 JSONB로 동기화)
+CREATE TABLE IF NOT EXISTS game_states (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    state JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
 --------------------------------------------------------------------------------
--- 6. Supabase / PostgreSQL 전용 일일 마일스톤 보상 검증 및 지급 RPC 함수
+-- 9. Supabase / PostgreSQL 전용 일일 마일스톤 보상 검증 및 지급 RPC 함수
 -- DB 단에서 단일 트랜잭션과 SELECT ... FOR UPDATE 로우 락을 활용하여
 -- Race Condition 및 시간 조작 어뷰징을 완벽 차단합니다.
 --------------------------------------------------------------------------------
