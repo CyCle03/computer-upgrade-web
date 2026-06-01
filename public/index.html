@@ -1078,8 +1078,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center">
                   <div>
                     <p className="text-[10px] text-slate-500 font-mono">SYSTEM RAM (MEM)</p>
-                    <p className="text-sm font-semibold text-slate-200">{getRamName(ram.level)}</p>
-                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">Cap: {ram.capacityGb}GB / Clock: {ram.clockMhz}Mhz</p>
+                    <p className="text-sm font-semibold text-slate-200">{getRamName(ram.level, ram)}</p>
+                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">Grade: +{ram.level || 1}강 · Cap: {ram.capacityGb}GB / Clock: {ram.clockMhz}Mhz</p>
                   </div>
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{ram.ddrGeneration}</span>
                 </div>
@@ -1104,7 +1104,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center col-span-2">
                   <div>
                     <p className="text-[10px] text-slate-500 font-mono">STORAGE SYSTEM</p>
-                    <p className="text-sm font-semibold text-slate-200">{storage.capacityGb}GB {storage.type} Drive</p>
+                    <p className="text-sm font-semibold text-slate-200">{getStorageName(storage.level || 1, storage)}</p>
+                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">Grade: +{storage.level || 1}강 · Cap: {storage.capacityGb}GB {storage.type}</p>
                   </div>
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{storage.type === 'SSD' ? 'SSD 4X FASTER' : 'HDD BASE'}</span>
                 </div>
