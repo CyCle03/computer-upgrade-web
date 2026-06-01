@@ -316,6 +316,21 @@
       }, []);
 
       useEffect(() => {
+        // 레거시 저장값 마이그레이션: HDD 1강인데 250GB로 저장된 경우(이전 기본값) 60GB로 보정
+        if ((storage.storageKind || 'hdd') === 'hdd' && (storage.level || 1) === 1 && storage.type === 'HDD' && storage.capacityGb === 250) {
+          setStorage((s) => ({ ...s, capacityGb: 60, storageKind: s.storageKind || 'hdd' }));
+        }
+        // 인벤토리 저장장치도 동일 보정
+        setInventory((prev) => prev.map((p) => {
+          if (p.type !== 'storage') return p;
+          if ((p.storageKind || 'hdd') === 'hdd' && (p.level || 1) === 1 && p.storageType === 'HDD' && p.capacityGb === 250) {
+            return { ...p, capacityGb: 60, storageKind: p.storageKind || 'hdd' };
+          }
+          return p;
+        }));
+      }, []);
+
+      useEffect(() => {
         if (minerals >= OMG.MINERAL_PER_COIN) {
           const { coins, remainder } = OMG.convertMineralsToCoins(minerals);
           if (coins > 0) { setMinerals(remainder); setNormalCoins(p => p + coins); }
