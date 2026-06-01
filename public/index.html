@@ -309,22 +309,6 @@
         localStorage.setItem('sca_rebirthStatMigrated', '1');
       }, []);
 
-      // ----------------------------------------------------------------------
-      // 레거시 보상/마이그레이션: '보정 이전 환생수치' 기준 1회 적용
-      // ----------------------------------------------------------------------
-      useEffect(() => {
-        if (localStorage.getItem('sca_rebirthLegacyMigrated')) return;
-        // 기존 유저만 대상: 이미 환생수치가 존재하는 경우
-        if (rebirthStat > 0) {
-          // 레거시(보정 전) 환생수치 백업
-          localStorage.setItem('sca_rebirthStatLegacyBase', String(rebirthStat));
-          // 현행 체계로 1회 보정 적용(이후부터는 현행 수치로 진행)
-          const corrected = OMG.applyRebirthStatCorrection(rebirthStat);
-          setRebirthStat(corrected);
-        }
-        localStorage.setItem('sca_rebirthLegacyMigrated', '1');
-      }, []);
-
       useEffect(() => {
         if (cooler.level === 1 && cooler.coolingCapacity === 30) {
           setCooler(c => ({ ...c, coolingCapacity: 100, coolerKind: c.coolerKind || 'air' }));
@@ -552,24 +536,15 @@
       const handleRebirth = () => {
         if (gpu.level < 10) { alert('GPU 10강 필요'); return; }
         if (isDownloading) { alert('게임 다운로드 중에는 환생할 수 없습니다. (v1.0.6)'); return; }
-        if (!confirm('환생 시 부품·미네랄·Normal 코인이 초기화됩니다. SCA 코인/센터·환생 수치는 유지됩니다.')) return;
-        const parts = { cpu, gpu, ram, cooler, storage };
-        const legacyBaseRaw = localStorage.getItem('sca_rebirthStatLegacyBase');
-        const legacyBase = legacyBaseRaw !== null ? parseInt(legacyBaseRaw, 10) : null;
-        const outcome = legacyBase !== null && Number.isFinite(legacyBase)
-          ? OMG.calcRebirthOutcomeWithBases(parts, rebirthStat, legacyBase)
-          : OMG.calcRebirthOutcome(parts, rebirthStat);
+        if (!confirm('환생 시 부품·미네랄·Normal 코인이 초기화됩니다. SCA 코인/센터·환생 수치는 유지됩니다.')) return;        const parts = { cpu, gpu, ram, cooler, storage };
+        const outcome = OMG.calcRebirthOutcome(parts, rebirthStat);
         const startMinerals = OMG.calcRebirthStartMinerals(scaUpgrades);
         setScaCoins((prev) => prev + outcome.scaReward);
         setRebirthStat(outcome.correctedStat);
         setRebirthCount((prev) => prev + 1);
         setMinerals(startMinerals);
         setNormalCoins(0);
-        if (legacyBase !== null && Number.isFinite(legacyBase)) {
-          // 1회성 보상 적용 후에는 현행 기준으로 전환
-          localStorage.removeItem('sca_rebirthStatLegacyBase');
-        }
-        setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR4' });
+setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR4' });
         setGpu({ level: 1 });
         setRam({ level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' });
         setCooler({ level: 1, coolingCapacity: 100, coolerKind: 'air' });
@@ -590,7 +565,7 @@
         setDownloadProgress(0);
         setIsPartyHunting(false);
         setAutoTargetLevels(defaultAutoTargets);
-        setUpgradeMessage(`✨ 환생 +${outcome.statGain.toLocaleString()} (보정 전 ${outcome.baseStat.toLocaleString()} → 보정 후 ${outcome.correctedStat.toLocaleString()}) · SCA +${outcome.scaReward.toLocaleString()}C${legacyBase !== null && Number.isFinite(legacyBase) ? ' (레거시 보정 전 기준 1회)' : ''} · 시작 미네랄 ${startMinerals.toLocaleString()}원`);
+        setUpgradeMessage(`✨ 환생 +${outcome.statGain.toLocaleString()} (보정 전 ${outcome.baseStat.toLocaleString()} → 보정 후 ${outcome.correctedStat.toLocaleString()}) · SCA +${outcome.scaReward.toLocaleString()}C · 시작 미네랄 ${startMinerals.toLocaleString()}원`);
         setUpgradeStatus('success');
       };
 

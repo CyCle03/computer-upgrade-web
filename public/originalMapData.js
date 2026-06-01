@@ -226,50 +226,6 @@
     return REBIRTH_REWARD_TIERS.find((t) => s >= t.min && s < t.max) || REBIRTH_REWARD_TIERS[REBIRTH_REWARD_TIERS.length - 1];
   }
 
-  /** 표 기준: SCA = base + (보정 전 환생수치 × rate) */
-  function calcRebirthScaRewardByRebirthStat(baseRebirthStat) {
-    const tier = getRebirthRewardTier(baseRebirthStat);
-    const s = Math.max(0, baseRebirthStat || 0);
-    return Math.max(0, Math.floor(tier.scaBase + s * tier.scaRate));
-  }
-
-  /** 표 기준: 보정 적용 후 환생수치 */
-  function applyRebirthStatCorrection(baseRebirthStat) {
-    const tier = getRebirthRewardTier(baseRebirthStat);
-    const s = Math.max(0, baseRebirthStat || 0);
-    if (tier.correction.type === 'add') return s + tier.correction.value;
-    if (tier.correction.type === 'mul') return Math.floor(s * tier.correction.value);
-    return s;
-  }
-
-  /** 환생 처리 결과(보정 전/후 수치, SCA, 쿠폰) */
-
-  /**
-   * 표의 '보정 이전 환생수치'를 레거시 보상/마이그레이션에 한해 적용하기 위한 변형.
-   * - correctionStatBasis: 이번 환생의 보정 적용 대상(현행 환생수치 기준)
-   * - rewardStatBasis: SCA 보상/구간 판정에 사용할 기준(레거시/현행 선택)
-   */
-  function calcRebirthOutcomeWithBases(parts, correctionStatBasis, rewardStatBasis) {
-    const statGain = calcRebirthStatGain(parts);
-
-    const correctionBase = Math.max(0, (correctionStatBasis || 0)) + statGain;
-    const rewardBase = Math.max(0, (rewardStatBasis || 0)) + statGain;
-
-    const tier = getRebirthRewardTier(rewardBase);
-    const scaReward = calcRebirthScaRewardByRebirthStat(rewardBase);
-    const correctedStat = applyRebirthStatCorrection(correctionBase);
-
-    return {
-      statGain,
-      baseStat: rewardBase,
-      correctedStat,
-      scaReward,
-      tier,
-      extra: tier.extra || null,
-      _bases: { correctionBase, rewardBase },
-    };
-  }
-
   function calcRebirthOutcome(parts, prevRebirthStat) {
     const statGain = calcRebirthStatGain(parts);
     const baseStat = Math.max(0, (prevRebirthStat || 0)) + statGain;
@@ -386,7 +342,7 @@
     calcRebirthPerformanceScore, calcRebirthStatGain, calcRebirthScaReward,
     calcRebirthStartMinerals, calcRebirthIncomeMultiplier,
     calcIncomeBonus, calcProbBonus,
-    REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome, calcRebirthOutcomeWithBases,
+    REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
     calcGameSpeedFrames, calcGameSpeedMultiplier, calcGpuGrade, calcGpuAttackFrames,
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
     createIntelCpu11InventoryItem,
