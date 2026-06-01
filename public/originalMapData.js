@@ -1,106 +1,127 @@
 /**
  * [SCA] 컴퓨터 강화하기 V1.2.9 — 원본 유즈맵 기준 게임 데이터
- * 미네랄 = 원(1:1). Normal 코인 환전: 천만 원 = 1 코인.
+ * 미네랄 = 원(1:1). tier.cost = 스프레드시트 구매가. "-"=0(강화만), NC=N×천만.
  */
 (function (global) {
   const MINERAL_PER_COIN = 10000000;
   const MANWON_MINERALS = 10000;
 
+  /** 스프레드시트 가격 → tier.cost. 숫자=원, NC=N×천만, -=0 */
+  function parseSheetPrice(raw) {
+    if (raw == null) return 0;
+    const s = String(raw).trim().replace(/,/g, '');
+    if (s === '' || s === '-') return 0;
+    if (s.endsWith('C')) {
+      const n = parseFloat(s.slice(0, -1)) || 1;
+      return Math.floor(n * MINERAL_PER_COIN);
+    }
+    return Math.floor(Number(s)) || 0;
+  }
+
+
   const INTEL_CPU = [
-    { level: 1, name: 'Core i5-760', cost: 1, prob: 0.40, cores: 1, perf: 1, cooling: 100 },
-    { level: 2, name: 'Core i5-2500K', cost: 5, prob: 0.40, cores: 1, perf: 5, cooling: 200 },
-    { level: 3, name: 'Core i5-3570K', cost: 25, prob: 0.30, cores: 1, perf: 25, cooling: 300 },
+    { level: 1, name: 'Core i5-760', cost: 1, prob: 0.4, cores: 1, perf: 1, cooling: 100 },
+    { level: 2, name: 'Core i5-2500K', cost: 0, prob: 0.4, cores: 1, perf: 5, cooling: 200 },
+    { level: 3, name: 'Core i5-3570K', cost: 0, prob: 0.3, cores: 1, perf: 25, cooling: 300 },
     { level: 4, name: 'Core i5-4670K', cost: 30, prob: 0.25, cores: 2, perf: 60, cooling: 400 },
-    { level: 5, name: 'Core i5-4690', cost: 60, prob: 0.25, cores: 2, perf: 75, cooling: 450 },
-    { level: 6, name: 'Core i5-6600K', cost: 75, prob: 0.20, cores: 4, perf: 150, cooling: 600 },
-    { level: 7, name: 'Core i5-7600K', cost: 150, prob: 0.15, cores: 6, perf: 300, cooling: 700 },
-    { level: 8, name: 'Core i5-8600K', cost: 300, prob: 0.15, cores: 8, perf: 750, cooling: 800 },
-    { level: 9, name: 'Core i5-9600K', cost: 750, prob: 0.10, cores: 10, perf: 1500, cooling: 900 },
-    { level: 10, name: 'Core i5-10600K', cost: 1500, prob: 0.10, cores: 12, perf: 3000, cooling: 1000 },
-    { level: 11, name: 'Core i5-11600K', cost: 3000, prob: 0.05, cores: 12, perf: 5000, cooling: 1200 },
-    { level: 12, name: 'Core i5-12600K', cost: 5000, prob: 0.05, cores: 14, perf: 12000, cooling: 1600 },
-    { level: 13, name: 'Core i5-13600K', cost: 12000, prob: 0.05, cores: 16, perf: 18000, cooling: 1800 },
-    { level: 14, name: 'Core i5-14600K', cost: 18000, prob: 0.05, cores: 16, perf: 25000, cooling: 2000 },
+    { level: 5, name: 'Core i5-4690', cost: 0, prob: 0.25, cores: 2, perf: 75, cooling: 450 },
+    { level: 6, name: 'Core i5-6600K', cost: 0, prob: 0.2, cores: 4, perf: 150, cooling: 600 },
+    { level: 7, name: 'Core i5-7600K', cost: 3500, prob: 0.15, cores: 6, perf: 300, cooling: 700 },
+    { level: 8, name: 'Core i5-8600K', cost: 0, prob: 0.15, cores: 8, perf: 750, cooling: 800 },
+    { level: 9, name: 'Core i5-9600K', cost: 0, prob: 0.1, cores: 10, perf: 1500, cooling: 900 },
+    { level: 10, name: 'Core i5-10600K', cost: 2000000, prob: 0.05, cores: 12, perf: 3000, cooling: 1000 },
+    { level: 11, name: 'Core i5-11600K', cost: 40000000, prob: 0.05, cores: 12, perf: 5000, cooling: 1200 },
+    { level: 12, name: 'Core i5-12600K', cost: 0, prob: 0.05, cores: 14, perf: 12000, cooling: 1600 },
+    { level: 13, name: 'Core i5-13600K', cost: 0, prob: 0.05, cores: 16, perf: 18000, cooling: 1800 },
+    { level: 14, name: 'Core i5-14600K', cost: 0, prob: 0, cores: 16, perf: 25000, cooling: 2000 },
   ];
 
   const AMD_CPU = [
-    { level: 1, name: 'Ryzen™ 5 1600X', cost: 1, prob: 0.40, cores: 1, perf: 1, cooling: 100 },
-    { level: 2, name: 'Ryzen™ 5 2600X', cost: 8, prob: 0.35, cores: 2, perf: 8, cooling: 200 },
-    { level: 3, name: 'Ryzen™ 5 3600X', cost: 40, prob: 0.30, cores: 4, perf: 40, cooling: 350 },
-    { level: 4, name: 'Ryzen™ 5 4600G', cost: 80, prob: 0.25, cores: 6, perf: 100, cooling: 500 },
-    { level: 5, name: 'Ryzen™ 5 5600X', cost: 200, prob: 0.20, cores: 8, perf: 250, cooling: 650 },
-    { level: 6, name: 'Ryzen™ 5 7600X', cost: 500, prob: 0.15, cores: 10, perf: 600, cooling: 800 },
+    { level: 1, name: 'Ryzen™ 5 1600X', cost: 25000, prob: 0.15, cores: 8, perf: 700, cooling: 500 },
+    { level: 2, name: 'Ryzen™ 5 2600X', cost: 0, prob: 0.1, cores: 10, perf: 1250, cooling: 600 },
+    { level: 3, name: 'Ryzen™ 5 3600X', cost: 2000000, prob: 0.05, cores: 12, perf: 2500, cooling: 700 },
+    { level: 4, name: 'Ryzen™ 5 4600G', cost: 0, prob: 0.05, cores: 12, perf: 4000, cooling: 800 },
+    { level: 5, name: 'Ryzen™ 5 5600X', cost: 0, prob: 0.05, cores: 14, perf: 10000, cooling: 900 },
+    { level: 6, name: 'Ryzen™ 5 7600X', cost: 0, prob: 0, cores: 16, perf: 18000, cooling: 1100 },
   ];
 
   const GPU = [
-    { level: 1, name: 'GeForce GT 240', cost: 1, prob: 0.40 },
-    { level: 2, name: 'GeForce GTS 250', cost: 5, prob: 0.35 },
-    { level: 3, name: 'GeForce GTX 460', cost: 20, prob: 0.30 },
-    { level: 4, name: 'GeForce GTX 760', cost: 40, prob: 0.25 },
-    { level: 5, name: 'GeForce GTX 960', cost: 80, prob: 0.25 },
-    { level: 6, name: 'GeForce GTX 1060', cost: 150, prob: 0.20 },
-    { level: 7, name: 'GeForce GTX 1070 Ti', cost: 300, prob: 0.15 },
-    { level: 8, name: 'GeForce RTX 3060 Ti', cost: 600, prob: 0.15 },
-    { level: 9, name: 'GeForce RTX 4070 Ti', cost: 1200, prob: 0.10 },
-    { level: 10, name: 'GeForce RTX 4090', cost: 2500, prob: 0.10 },
+    { level: 1, name: 'GeForce 200', cost: 10, prob: 0.2 },
+    { level: 2, name: 'GeForce 400', cost: 0, prob: 0.15 },
+    { level: 3, name: 'GeForce 500', cost: 400, prob: 0.1 },
+    { level: 4, name: 'GeForce 600', cost: 0, prob: 0.1 },
+    { level: 5, name: 'GeForce 700', cost: 50000, prob: 0.05 },
+    { level: 6, name: 'GeForce 900', cost: 0, prob: 0.05 },
+    { level: 7, name: 'GeForce 10', cost: 20000000, prob: 0.05 },
+    { level: 8, name: 'GeForce 20', cost: 0, prob: 0.05 },
+    { level: 9, name: 'GeForce 30', cost: 0, prob: 0.02 },
+    { level: 10, name: 'GeForce 40', cost: 0, prob: 0 },
   ];
 
   /** GPU 등급별 참고 RAM(GB/유닛) — 가이드 센터 */
   const GPU_RAM_PER_UNIT_GB = [1, 2, 2, 4, 4, 8, 8, 16, 16, 32];
 
   const RAM = [
-    { level: 1, name: 'DDR3-1333 (1GB)', cost: 1, prob: 0.40, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' },
-    { level: 2, name: 'DDR3-1333 (2GB)', cost: 3, prob: 0.35, clockMhz: 1333, capacityGb: 2, ddrGeneration: 'DDR3' },
-    { level: 3, name: 'DDR3-1600 (4GB)', cost: 8, prob: 0.30, clockMhz: 1600, capacityGb: 4, ddrGeneration: 'DDR3' },
-    { level: 4, name: 'DDR3-1866 (4GB)', cost: 15, prob: 0.25, clockMhz: 1866, capacityGb: 4, ddrGeneration: 'DDR3' },
-    { level: 5, name: 'DDR4-2400 (8GB)', cost: 25, prob: 0.25, clockMhz: 2400, capacityGb: 8, ddrGeneration: 'DDR4' },
-    { level: 6, name: 'DDR4-2666 (8GB)', cost: 40, prob: 0.20, clockMhz: 2666, capacityGb: 8, ddrGeneration: 'DDR4' },
-    { level: 7, name: 'DDR4-3200 (16GB)', cost: 75, prob: 0.15, clockMhz: 3200, capacityGb: 16, ddrGeneration: 'DDR4' },
-    { level: 8, name: 'DDR4-3600 (16GB)', cost: 120, prob: 0.15, clockMhz: 3600, capacityGb: 16, ddrGeneration: 'DDR4' },
-    { level: 9, name: 'DDR5-4800 (8GB)', cost: 200, prob: 0.10, clockMhz: 4800, capacityGb: 8, ddrGeneration: 'DDR5' },
-    { level: 10, name: 'DDR5-4800 (8GB)', cost: 350, prob: 0.10, clockMhz: 4800, capacityGb: 8, ddrGeneration: 'DDR5' },
-    { level: 11, name: 'DDR5-5200 (16GB)', cost: 600, prob: 0.08, clockMhz: 5200, capacityGb: 16, ddrGeneration: 'DDR5' },
-    { level: 12, name: 'DDR5-5600 (16GB)', cost: 1000, prob: 0.08, clockMhz: 5600, capacityGb: 16, ddrGeneration: 'DDR5' },
-    { level: 13, name: 'DDR5-5600 (32GB)', cost: 1800, prob: 0.05, clockMhz: 5600, capacityGb: 32, ddrGeneration: 'DDR5' },
+    { level: 1, name: 'DDR3-1333 (1GB)', cost: 5, prob: 0.3, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' },
+    { level: 2, name: 'DDR3-1333 (2GB)', cost: 0, prob: 0.3, clockMhz: 1333, capacityGb: 2, ddrGeneration: 'DDR3' },
+    { level: 3, name: 'DDR3-1600 (2GB)', cost: 0, prob: 0.25, clockMhz: 1600, capacityGb: 2, ddrGeneration: 'DDR3' },
+    { level: 4, name: 'DDR3-1600 (4GB)', cost: 0, prob: 0.25, clockMhz: 1600, capacityGb: 4, ddrGeneration: 'DDR3' },
+    { level: 5, name: 'DDR4-2400 (4GB)', cost: 1000, prob: 0.2, clockMhz: 2400, capacityGb: 4, ddrGeneration: 'DDR4' },
+    { level: 6, name: 'DDR4-2400 (8GB)', cost: 0, prob: 0.2, clockMhz: 2400, capacityGb: 8, ddrGeneration: 'DDR4' },
+    { level: 7, name: 'DDR4-2666 (8GB)', cost: 0, prob: 0.15, clockMhz: 2666, capacityGb: 8, ddrGeneration: 'DDR4' },
+    { level: 8, name: 'DDR4-3200 (8GB)', cost: 0, prob: 0.1, clockMhz: 3200, capacityGb: 8, ddrGeneration: 'DDR4' },
+    { level: 9, name: 'DDR4-3200 (16GB)', cost: 0, prob: 0.1, clockMhz: 3200, capacityGb: 16, ddrGeneration: 'DDR4' },
+    { level: 10, name: 'DDR5-4800 (8GB)', cost: 20000000, prob: 0.05, clockMhz: 4800, capacityGb: 8, ddrGeneration: 'DDR5' },
+    { level: 11, name: 'DDR5-4800 (16GB)', cost: 0, prob: 0.05, clockMhz: 4800, capacityGb: 16, ddrGeneration: 'DDR5' },
+    { level: 12, name: 'DDR5-5600 (16GB)', cost: 0, prob: 0.05, clockMhz: 5600, capacityGb: 16, ddrGeneration: 'DDR5' },
+    { level: 13, name: 'DDR5-5600 (32GB)', cost: 0, prob: 0, clockMhz: 5600, capacityGb: 32, ddrGeneration: 'DDR5' },
   ];
 
   const COOLER_AIR = [
-    { level: 1, name: '인텔 기본 번들 (초코파이)', cost: 1, prob: 0.50, coolingCapacity: 100 },
-    { level: 2, name: '구리 히트싱크 공랭', cost: 5, prob: 0.45, coolingCapacity: 250 },
-    { level: 3, name: '보급형 타워 싱글팬', cost: 15, prob: 0.40, coolingCapacity: 450 },
-    { level: 4, name: '듀얼타워 대장급 (NH-D15)', cost: 40, prob: 0.35, coolingCapacity: 700 },
-    { level: 5, name: '듀얼타워 RGB 공랭', cost: 80, prob: 0.30, coolingCapacity: 1000 },
+    { level: 1, name: '인텔 기본 번들 (초코파이)', cost: 500, prob: 0.3, coolingCapacity: 500 },
+    { level: 2, name: '구리 히트싱크 공랭', cost: 0, prob: 0.25, coolingCapacity: 650 },
+    { level: 3, name: '보급형 타워 싱글팬', cost: 0, prob: 0.2, coolingCapacity: 800 },
+    { level: 4, name: '듀얼타워 대장급 (NH-D15)', cost: 0, prob: 0.2, coolingCapacity: 950 },
+    { level: 5, name: '듀얼타워 RGB 공랭', cost: 0, prob: 0, coolingCapacity: 1100 },
   ];
 
   const COOLER_WATER = [
-    { level: 1, name: '120mm 1열 수랭', cost: 20, prob: 0.40, coolingCapacity: 600 },
-    { level: 2, name: '240mm 2열 AIO', cost: 50, prob: 0.35, coolingCapacity: 900 },
-    { level: 3, name: '360mm 3열 RGB 수랭', cost: 120, prob: 0.30, coolingCapacity: 1300 },
-    { level: 4, name: '커스텀 수로 오픈형', cost: 250, prob: 0.25, coolingCapacity: 1800 },
-    { level: 5, name: '외장 MORA 라디에이터', cost: 500, prob: 0.20, coolingCapacity: 2500 },
+    { level: 1, name: '120mm 1열 수랭', cost: 300000, prob: 0.15, coolingCapacity: 1200 },
+    { level: 2, name: '240mm 2열 AIO', cost: 0, prob: 0.15, coolingCapacity: 1400 },
+    { level: 3, name: '360mm 3열 RGB 수랭', cost: 0, prob: 0.1, coolingCapacity: 1600 },
+    { level: 4, name: '커스텀 수로 오픈형', cost: 0, prob: 0.05, coolingCapacity: 1800 },
+    { level: 5, name: '외장 MORA 라디에이터', cost: 0, prob: 0, coolingCapacity: 2000 },
   ];
 
   const HDD = [
-    { level: 1, name: 'HDD 60GB', cost: 1, prob: 0.50, capacityGb: 60, storageType: 'HDD' },
-    { level: 2, name: 'HDD 250GB', cost: 5, prob: 0.45, capacityGb: 250, storageType: 'HDD' },
-    { level: 3, name: 'HDD 500GB', cost: 15, prob: 0.40, capacityGb: 500, storageType: 'HDD' },
-    { level: 4, name: 'HDD 1TB', cost: 40, prob: 0.35, capacityGb: 1000, storageType: 'HDD' },
+    { level: 1, name: 'HDD 60GB', cost: 50000, prob: 0.2, capacityGb: 60, storageType: 'HDD' },
+    { level: 2, name: 'HDD 250GB', cost: 0, prob: 0.15, capacityGb: 250, storageType: 'HDD' },
+    { level: 3, name: 'HDD 500GB', cost: 0, prob: 0.1, capacityGb: 500, storageType: 'HDD' },
+    { level: 4, name: 'HDD 1TB', cost: 0, prob: 0, capacityGb: 1000, storageType: 'HDD' },
   ];
 
   const NVME = [
-    { level: 1, name: 'M.2 NVMe 250GB', cost: 10, prob: 0.45, capacityGb: 250, storageType: 'SSD' },
-    { level: 2, name: 'M.2 NVMe 500GB', cost: 30, prob: 0.40, capacityGb: 500, storageType: 'SSD' },
-    { level: 3, name: 'M.2 NVMe 1TB', cost: 80, prob: 0.35, capacityGb: 1000, storageType: 'SSD' },
-    { level: 4, name: 'M.2 NVMe 2TB', cost: 200, prob: 0.30, capacityGb: 2000, storageType: 'SSD' },
+    { level: 1, name: 'M.2 NVMe 250GB', cost: 3000000, prob: 0.15, capacityGb: 250, storageType: 'SSD' },
+    { level: 2, name: 'M.2 NVMe 500GB', cost: 0, prob: 0.1, capacityGb: 500, storageType: 'SSD' },
+    { level: 3, name: 'M.2 NVMe 1TB', cost: 0, prob: 0.05, capacityGb: 1000, storageType: 'SSD' },
+    { level: 4, name: 'M.2 NVMe 2TB', cost: 0, prob: 0, capacityGb: 2000, storageType: 'SSD' },
   ];
 
   const MOTHERBOARDS = [
-    { name: 'Intel P55 (DDR3)', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 30, cost: 150 },
-    { name: 'Intel H270 (DDR4)', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR4', shieldIncrease: 100, cost: 3000 },
-    { name: 'Intel Z590 (DDR4)', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR4', shieldIncrease: 300, cost: 100000 },
-    { name: 'Intel Z790 (DDR5)', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR5', shieldIncrease: 600, cost: 2000000 },
-    { name: 'AMD B550 (DDR4)', socketManufacturer: 'AMD', supportedDdrGeneration: 'DDR4', shieldIncrease: 200, cost: 50000 },
-    { name: 'AMD X670E (DDR5)', socketManufacturer: 'AMD', supportedDdrGeneration: 'DDR5', shieldIncrease: 800, cost: 2500000 },
+    { name: '인텔 P55', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 0, cost: 1 },
+    { name: '인텔 B75', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 5, cost: 10 },
+    { name: '인텔 H87', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 30, cost: 150 },
+    { name: '인텔 H270', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR4', shieldIncrease: 100, cost: 3000 },
+    { name: '인텔 H370', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR4', shieldIncrease: 300, cost: 100000 },
+    { name: 'AMD A320', socketManufacturer: 'AMD', supportedDdrGeneration: 'DDR4', shieldIncrease: 300, cost: 100000 },
+    { name: '인텔 Z390', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR4', shieldIncrease: 1000, cost: 1500000 },
+    { name: '인텔 H570', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR4', shieldIncrease: 2000, cost: 20000000 },
+    { name: 'AMD B550', socketManufacturer: 'AMD', supportedDdrGeneration: 'DDR4', shieldIncrease: 2000, cost: 20000000 },
+    { name: '인텔 Z590', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR4', shieldIncrease: 3500, cost: 300000000 },
+    { name: 'AMD X570', socketManufacturer: 'AMD', supportedDdrGeneration: 'DDR4', shieldIncrease: 3500, cost: 300000000 },
+    { name: '인텔 H770', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR5', shieldIncrease: 5000, cost: 5000000000 },
+    { name: '인텔 Z790', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR5', shieldIncrease: 8000, cost: 25000000000 },
+    { name: 'AMD X670E', socketManufacturer: 'AMD', supportedDdrGeneration: 'DDR5', shieldIncrease: 8000, cost: 25000000000 },
   ];
 
     /** 작업(Work) — mineralPerUnit + GPU/RAM/CPU/실드 스펙 게이트 */
@@ -144,11 +165,14 @@
     { name: '파티 2-3', mineralPerTick: 2500, scaCoins: 7500 },
   ];
 
-  // 원작: 기본수치 29에서 「배속 수치」만큼 차감 → 속도배율 = 29 / (29 - 배속수치). 배속수치 최대 13.
-  const GAME_SPEED_BASE = 29;
-  const GAME_SPEED_MAX = 13;
+  const GAME_SPEED_BASE = 3;
+  const GAME_SPEED_MAX = 15;
+  /** SCA/EUD Wait 주기 상한. 배속 N ≠ 실시간 N배 — 배율 = (REF−BASE) / (REF−N) */
+  const GAME_SPEED_FRAME_REF = 29;
   const GPU_GRADE_NAMES = ['엔트리', '메인스트림', '퍼포먼스', '하이엔드'];
   const GPU_GRADE_ATTACK_FRAMES = [20, 16, 12, 8];
+  /** 커뮤니티 13배속방 7→10 자동구매 통계용 등급별 내부 카운터 배율 (재미 참고치) */
+  const GPU_GRADE_BENCHMARK_MULTIPLIERS = [1, 4, 10, 25];
   const DOWNLOAD_BASE_MB = 25;
 
   const SCA_SHOP_ITEMS = [
@@ -157,7 +181,7 @@
     { id: 'rebirthMineralMax2000', name: '환생 미네랄 최대 +2,000', cost: 5000, maxPurchases: 3 },
     { id: 'rebirthMineralMax7500', name: '환생 미네랄 최대 +7,500', cost: 8000, maxPurchases: 2 },
     { id: 'huntIncome1', name: '사냥터 수입 +1%', cost: 12000, maxPurchases: 10 },
-    { id: 'gameSpeed1', name: '게임 배속 +1프레임', cost: 25000, maxPurchases: 10 },
+    { id: 'gameSpeed1', name: '게임 배속 +1프레임', cost: 25000, maxPurchases: 12 },
     { id: 'upgradeProb01', name: '강화 확률 +0.1%', cost: 30000, maxPurchases: 10 },
     { id: 'downloadSpeed10', name: '다운로드 속도 +10%', cost: 35000, maxPurchases: 10 },
     { id: 'gpuGradeUp', name: 'GPU 등급 증가 (하이엔드)', cost: 40000, maxPurchases: 1 },
@@ -177,17 +201,6 @@
 
   const MAX_RAM_INVENTORY = 4;
 
-  /**
-   * 부품별 상점 직접 구매 가능 강(레벨) 목록 — 원작 공식 스프레드시트의 「가격」 기준.
-   * 원작은 각 부품마다 가격이 매겨진 특정 강만 직접 구매할 수 있고, 그 외 강은 강화로만 도달한다.
-   *   - Intel CPU: 1·4·7·10·11강 (11강은 4C)
-   *   - AMD CPU: 1·3강
-   *   - GPU: 1·3·5·7강 (7강은 2C)
-   *   - RAM: 1·5·10강 (10강은 2C)
-   *   - 쿨러(공랭/수랭): 1강 (이후 강화)
-   *   - 드라이브(HDD/NVMe): 1강 (이후 강화)
-   *   - 메인보드: 완제품 구매(강화 불가)로 별도 처리
-   */
   const SHOP_PURCHASABLE_LEVELS = {
     cpu: { Intel: [1, 4, 7, 10, 11], AMD: [1, 3] },
     gpu: [1, 3, 5, 7],
@@ -235,12 +248,34 @@
       level: row.level,
       name: row.name,
       costC: row.cost,
+      costMinerals: Math.max(0, Math.floor(row.cost || 0)),
       prob: row.prob,
       cores: row.cores,
       cooling: row.cooling,
       capacityGb: row.capacityGb,
       purchasable: buyable.indexOf(row.level) !== -1,
     }));
+  }
+
+  function getShopTierCost(type, level, part) {
+    const tier = getTier(type, part, level);
+    return tier && tier.cost != null ? tier.cost : Infinity;
+  }
+
+  function getShopSellPrice(type, level, part) {
+    const cost = getShopTierCost(type, level, part);
+    return cost === Infinity ? 0 : Math.floor(cost * 0.5);
+  }
+
+  /** tier.cost = 미네랄(원) 구매가 (1:1) */
+  function getShopTierCostMinerals(type, level, part) {
+    const c = getShopTierCost(type, level, part);
+    return c === Infinity ? Infinity : Math.max(0, Math.floor(c));
+  }
+
+  function getShopSellPriceMinerals(type, level, part) {
+    const buy = getShopTierCostMinerals(type, level, part);
+    return buy === Infinity ? 0 : Math.floor(buy * 0.5);
   }
 
   function countRamInInventory(inventory) {
@@ -345,44 +380,46 @@
 
   const REBIRTH_MINERAL_CAP = 1000000;
 
-  /**
-   * 환생수치 계수표 (원작 「기타 정보」 시트).
-   * 누적 환생수치 구간별 계수값 — SCA 코인 보상에 곱한다.
-   */
-  const REBIRTH_COEFFICIENT_TIERS = [
-    { min: 0, max: 1, coeff: 1.0 },              // 0
-    { min: 1, max: 1_000_000, coeff: 1.1 },      // 0 ~ 100만
-    { min: 1_000_000, max: 3_000_000, coeff: 1.2 },     // 100만 ~ 300만
-    { min: 3_000_000, max: 10_000_000, coeff: 1.3 },    // 300만 ~ 1000만
-    { min: 10_000_000, max: 30_000_000, coeff: 1.4 },   // 1000만 ~ 3000만
-    { min: 30_000_000, max: 100_000_000, coeff: 1.5 },  // 3000만 ~ 1억
-    { min: 100_000_000, max: 300_000_000, coeff: 1.7 }, // 1억 ~ 3억
-    { min: 300_000_000, max: Infinity, coeff: 2.0 },    // 3억 ~
+  const REBIRTH_REWARD_TIERS = [
+    { min: 0, max: 5_000_000, scaBase: 50_000, scaRate: 0.01, correction: { type: 'add', value: 5_000_000 } },
+    { min: 5_000_000, max: 10_000_000, scaBase: 100_000, scaRate: 0.01, correction: { type: 'add', value: 7_000_000 } },
+    { min: 10_000_000, max: 20_000_000, scaBase: 200_000, scaRate: 0.005, correction: { type: 'add', value: 10_000_000 } },
+    { min: 20_000_000, max: 40_000_000, scaBase: 300_000, scaRate: 0.005, correction: { type: 'mul', value: 1.40 }, extra: { incomeCoupons: 100, speedCoupons: 5 } },
+    { min: 40_000_000, max: 100_000_000, scaBase: 500_000, scaRate: 0.002, correction: { type: 'mul', value: 1.30 } },
+    { min: 100_000_000, max: 300_000_000, scaBase: 700_000, scaRate: 0.001, correction: { type: 'mul', value: 1.25 } },
+    { min: 300_000_000, max: Infinity, scaBase: 1_000_000, scaRate: 0.001, correction: { type: 'mul', value: 1.25 } },
   ];
 
-  /** 환생수치 → 계수값 */
-  function getRebirthCoefficient(rebirthStat) {
-    const s = Math.max(0, Math.floor(rebirthStat || 0));
-    const tier = REBIRTH_COEFFICIENT_TIERS.find((t) => s >= t.min && s < t.max);
-    return tier ? tier.coeff : REBIRTH_COEFFICIENT_TIERS[REBIRTH_COEFFICIENT_TIERS.length - 1].coeff;
+  function getRebirthRewardTier(baseRebirthStat) {
+    const s = Math.max(0, baseRebirthStat || 0);
+    return REBIRTH_REWARD_TIERS.find((t) => s >= t.min && s < t.max) || REBIRTH_REWARD_TIERS[REBIRTH_REWARD_TIERS.length - 1];
   }
 
-  /** 메인보드 번호 — 장착한 메인보드의 방어력(쉴드) 순위(1부터). 원작의 메인보드 1~N 번호 근사. */
-  function getMotherboardNumber(motherboard) {
-    if (!motherboard) return 0;
-    const shield = motherboard.shieldIncrease || 0;
-    const sortedShields = MOTHERBOARDS.map((b) => b.shieldIncrease).sort((a, b) => a - b);
-    let rank = 0;
-    for (let i = 0; i < sortedShields.length; i += 1) {
-      if (shield >= sortedShields[i]) rank = i + 1;
-    }
-    return rank;
+  function calcRebirthScaRewardByRebirthStat(baseRebirthStat) {
+    const s = Math.max(0, baseRebirthStat || 0);
+    const tier = getRebirthRewardTier(s);
+    return Math.max(0, Math.floor(tier.scaBase + s * tier.scaRate));
   }
 
-  /**
-   * 성능수치 — 장착 부품 성능 합산(원작 컴퓨터 스펙 수치 근사).
-   * 원작 시트의 부품별 성능값을 웹 데이터 기준으로 합산한다.
-   */
+  function applyRebirthStatCorrection(baseRebirthStat) {
+    const s = Math.max(0, baseRebirthStat || 0);
+    const tier = getRebirthRewardTier(s);
+    const corr = tier.correction || null;
+    if (!corr) return s;
+    if (corr.type === 'add') return s + corr.value;
+    if (corr.type === 'mul') return Math.floor(s * corr.value);
+    return s;
+  }
+
+  function calcRebirthOutcome(parts, prevRebirthStat) {
+    const statGain = calcRebirthStatGain(parts);
+    const baseStat = Math.max(0, (prevRebirthStat || 0)) + statGain;
+    const tier = getRebirthRewardTier(baseStat);
+    const scaReward = calcRebirthScaRewardByRebirthStat(baseStat);
+    const correctedStat = applyRebirthStatCorrection(baseStat);
+    return { statGain, baseStat, correctedStat, scaReward, tier, extra: tier.extra || null };
+  }
+
   function calcRebirthPerformanceScore(parts) {
     const cpu = parts.cpu || { level: 1 };
     const gpu = parts.gpu || { level: 1 };
@@ -394,50 +431,14 @@
     return cpuPerf + gpu.level * 800 + ram.level * 200 + cooler.level * 150 + storage.level * 100;
   }
 
-  /**
-   * 환생수치(획득분) = (CPU강화수 × (메인보드번호 + 램강화수 + 게임다운로드개수 + 환생횟수)) × 성능수치 / 10
-   */
-  function calcRebirthStat(ctx) {
-    const c = ctx || {};
-    const cpuLevel = Math.max(0, c.cpuLevel || 0);
-    const ramLevel = Math.max(0, c.ramLevel || 0);
-    const mainboardNumber = Math.max(0, c.mainboardNumber || 0);
-    const downloadCount = Math.max(0, c.downloadCount || 0);
-    const rebirthCount = Math.max(0, c.rebirthCount || 0);
-    const perf = Math.max(0, c.performanceScore || 0);
-    const factor = mainboardNumber + ramLevel + downloadCount + rebirthCount;
-    return Math.max(0, Math.floor((cpuLevel * factor * perf) / 10));
-  }
-
-  /** SCA 코인 = 성능수치 × 계수값(환생수치) */
-  function calcScaCoinReward(performanceScore, rebirthStat) {
-    return Math.max(0, Math.floor((performanceScore || 0) * getRebirthCoefficient(rebirthStat)));
-  }
-
-  /**
-   * 환생 결과 계산.
-   * @param parts 장착 부품 { cpu, gpu, ram, cooler, storage }
-   * @param opts  { mainboardNumber, downloadCount, rebirthCount, prevRebirthStat }
-   */
-  function calcRebirthOutcome(parts, opts) {
-    const o = opts || {};
-    const performanceScore = calcRebirthPerformanceScore(parts);
-    const statGain = calcRebirthStat({
-      cpuLevel: (parts.cpu && parts.cpu.level) || 0,
-      ramLevel: (parts.ram && parts.ram.level) || 0,
-      mainboardNumber: o.mainboardNumber || 0,
-      downloadCount: o.downloadCount || 0,
-      rebirthCount: o.rebirthCount || 0,
-      performanceScore,
-    });
-    const baseStat = Math.max(0, o.prevRebirthStat || 0) + statGain;
-    const coeff = getRebirthCoefficient(baseStat);
-    const scaReward = calcScaCoinReward(performanceScore, baseStat);
-    // 원작은 환생수치를 그대로 누적한다(별도 보정 없음).
-    return { statGain, baseStat, correctedStat: baseStat, scaReward, performanceScore, coeff };
-  }
-
   function calcRebirthStatGain(parts) { return calcRebirthPerformanceScore(parts); }
+
+  function calcRebirthScaReward(parts, prevRebirthStat) {
+    if (typeof prevRebirthStat === 'number') {
+      return calcRebirthScaRewardByRebirthStat(prevRebirthStat + calcRebirthStatGain(parts));
+    }
+    return Math.max(10, Math.floor(calcRebirthPerformanceScore(parts) / 100));
+  }
 
   function calcRebirthStartMinerals(scaUpgrades) {
     const u = scaUpgrades || {};
@@ -456,19 +457,43 @@
   function calcIncomeBonus(scaUpgrades) { return (scaUpgrades.huntIncome1 || 0) * 0.01; }
   function calcProbBonus(scaUpgrades) { return (scaUpgrades.upgradeProb01 || 0) * 0.001; }
 
-  /** 「배속 수치」 — SCA 상점 배속 구매 개수 (최대 13) */
-  function calcGameSpeedLevel(scaUpgrades) {
-    return Math.min(GAME_SPEED_MAX, (scaUpgrades && scaUpgrades.gameSpeed1) || 0);
-  }
-
-  /** 실제 게임 프레임수치 = 29 - 배속수치 (낮을수록 빠름) */
   function calcGameSpeedFrames(scaUpgrades) {
-    return GAME_SPEED_BASE - calcGameSpeedLevel(scaUpgrades);
+    return Math.min(GAME_SPEED_MAX, GAME_SPEED_BASE + (scaUpgrades.gameSpeed1 || 0));
   }
 
-  /** 속도배율 = 29 / (29 - 배속수치) */
+  function calcGameSpeedWaitFrames(scaUpgrades) {
+    return GAME_SPEED_FRAME_REF - calcGameSpeedFrames(scaUpgrades);
+  }
+
+  /**
+   * SCA 게임 배속 배율. N배속 ≠ 실시간 N배.
+   * 예: BASE 3 → 15(상한)일 때 (29−3)/(29−15) = 26/14 ≈ 1.857배 (구버전 N/3 사용 금지)
+   */
   function calcGameSpeedMultiplier(scaUpgrades) {
-    return GAME_SPEED_BASE / calcGameSpeedFrames(scaUpgrades);
+    const frames = calcGameSpeedFrames(scaUpgrades);
+    const baseWait = GAME_SPEED_FRAME_REF - GAME_SPEED_BASE;
+    const currentWait = GAME_SPEED_FRAME_REF - frames;
+    return Math.max(1, baseWait / currentWait);
+  }
+
+  /** 수입·다운로드 등 틱 간격(ms). baseMs 기본 1000(1초) */
+  function calcGameSpeedTickMs(scaUpgrades, baseMs) {
+    const base = baseMs == null ? 1000 : baseMs;
+    return Math.max(50, Math.round(base / calcGameSpeedMultiplier(scaUpgrades)));
+  }
+
+  /**
+   * 작업·사냥 수입 이벤트 간격(ms) — 원작: 킬/타격 = GPU 공속(프레임) + SCA 배속.
+   * 24fps 기준 공격 주기 / gameSpeedMult. (고정 1초 틱보다 원작에 가깝게)
+   */
+  function calcIncomeEventIntervalMs(scaUpgrades, gpuAttackFrames) {
+    const frames = Math.max(1, gpuAttackFrames || GPU_GRADE_ATTACK_FRAMES[0]);
+    const secPerEvent = frames / 24 / calcGameSpeedMultiplier(scaUpgrades);
+    return Math.max(50, Math.round(secPerEvent * 1000));
+  }
+
+  function calcGpuBenchmarkMultiplier(scaUpgrades) {
+    return GPU_GRADE_BENCHMARK_MULTIPLIERS[calcGpuGrade(scaUpgrades)] || 1;
   }
 
   function calcGpuGrade(scaUpgrades) {
@@ -510,6 +535,7 @@
   }
 
   const formatManwon = formatMineral;
+
 
   function getPurchaseCostMinerals(type, level, part) {
     return costToMinerals(getUpgradeCost(type, level, part));
@@ -717,20 +743,21 @@ function getPartLevel(part) {
   }
 
   global.OriginalMapGame = {
-    MINERAL_PER_COIN, MANWON_MINERALS, REBIRTH_MINERAL_CAP, GAME_SPEED_BASE, GAME_SPEED_MAX,
-    GPU_GRADE_NAMES, GPU_GRADE_ATTACK_FRAMES, DOWNLOAD_BASE_MB,
+    MINERAL_PER_COIN, MANWON_MINERALS, parseSheetPrice, REBIRTH_MINERAL_CAP,
+    GAME_SPEED_BASE, GAME_SPEED_MAX, GAME_SPEED_FRAME_REF,
+    GPU_GRADE_NAMES, GPU_GRADE_ATTACK_FRAMES, GPU_GRADE_BENCHMARK_MULTIPLIERS, DOWNLOAD_BASE_MB,
     INTEL_CPU, AMD_CPU, GPU, RAM, COOLER_AIR, COOLER_WATER, HDD, NVME,
     MOTHERBOARDS, WORK_TASKS, GAME_HUNTING, WORK_HUNTING_GROUNDS, PARTY_HUNTING_TIERS, SCA_SHOP_ITEMS, DOWNLOAD_TARGETS, GPU_RAM_PER_UNIT_GB,
     getPartTable, getMaxLevel, getTier, getUpgradeCost, getUpgradeProbability, getPartName,
     applyTierStats, getCpuCoolingRequired, getCpuCores, convertMineralsToCoins,
-    calcRebirthPerformanceScore, calcRebirthStatGain, calcRebirthStat, calcScaCoinReward,
+    calcRebirthPerformanceScore, calcRebirthStatGain, calcRebirthScaReward,
     calcRebirthStartMinerals, calcRebirthIncomeMultiplier,
     calcIncomeBonus, calcProbBonus,
-    REBIRTH_COEFFICIENT_TIERS, getRebirthCoefficient, getMotherboardNumber, calcRebirthOutcome,
-    calcGameSpeedLevel, calcGameSpeedFrames, calcGameSpeedMultiplier, calcGpuGrade, calcGpuAttackFrames,
+    REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
+    calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeEventIntervalMs,
+    calcGpuGrade, calcGpuAttackFrames, calcGpuBenchmarkMultiplier,
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
-    MAX_RAM_INVENTORY, SHOP_PURCHASABLE_LEVELS, getShopTierCost, getShopSellPrice, getShopCatalog,
-    getPurchasableLevels, getPurchasableMaxLevel, isPurchasableLevel, countRamInInventory, canPurchaseRam, buildInventoryPart,
+    MAX_RAM_INVENTORY, SHOP_PURCHASABLE_LEVELS, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, getPurchasableLevels, getPurchasableMaxLevel, isPurchasableLevel, countRamInInventory, canPurchaseRam, buildInventoryPart,
     costToMinerals, formatMineral, formatManwon, getPurchaseCostMinerals,
     getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getWorkTask, getGameHunt, getDownloadTargetMeta,
     getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
