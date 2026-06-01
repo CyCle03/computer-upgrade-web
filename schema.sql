@@ -166,3 +166,18 @@ BEGIN
         v_current_sca_coins;
 END;
 $$ LANGUAGE plpgsql;
+
+--------------------------------------------------------------------------------
+-- 10. Row Level Security (RLS) 활성화
+-- Supabase 보안 어드바이저의 "RLS Disabled in Public" (CRITICAL) 경고 해소.
+-- 이 앱은 Supabase 자동 PostgREST API(anon/authenticated 키)를 사용하지 않고
+-- 자체 Express 백엔드가 postgres 역할로 직접 연결한다. postgres(테이블 소유자/
+-- 슈퍼유저)는 RLS를 우회하므로, 정책을 추가하지 않아도 백엔드는 정상 동작하고
+-- 외부 공개 API를 통한 anon/authenticated 접근은 기본 거부(deny-all)된다.
+--------------------------------------------------------------------------------
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE in_game_currencies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE permanent_currencies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_raid_progresses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE auth_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE game_states ENABLE ROW LEVEL SECURITY;
