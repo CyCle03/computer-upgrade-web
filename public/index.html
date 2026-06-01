@@ -95,7 +95,7 @@
       // ----------------------------------------------------------------------
       const [cpu, setCpu] = useState(() => {
         const saved = localStorage.getItem('sca_cpu');
-        return saved !== null ? JSON.parse(saved) : { manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR4' };
+        return saved !== null ? JSON.parse(saved) : { manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' };
       });
       const [gpu, setGpu] = useState(() => {
         const saved = localStorage.getItem('sca_gpu');
@@ -103,7 +103,7 @@
       });
       const [ram, setRam] = useState(() => {
         const saved = localStorage.getItem('sca_ram');
-        return saved !== null ? JSON.parse(saved) : { level: 1, clockMhz: 2400, capacityGb: 8, ddrGeneration: 'DDR4' };
+        return saved !== null ? JSON.parse(saved) : { level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' };
       });
       const [cooler, setCooler] = useState(() => {
         const saved = localStorage.getItem('sca_cooler');
@@ -111,7 +111,7 @@
       });
       const [motherboard, setMotherboard] = useState(() => {
         const saved = localStorage.getItem('sca_motherboard');
-        return saved !== null ? JSON.parse(saved) : { socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR4', shieldIncrease: 300 };
+        return saved !== null ? JSON.parse(saved) : { socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 200 };
       });
       const [storage, setStorage] = useState(() => {
         const saved = localStorage.getItem('sca_storage');
@@ -122,9 +122,9 @@
         const saved = localStorage.getItem('sca_inventory');
         if (saved !== null) return JSON.parse(saved);
         return [
-          { id: 'inv-cpu-1', type: 'cpu', level: 1, manufacturer: 'Intel', ddrGeneration: 'DDR4' },
+          { id: 'inv-cpu-1', type: 'cpu', level: 1, manufacturer: 'Intel', ddrGeneration: 'DDR3' },
           { id: 'inv-gpu-1', type: 'gpu', level: 1 },
-          { id: 'inv-ram-1', type: 'ram', level: 1, clockMhz: 2400, capacityGb: 8, ddrGeneration: 'DDR4' },
+          { id: 'inv-ram-1', type: 'ram', level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' },
           { id: 'inv-cooler-1', type: 'cooler', level: 1, coolingCapacity: 100, coolerKind: 'air' },
           { id: 'inv-storage-1', type: 'storage', level: 1, storageType: 'HDD', storageKind: 'hdd', capacityGb: 60 }
         ];
@@ -494,7 +494,7 @@
         setNormalCoins((prev) => prev - cost);
         const newId = `inv-${type}-${Math.random().toString(36).substring(2, 9)}`;
         let newPart = { id: newId, type, level: 1 };
-        if (type === 'cpu') { newPart.manufacturer = cpuBuyManufacturer; newPart.ddrGeneration = 'DDR4'; }
+        if (type === 'cpu') { newPart.manufacturer = cpuBuyManufacturer; newPart.ddrGeneration = motherboard.supportedDdrGeneration || 'DDR3'; }
         else if (type === 'ram') { const t = OMG.getTier('ram', newPart, 1); newPart.clockMhz = t.clockMhz; newPart.capacityGb = t.capacityGb; newPart.ddrGeneration = t.ddrGeneration; }
         else if (type === 'cooler') { newPart.coolerKind = coolerBuyKind; newPart.coolingCapacity = OMG.getTier('cooler', newPart, 1).coolingCapacity; }
         else if (type === 'storage') { newPart.storageKind = storageBuyKind; const t = OMG.getTier('storage', newPart, 1); newPart.storageType = t.storageType; newPart.capacityGb = t.capacityGb; }
@@ -552,14 +552,14 @@
         setRebirthCount((prev) => prev + 1);
         setMinerals(startMinerals);
         setNormalCoins(0);
-setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR4' });
+setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setGpu({ level: 1 });
         setRam({ level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' });
         setCooler({ level: 1, coolingCapacity: 100, coolerKind: 'air' });
-        setMotherboard({ socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR4', shieldIncrease: 300 });
+        setMotherboard({ socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 200 });
         setStorage({ type: 'HDD', capacityGb: 60, level: 1, storageKind: 'hdd' });
         setInventory([
-          { id: 'inv-cpu-1', type: 'cpu', level: 1, manufacturer: 'Intel', ddrGeneration: 'DDR4' },
+          { id: 'inv-cpu-1', type: 'cpu', level: 1, manufacturer: 'Intel', ddrGeneration: 'DDR3' },
           { id: 'inv-gpu-1', type: 'gpu', level: 1 },
           { id: 'inv-ram-1', type: 'ram', level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' },
           { id: 'inv-cooler-1', type: 'cooler', level: 1, coolingCapacity: 100, coolerKind: 'air' },
