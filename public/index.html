@@ -45,7 +45,7 @@
       // ----------------------------------------------------------------------
       const [minerals, setMinerals] = useState(() => {
         const saved = localStorage.getItem('sca_minerals');
-        return saved !== null ? parseInt(saved, 10) : 2000;
+        return saved !== null ? parseInt(saved, 10) : 0;
       });
       const [normalCoins, setNormalCoins] = useState(() => {
         const saved = localStorage.getItem('sca_normalCoins');
@@ -111,7 +111,7 @@
       });
       const [motherboard, setMotherboard] = useState(() => {
         const saved = localStorage.getItem('sca_motherboard');
-        return saved !== null ? JSON.parse(saved) : { socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 200 };
+        return saved !== null ? JSON.parse(saved) : { socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 30 };
       });
       const [storage, setStorage] = useState(() => {
         const saved = localStorage.getItem('sca_storage');
@@ -142,15 +142,18 @@
       });
       const [unlockedGameIndex, setUnlockedGameIndex] = useState(() => {
         const saved = localStorage.getItem('sca_unlockedGameIndex');
-        return saved !== null ? parseInt(saved, 10) : -1;
+        if (saved !== null) {
+          const n = parseInt(saved, 10);
+          return n < 0 ? 0 : n;
+        }
+        return 0;
       });
       const [isDownloading, setIsDownloading] = useState(false);
       const [downloadProgress, setDownloadProgress] = useState(0);
       const [downloadTarget, setDownloadTarget] = useState(() => {
         const saved = localStorage.getItem('sca_downloadTarget');
         if (saved !== null) return JSON.parse(saved);
-        const t = OMG.DOWNLOAD_TARGETS[0];
-        return { name: t.name, sizeMb: t.sizeMb, requiredGb: t.requiredGb, gameIndex: t.gameIndex };
+        return OMG.toDownloadTargetSnapshot(OMG.DOWNLOAD_TARGETS[0]);
       });
 
       // ----------------------------------------------------------------------
@@ -236,9 +239,16 @@
       const gpuAttackFrames = useMemo(() => OMG.calcGpuAttackFrames(scaUpgrades), [scaUpgrades]);
 
       const workParts = useMemo(() => ({ cpu, gpu, ram, cooler, storage }), [cpu, gpu, ram, cooler, storage]);
+      const effectiveUnitLimit = useMemo(() => {
+        let limit = OMG.getCpuCores(cpu);
+        if (cpu.manufacturer !== motherboard.socketManufacturer) {
+          limit = Math.max(1, Math.floor(limit * 0.5));
+        }
+        return limit;
+      }, [cpu, motherboard]);
       const ramAlloc = useMemo(
-        () => OMG.calcRamAllocation(workParts, workTaskIndex),
-        [workParts, workTaskIndex]
+        () => OMG.calcRamAllocation(workParts, workTaskIndex, effectiveUnitLimit),
+        [workParts, workTaskIndex, effectiveUnitLimit]
       );
       const currentWorkTask = useMemo(() => OMG.getWorkTask(workTaskIndex), [workTaskIndex]);
       const activeGame = useMemo(
@@ -246,8 +256,8 @@
         [unlockedGameIndex]
       );
       const downloadValidation = useMemo(
-        () => OMG.validateDownloadStart(workParts, unlockedGameIndex, downloadTarget, isDownloading),
-        [workParts, unlockedGameIndex, downloadTarget, isDownloading]
+        () => OMG.validateDownloadStart(workParts, unlockedGameIndex, downloadTarget, isDownloading, minerals),
+        [workParts, unlockedGameIndex, downloadTarget, isDownloading, minerals]
       );
 
       const getCpuName = (level, m) => OMG.getPartName('cpu', level, { type: 'cpu', manufacturer: m || cpu.manufacturer });
@@ -279,9 +289,10 @@
           unitLimit = Math.max(1, Math.floor(unitLimit * 0.5));
         }
 
-        // E. RAM 분배: 작업 점유 후 남은 RAM으로 사냥 유닛 (GPU 1기당 RAM × CPU 코어)
-        const ramAllocation = OMG.calcRamAllocation({ cpu, gpu, ram, cooler, storage }, workTaskIndex);
+        // E. RAM/CPU: 작업=유닛당 RAM, 게임=CPU 코어 (ramAlloc 훅과 동일)
+        const ramAllocation = ramAlloc;
         const maxHuntingUnits = ramAllocation.activeHuntingUnits;
+        const activeWorkUnits = ramAllocation.activeWorkUnits;
 
         // F. 유닛 체력 및 메인보드 고정 실드
         const unitHp = 100 * cpu.level;
@@ -306,6 +317,7 @@
         return {
           unitLimit,
           maxHuntingUnits,
+          activeWorkUnits,
           unitHp,
           unitShield,
           attackSpeedSec,
@@ -315,8 +327,7 @@
           storageDownloadMult,
           ramAllocation,
           workRamUsed: ramAllocation.workRamUsed,
-          huntRamFree: ramAllocation.huntRamFree,
-          gpuRamPerUnit: ramAllocation.ramPerUnit,
+          ramPerWorkUnit: ramAllocation.ramPerWorkUnit,
           gpuGrade,
           gpuAttackFrames,
           gameSpeedFrames,
@@ -329,7 +340,7 @@
             mineralMultiplier
           }
         };
-      }, [cpu, gpu, ram, cooler, motherboard, storage, scaUpgrades, gpuAttackFrames, gpuGrade]);
+      }, [cpu, gpu, ram, cooler, motherboard, storage, scaUpgrades, gpuAttackFrames, gpuGrade, ramAlloc, workTaskIndex]);
 
       useEffect(() => {
         if (localStorage.getItem('sca_rebirthStatMigrated')) return;
@@ -383,21 +394,23 @@
             workTaskIndex,
             specs.penalties.mineralMultiplier,
             rebirthIncomeMult,
-            incomeBonusRate
+            incomeBonusRate,
+            effectiveUnitLimit
           );
           if (earn > 0) setMinerals((p) => p + earn);
         }, tickMs);
         return () => clearInterval(interval);
-      }, [specs, workParts, workTaskIndex, rebirthIncomeMult, incomeBonusRate, isPartyHunting, gameSpeedMult]);
+      }, [specs, workParts, workTaskIndex, rebirthIncomeMult, incomeBonusRate, isPartyHunting, gameSpeedMult, effectiveUnitLimit]);
 
       useEffect(() => {
         const tickMs = Math.max(50, Math.round(1000 / gameSpeedMult));
         const interval = setInterval(() => {
-          const earn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate);
+          if (isDownloading) return;
+          const earn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit);
           if (earn > 0) setMinerals((p) => p + earn);
         }, tickMs);
         return () => clearInterval(interval);
-      }, [workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, gameSpeedMult]);
+      }, [workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, gameSpeedMult, isDownloading, effectiveUnitLimit]);
       useEffect(() => {
         if (!isPartyHunting) return;
         const tier = OMG.PARTY_HUNTING_TIERS[partyHuntingTier];
@@ -452,8 +465,8 @@
             const mEarn = Math.round(tier.mineralPerTick * (1 + incomeBonusRate));
             newLog = `[${time}] 👥 파티 :: ${tier.name} +${mEarn}원 +${tier.scaCoins}C`;
           } else {
-            const workEarn = OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate);
-            const huntEarn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate);
+            const workEarn = OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate, effectiveUnitLimit);
+            const huntEarn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit);
             const gameName = activeGame ? activeGame.name : '게임 없음';
             newLog = `[${time}] 💼작업 +${workEarn}원 · 🎮${gameName} ${specs.maxHuntingUnits}기 +${huntEarn}원`;
           }
@@ -464,7 +477,7 @@
           });
         }, 1500);
         return () => clearInterval(interval);
-      }, [cpu.level, specs, workParts, workTaskIndex, unlockedGameIndex, activeGame, rebirthIncomeMult, incomeBonusRate, isPartyHunting, partyHuntingTier]);
+      }, [cpu.level, specs, workParts, workTaskIndex, unlockedGameIndex, activeGame, rebirthIncomeMult, incomeBonusRate, isPartyHunting, partyHuntingTier, effectiveUnitLimit, isDownloading]);
 
       // ----------------------------------------------------------------------
       // 6.7. 지능형 자동 구매 및 자동 강화(Auto Buy & Upgrade) 통합 루프 엔진
@@ -613,7 +626,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setGpu({ level: 1 });
         setRam({ level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' });
         setCooler({ level: 1, coolingCapacity: 100, coolerKind: 'air' });
-        setMotherboard({ socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 200 });
+        setMotherboard({ socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 30 });
         setStorage({ type: 'HDD', capacityGb: 60, level: 1, storageKind: 'hdd' });
         setInventory([
           { id: 'inv-cpu-1', type: 'cpu', level: 1, manufacturer: 'Intel', ddrGeneration: 'DDR3' },
@@ -623,9 +636,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           { id: 'inv-storage-1', type: 'storage', level: 1, storageType: 'HDD', storageKind: 'hdd', capacityGb: 60 }
         ]);
         setWorkTaskIndex(0);
-        setUnlockedGameIndex(-1);
-        const dt = OMG.DOWNLOAD_TARGETS[0];
-        setDownloadTarget({ name: dt.name, sizeMb: dt.sizeMb, requiredGb: dt.requiredGb, gameIndex: dt.gameIndex });
+        setUnlockedGameIndex(0);
+        setDownloadTarget(OMG.toDownloadTargetSnapshot(OMG.DOWNLOAD_TARGETS[0]));
         setIsDownloading(false);
         setDownloadProgress(0);
         setIsPartyHunting(false);
@@ -728,10 +740,13 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       // 8. 상위 사냥터(게임) 다운로드 진행도 시뮬레이션
       // ----------------------------------------------------------------------
       const startDownload = () => {
-        const check = OMG.validateDownloadStart(workParts, unlockedGameIndex, downloadTarget, isDownloading);
+        const check = OMG.validateDownloadStart(workParts, unlockedGameIndex, downloadTarget, isDownloading, minerals);
         if (!check.ok) {
           alert(check.reason);
           return;
+        }
+        if (check.mineralCost > 0) {
+          setMinerals((prev) => prev - check.mineralCost);
         }
         setIsDownloading(true);
         setDownloadProgress(0);
@@ -751,12 +766,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               setUnlockedGameIndex(downloadTarget.gameIndex);
               const nextTarget = OMG.DOWNLOAD_TARGETS.find(t => t.gameIndex === downloadTarget.gameIndex + 1);
               if (nextTarget) {
-                setDownloadTarget({
-                  name: nextTarget.name,
-                  sizeMb: nextTarget.sizeMb,
-                  requiredGb: nextTarget.requiredGb,
-                  gameIndex: nextTarget.gameIndex,
-                });
+                setDownloadTarget(OMG.toDownloadTargetSnapshot(nextTarget));
               } else {
                 setDownloadTarget(null);
               }
@@ -1111,7 +1121,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         >
                           <span className="text-lg">🧠</span>
                           <span className="text-[10px] font-bold text-slate-200">CPU 1강 팩</span>
-                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.getUpgradeCost('cpu', 0, { type: 'cpu', manufacturer: cpuBuyManufacturer })} C</span>
+                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.formatMineral(OMG.getUpgradeCost('cpu', 0, { type: 'cpu', manufacturer: cpuBuyManufacturer }))}</span>
                         </button>
                         <button
                           onClick={() => setAutoBuyCpu(p => !p)}
@@ -1136,7 +1146,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         >
                           <span className="text-lg">🎮</span>
                           <span className="text-[10px] font-bold text-slate-200">GPU 1강 팩</span>
-                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.getUpgradeCost('gpu', 0, { type: 'gpu' })} C</span>
+                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.formatMineral(OMG.getUpgradeCost('gpu', 0, { type: 'gpu' }))}</span>
                         </button>
                         <button
                           onClick={() => setAutoBuyGpu(p => !p)}
@@ -1161,7 +1171,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         >
                           <span className="text-lg">⚡</span>
                           <span className="text-[10px] font-bold text-slate-200">RAM 1강 팩</span>
-                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.getUpgradeCost('ram', 0, { type: 'ram' })} C</span>
+                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.formatMineral(OMG.getUpgradeCost('ram', 0, { type: 'ram' }))}</span>
                         </button>
                         <button
                           onClick={() => setAutoBuyRam(p => !p)}
@@ -1186,7 +1196,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         >
                           <span className="text-lg">❄️</span>
                           <span className="text-[10px] font-bold text-slate-200">Cooler 1강 팩</span>
-                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.getUpgradeCost('cooler', 0, { type: 'cooler', coolerKind: coolerBuyKind })} C</span>
+                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.formatMineral(OMG.getUpgradeCost('cooler', 0, { type: 'cooler', coolerKind: coolerBuyKind }))}</span>
                         </button>
                         <button
                           onClick={() => setAutoBuyCooler(p => !p)}
@@ -1211,7 +1221,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         >
                           <span className="text-lg">💾</span>
                           <span className="text-[10px] font-bold text-slate-200">Storage 1강 팩</span>
-                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.getUpgradeCost('storage', 0, { type: 'storage', storageKind: storageBuyKind })} C</span>
+                           <span className="text-[10px] text-cyan-400 font-mono font-bold">{OMG.formatMineral(OMG.getUpgradeCost('storage', 0, { type: 'storage', storageKind: storageBuyKind }))}</span>
                         </button>
                         <button
                           onClick={() => setAutoBuyStorage(p => !p)}
@@ -1391,16 +1401,17 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                             type="button"
                             disabled={!selectable}
                             onClick={() => selectable && setWorkTaskIndex(task.taskIndex)}
-                            title={selectable ? `RAM ${task.requiredRamGb}GB 점유 · 틱당 ${task.mineralBase}원` : `RAM ${task.requiredRamGb}GB 필요 (현재 ${ramAlloc.totalRam}GB)`}
+                            title={selectable ? `유닛당 ${task.ramPerUnitGb}GB · ${task.mineralPerUnit}원/기` : `최소 ${task.ramPerUnitGb}GB RAM 필요 (현재 ${ramAlloc.totalRam}GB)`}
                             className={`text-[10px] px-2 py-1 rounded font-mono border ${active ? 'bg-emerald-600 border-emerald-500 text-white' : selectable ? 'bg-slate-900 border-slate-700 text-slate-300 hover:border-emerald-500/40' : 'bg-slate-950 border-slate-800 text-slate-600 opacity-50 cursor-not-allowed'}`}
                           >
-                            {active ? '▶ ' : ''}{task.name} [{task.requiredRamGb}GB]
+                            {active ? '▶ ' : ''}{task.name} [{task.ramPerUnitGb}GB/기]
                           </button>
                         );
                       })}
                     </div>
                     <p className="text-xs text-slate-400">
                       틱당 <strong className="text-emerald-400">{OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate).toLocaleString()}원</strong>
+                      · <strong className="text-emerald-300">{specs.activeWorkUnits}기</strong>
                       {isPartyHunting ? ' · 파티 ON — 작업 중단' : ramAlloc.canRunWork ? '' : ' · RAM 부족'}
                     </p>
                   </div>
@@ -1409,12 +1420,12 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     <p className="text-xs text-slate-300 font-bold">{activeGame ? activeGame.name : '다운로드된 게임 없음'}</p>
                     <p className="text-xs text-slate-400">
                       배치 <strong className="text-cyan-400">{specs.maxHuntingUnits}기</strong>
-                      (RAM {specs.huntRamFree}GB / GPU {specs.gpuRamPerUnit}GB·기 · CPU {specs.ramAllocation.maxByCpu}코어)
+                      (CPU {specs.ramAllocation.maxByCpu}코어 · 다운로드+저장공간)
                       · 틱당 <strong className="text-cyan-400">{OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate).toLocaleString()}원</strong>
                     </p>
                     {downloadTarget ? (
                       <>
-                        <div className="text-[10px] font-mono text-slate-400">다음 다운로드: <strong>{downloadTarget.name}</strong> · 저장 {downloadTarget.requiredGb}GB</div>
+                        <div className="text-[10px] font-mono text-slate-400">다음 다운로드: <strong>{downloadTarget.name}</strong> · 저장 {downloadTarget.requiredGb}GB · {OMG.formatMineral(downloadTarget.mineralCost || 0)}</div>
                         <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
                           <div className="bg-cyan-500 h-full transition-all" style={{ width: `${downloadProgress}%` }} />
                         </div>
@@ -1425,7 +1436,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                               className={`px-2 py-1 rounded border ${downloadValidation.ok ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'opacity-50 cursor-not-allowed text-slate-500 border-slate-800'}`}>
                               게임 다운로드
                             </button>
-                          ) : <span className="text-cyan-400 animate-pulse">다운로드 중…</span>}
+                          ) : <span className="text-cyan-400 animate-pulse">다운로드 중… (게임 사냥 중단)</span>}
                         </div>
                         {!downloadValidation.ok && !isDownloading && (
                           <p className="text-[10px] text-rose-400">{downloadValidation.reason}</p>
