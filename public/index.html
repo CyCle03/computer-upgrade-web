@@ -545,39 +545,45 @@
 
             if (!active) continue;
 
-            // 해당 부품 유형의 인벤토리 아이템을 추출
+            const buyMeta = getComponentBuyMeta(type);
+            const buyLevel = getShopSelectedBuyLevel(type);
+            const goal = autoTargetLevels[type] || 1;
             const owned = inventory.filter(p => p.type === type);
-            
-            if (owned.length === 0) {
+            const maxOwnedLevel = owned.length ? Math.max(...owned.map((p) => p.level)) : 0;
+            const upgradeTarget = owned
+              .filter((p) => p.level < goal && p.level < OMG.getMaxLevel(type, p))
+              .sort((a, b) => b.level - a.level)[0];
+            const needsShopBuy = owned.length === 0 || (maxOwnedLevel < buyLevel && (!upgradeTarget || upgradeTarget.level < buyLevel));
+
+            if (needsShopBuy) {
               if (type === 'ram' && !OMG.canPurchaseRam(inventory)) {
                 setAuto(false);
                 setCombatLogs(prev => [...prev.slice(-7), `⚠️ [SYSTEM] RAM 창고 한도(${OMG.MAX_RAM_INVENTORY}개)로 ${type.toUpperCase()} 자동 구매가 중단되었습니다.`]);
                 break;
               }
-              const buyMeta = getComponentBuyMeta(type);
-              const costM = OMG.getShopTierCostMinerals(type, 1, buyMeta);
-              if (minerals >= costM) { handleBuyComponentPack(type, 1); break; }
-              setAuto(false);
-              setCombatLogs(prev => [...prev.slice(-7), `⚠️ [SYSTEM] 미네랄 부족으로 ${type.toUpperCase()} 자동 구매가 중단되었습니다.`]);
-              break;
-            } else {
-              const goal = autoTargetLevels[type] || 1;
-              const target = owned.filter(p => p.level < goal && p.level < OMG.getMaxLevel(type, p)).sort((a, b) => b.level - a.level)[0];
-              if (target) {
-                // 원작 규칙: 강화는 비용이 들지 않음(구매/팩만 비용 지불)
-                handleInventoryUpgrade(target.id);
-                break;
-              } else {
-                setAuto(false);
-                setCombatLogs(prev => [...prev.slice(-7), `🎉 [SYSTEM] ${type.toUpperCase()} 자동강화 목표 ${goal}강 달성.`]);
+              const costM = OMG.getShopTierCostMinerals(type, buyLevel, buyMeta);
+              if (minerals >= costM) {
+                handleBuyComponentPack(type, buyLevel);
                 break;
               }
+              setAuto(false);
+              setCombatLogs(prev => [...prev.slice(-7), `⚠️ [SYSTEM] 미네랄 부족으로 ${type.toUpperCase()} +${buyLevel}강 자동 구매가 중단되었습니다.`]);
+              break;
             }
+
+            if (upgradeTarget) {
+              handleInventoryUpgrade(upgradeTarget.id);
+              break;
+            }
+
+            setAuto(false);
+            setCombatLogs(prev => [...prev.slice(-7), `🎉 [SYSTEM] ${type.toUpperCase()} 자동강화 목표 ${goal}강 달성.`]);
+            break;
           }
         }, 650);
 
         return () => clearInterval(interval);
-      }, [autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage, autoTargetLevels, isUpgrading, inventory, cpuBuyManufacturer, coolerBuyKind, storageBuyKind]);
+      }, [autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage, autoTargetLevels, isUpgrading, inventory, minerals, buyLevelIndex, cpuBuyManufacturer, coolerBuyKind, storageBuyKind]);
 
       // ----------------------------------------------------------------------
       // 7. V1.2.9 원작 강화 (미네랄 상점)
@@ -614,6 +620,14 @@
         coolerKind: type === 'cooler' ? coolerBuyKind : undefined,
         storageKind: type === 'storage' ? storageBuyKind : undefined,
       });
+
+      const getShopSelectedBuyLevel = (type) => {
+        const buyMeta = getComponentBuyMeta(type);
+        const levels = OMG.getPurchasableLevels(type, buyMeta);
+        if (!levels.length) return 1;
+        const idx = Math.min(buyLevelIndex[type] || 0, levels.length - 1);
+        return levels[idx];
+      };
 
       const handlePurchaseScaItem = (item) => {
         const bought = scaUpgrades[item.id] || 0;
@@ -1185,7 +1199,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       <div>
                         <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 부품 상점 — 부품별 구매 가능 강 (미네랄)</span>
                         <p className="text-xs text-slate-400">
-                          스프레드시트 구매가 = 미네랄(원) 1:1 (C = N×천만). Intel CPU 1·4·7·10·11강, AMD 1·3강, GPU 1·3·5·7강, RAM 1·5·10강, 쿨러·드라이브 1강, 메인보드(DDR·소켓 표시) 직접 구매. ◀▶로 강 선택. RAM 창고 최대 4개 · 판매 50% 환급.
+                          스프레드시트 구매가 = 미네랄(원) 1:1 (C = N×천만). Intel CPU 1·4·7·10·11강, AMD 1·3강, GPU 1·3·5·7강, RAM 1·5·10강, 쿨러·드라이브 1강, 메인보드(DDR·소켓 표시) 직접 구매. ◀▶로 강 선택 · AUTO는 선택한 강을 구매 후 목표 강까지 강화. RAM 창고 최대 4개 · 판매 50% 환급.
                         </p>
                       </div>
                       {gpu.level >= 10 && (
@@ -1293,7 +1307,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         </button>
                         <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
                           <button type="button" onClick={() => adjustAutoTarget('cpu', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">−</button>
-                          <span>목표 {autoTargetLevels.cpu}강</span>
+                          <span>구매 +{getShopSelectedBuyLevel('cpu')}강 → 목표 {autoTargetLevels.cpu}강</span>
                           <button type="button" onClick={() => adjustAutoTarget('cpu', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">+</button>
                         </div>
                       </div>
@@ -1303,7 +1317,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         </button>
                         <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
                           <button type="button" onClick={() => adjustAutoTarget('gpu', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">−</button>
-                          <span>목표 {autoTargetLevels.gpu}강</span>
+                          <span>구매 +{getShopSelectedBuyLevel('gpu')}강 → 목표 {autoTargetLevels.gpu}강</span>
                           <button type="button" onClick={() => adjustAutoTarget('gpu', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">+</button>
                         </div>
                       </div>
@@ -1313,7 +1327,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         </button>
                         <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
                           <button type="button" onClick={() => adjustAutoTarget('ram', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">−</button>
-                          <span>목표 {autoTargetLevels.ram}강</span>
+                          <span>구매 +{getShopSelectedBuyLevel('ram')}강 → 목표 {autoTargetLevels.ram}강</span>
                           <button type="button" onClick={() => adjustAutoTarget('ram', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">+</button>
                         </div>
                       </div>
@@ -1323,7 +1337,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         </button>
                         <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
                           <button type="button" onClick={() => adjustAutoTarget('cooler', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">−</button>
-                          <span>목표 {autoTargetLevels.cooler}강</span>
+                          <span>구매 +{getShopSelectedBuyLevel('cooler')}강 → 목표 {autoTargetLevels.cooler}강</span>
                           <button type="button" onClick={() => adjustAutoTarget('cooler', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">+</button>
                         </div>
                       </div>
@@ -1333,7 +1347,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         </button>
                         <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
                           <button type="button" onClick={() => adjustAutoTarget('storage', -1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">−</button>
-                          <span>목표 {autoTargetLevels.storage}강</span>
+                          <span>구매 +{getShopSelectedBuyLevel('storage')}강 → 목표 {autoTargetLevels.storage}강</span>
                           <button type="button" onClick={() => adjustAutoTarget('storage', 1)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">+</button>
                         </div>
                       </div>
