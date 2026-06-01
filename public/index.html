@@ -396,7 +396,7 @@
 
       useEffect(() => {
         if (isPartyHunting) return;
-        const tickMs = OMG.calcGameSpeedTickMs(scaUpgrades);
+        const tickMs = OMG.calcIncomeEventIntervalMs(scaUpgrades, gpuAttackFrames);
         const interval = setInterval(() => {
           const earn = OMG.calcWorkIncomePerTick(
             workParts,
@@ -409,17 +409,17 @@
           if (earn > 0) setMinerals((p) => p + earn);
         }, tickMs);
         return () => clearInterval(interval);
-      }, [specs, workParts, workTaskIndex, rebirthIncomeMult, incomeBonusRate, isPartyHunting, gameSpeedMult, effectiveUnitLimit]);
+      }, [specs, workParts, workTaskIndex, rebirthIncomeMult, incomeBonusRate, isPartyHunting, gameSpeedMult, gpuAttackFrames, scaUpgrades, effectiveUnitLimit]);
 
       useEffect(() => {
-        const tickMs = OMG.calcGameSpeedTickMs(scaUpgrades);
+        const tickMs = OMG.calcIncomeEventIntervalMs(scaUpgrades, gpuAttackFrames);
         const interval = setInterval(() => {
           if (isDownloading) return;
           const earn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit);
           if (earn > 0) setMinerals((p) => p + earn);
         }, tickMs);
         return () => clearInterval(interval);
-      }, [workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, gameSpeedMult, isDownloading, effectiveUnitLimit]);
+      }, [workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, gameSpeedMult, gpuAttackFrames, scaUpgrades, isDownloading, effectiveUnitLimit]);
       useEffect(() => {
         if (!isPartyHunting) return;
         const tier = OMG.PARTY_HUNTING_TIERS[partyHuntingTier];

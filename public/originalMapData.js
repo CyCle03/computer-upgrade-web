@@ -66,32 +66,32 @@
 
   const COOLER_AIR = [
     { level: 1, name: '인텔 기본 번들 (초코파이)', cost: 1, prob: 0.50, coolingCapacity: 100 },
-    { level: 2, name: '구리 히트싱크 공랭', cost: 5, prob: 0.45, coolingCapacity: 250 },
-    { level: 3, name: '보급형 타워 싱글팬', cost: 15, prob: 0.40, coolingCapacity: 450 },
-    { level: 4, name: '듀얼타워 대장급 (NH-D15)', cost: 40, prob: 0.35, coolingCapacity: 700 },
-    { level: 5, name: '듀얼타워 RGB 공랭', cost: 80, prob: 0.30, coolingCapacity: 1000 },
+    { level: 2, name: '구리 히트싱크 공랭', cost: 500, prob: 0.45, coolingCapacity: 250 },
+    { level: 3, name: '보급형 타워 싱글팬', cost: 1500, prob: 0.40, coolingCapacity: 450 },
+    { level: 4, name: '듀얼타워 대장급 (NH-D15)', cost: 5000, prob: 0.35, coolingCapacity: 700 },
+    { level: 5, name: '듀얼타워 RGB 공랭', cost: 15000, prob: 0.30, coolingCapacity: 1000 },
   ];
 
   const COOLER_WATER = [
-    { level: 1, name: '120mm 1열 수랭', cost: 20, prob: 0.40, coolingCapacity: 600 },
-    { level: 2, name: '240mm 2열 AIO', cost: 50, prob: 0.35, coolingCapacity: 900 },
-    { level: 3, name: '360mm 3열 RGB 수랭', cost: 120, prob: 0.30, coolingCapacity: 1300 },
-    { level: 4, name: '커스텀 수로 오픈형', cost: 250, prob: 0.25, coolingCapacity: 1800 },
-    { level: 5, name: '외장 MORA 라디에이터', cost: 500, prob: 0.20, coolingCapacity: 2500 },
+    { level: 1, name: '120mm 1열 수랭', cost: 300000, prob: 0.40, coolingCapacity: 600 },
+    { level: 2, name: '240mm 2열 AIO', cost: 500000, prob: 0.35, coolingCapacity: 900 },
+    { level: 3, name: '360mm 3열 RGB 수랭', cost: 800000, prob: 0.30, coolingCapacity: 1300 },
+    { level: 4, name: '커스텀 수로 오픈형', cost: 1200000, prob: 0.25, coolingCapacity: 1800 },
+    { level: 5, name: '외장 MORA 라디에이터', cost: 2000000, prob: 0.20, coolingCapacity: 2500 },
   ];
 
   const HDD = [
     { level: 1, name: 'HDD 60GB', cost: 1, prob: 0.50, capacityGb: 60, storageType: 'HDD' },
-    { level: 2, name: 'HDD 250GB', cost: 5, prob: 0.45, capacityGb: 250, storageType: 'HDD' },
-    { level: 3, name: 'HDD 500GB', cost: 15, prob: 0.40, capacityGb: 500, storageType: 'HDD' },
-    { level: 4, name: 'HDD 1TB', cost: 40, prob: 0.35, capacityGb: 1000, storageType: 'HDD' },
+    { level: 2, name: 'HDD 250GB', cost: 50000, prob: 0.45, capacityGb: 250, storageType: 'HDD' },
+    { level: 3, name: 'HDD 500GB', cost: 150000, prob: 0.40, capacityGb: 500, storageType: 'HDD' },
+    { level: 4, name: 'HDD 1TB', cost: 400000, prob: 0.35, capacityGb: 1000, storageType: 'HDD' },
   ];
 
   const NVME = [
-    { level: 1, name: 'M.2 NVMe 250GB', cost: 10, prob: 0.45, capacityGb: 250, storageType: 'SSD' },
-    { level: 2, name: 'M.2 NVMe 500GB', cost: 30, prob: 0.40, capacityGb: 500, storageType: 'SSD' },
-    { level: 3, name: 'M.2 NVMe 1TB', cost: 80, prob: 0.35, capacityGb: 1000, storageType: 'SSD' },
-    { level: 4, name: 'M.2 NVMe 2TB', cost: 200, prob: 0.30, capacityGb: 2000, storageType: 'SSD' },
+    { level: 1, name: 'M.2 NVMe 250GB', cost: 300000, prob: 0.45, capacityGb: 250, storageType: 'SSD' },
+    { level: 2, name: 'M.2 NVMe 500GB', cost: 500000, prob: 0.40, capacityGb: 500, storageType: 'SSD' },
+    { level: 3, name: 'M.2 NVMe 1TB', cost: 800000, prob: 0.35, capacityGb: 1000, storageType: 'SSD' },
+    { level: 4, name: 'M.2 NVMe 2TB', cost: 2000000, prob: 0.30, capacityGb: 2000, storageType: 'SSD' },
   ];
 
   const MOTHERBOARDS = [
@@ -418,6 +418,16 @@
     return Math.max(50, Math.round(base / calcGameSpeedMultiplier(scaUpgrades)));
   }
 
+  /**
+   * 작업·사냥 수입 이벤트 간격(ms) — 원작: 킬/타격 = GPU 공속(프레임) + SCA 배속.
+   * 24fps 기준 공격 주기 / gameSpeedMult. (고정 1초 틱보다 원작에 가깝게)
+   */
+  function calcIncomeEventIntervalMs(scaUpgrades, gpuAttackFrames) {
+    const frames = Math.max(1, gpuAttackFrames || GPU_GRADE_ATTACK_FRAMES[0]);
+    const secPerEvent = frames / 24 / calcGameSpeedMultiplier(scaUpgrades);
+    return Math.max(50, Math.round(secPerEvent * 1000));
+  }
+
   function calcGpuBenchmarkMultiplier(scaUpgrades) {
     return GPU_GRADE_BENCHMARK_MULTIPLIERS[calcGpuGrade(scaUpgrades)] || 1;
   }
@@ -680,7 +690,7 @@ function getPartLevel(part) {
     calcRebirthStartMinerals, calcRebirthIncomeMultiplier,
     calcIncomeBonus, calcProbBonus,
     REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
-    calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs,
+    calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeEventIntervalMs,
     calcGpuGrade, calcGpuAttackFrames, calcGpuBenchmarkMultiplier,
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
     MAX_RAM_INVENTORY, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, countRamInInventory, canPurchaseRam, buildInventoryPart,
