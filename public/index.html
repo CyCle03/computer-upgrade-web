@@ -587,6 +587,12 @@
           return;
         }
         const buyMeta = getComponentBuyMeta(type);
+        if (!OMG.isPurchasableLevel(type, level, buyMeta)) {
+          const buyable = OMG.getPurchasableLevels(type, buyMeta);
+          const list = buyable.length ? buyable.map((lv) => `+${lv}강`).join(', ') : '없음';
+          alert(`${type.toUpperCase()} +${level}강은 상점에서 직접 구매할 수 없습니다. 구매 가능: ${list}. 그 외 강은 강화로 올려야 합니다.`);
+          return;
+        }
         const costC = OMG.getShopTierCost(type, level, buyMeta);
         if (normalCoins < costC) {
           alert(`Normal 코인 부족 (필요 ${costC}C · 보유 ${normalCoins.toLocaleString()}C)`);
@@ -647,7 +653,12 @@
         if (isDownloading) { alert('게임 다운로드 중에는 환생할 수 없습니다. (v1.0.6)'); return; }
         if (!confirm('환생 시 부품·미네랄·Normal 코인이 초기화됩니다. SCA 코인/센터·환생 수치는 유지됩니다.')) return;
         const parts = { cpu, gpu, ram, cooler, storage };
-        const outcome = OMG.calcRebirthOutcome(parts, rebirthStat);
+        const outcome = OMG.calcRebirthOutcome(parts, {
+          mainboardNumber: OMG.getMotherboardNumber(motherboard),
+          downloadCount: unlockedGameIndex + 1,
+          rebirthCount: rebirthCount,
+          prevRebirthStat: rebirthStat,
+        });
         const startMinerals = OMG.calcRebirthStartMinerals(scaUpgrades);
         setScaCoins((prev) => prev + outcome.scaReward);
         setRebirthStat(outcome.correctedStat);
@@ -675,7 +686,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setDownloadProgress(0);
         setIsPartyHunting(false);
         setAutoTargetLevels(defaultAutoTargets);
-        setUpgradeMessage(`✨ 환생 +${outcome.statGain.toLocaleString()} (보정 전 ${outcome.baseStat.toLocaleString()} → 보정 후 ${outcome.correctedStat.toLocaleString()}) · SCA +${outcome.scaReward.toLocaleString()}C · 시작 미네랄 ${startMinerals.toLocaleString()}원`);
+        setUpgradeMessage(`✨ 환생수치 +${outcome.statGain.toLocaleString()} (누적 ${outcome.correctedStat.toLocaleString()}) · 성능수치 ${outcome.performanceScore.toLocaleString()} × 계수 ${outcome.coeff.toFixed(1)} → SCA +${outcome.scaReward.toLocaleString()}C · 시작 미네랄 ${startMinerals.toLocaleString()}원`);
         setUpgradeStatus('success');
       };
 
@@ -898,7 +909,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               </div>
               <div>
                 <h1 className="text-sm text-slate-400 uppercase tracking-widest font-semibold">복원 제어 터미널</h1>
-                <p className="text-xs text-emerald-500 font-mono">환생 {rebirthCount}회 · 환생수치 {rebirthStat.toLocaleString()} · 수입 x{rebirthIncomeMult.toFixed(2)} · 배속 {gameSpeedFrames}f</p>
+                <p className="text-xs text-emerald-500 font-mono">환생 {rebirthCount}회 · 환생수치 {rebirthStat.toLocaleString()} · 수입 x{rebirthIncomeMult.toFixed(2)} · 배속 x{gameSpeedMult.toFixed(2)}</p>
               </div>
             </div>
 
@@ -933,7 +944,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           {showScaCenter && (
             <section className="mb-4 p-4 border border-cyan-500/20 rounded-xl space-y-3">
               <p className="text-[10px] font-mono text-cyan-300/80">다음 환생 시작 미네랄: <strong>{OMG.calcRebirthStartMinerals(scaUpgrades).toLocaleString()}원</strong> (SCA 상점 구매분 합산 · 상한 {OMG.REBIRTH_MINERAL_CAP.toLocaleString()}원)</p>
-              <p className="text-[10px] font-mono text-cyan-300/70">게임 배속 {gameSpeedFrames}프레임 (x{gameSpeedMult.toFixed(2)}) · GPU {OMG.GPU_GRADE_NAMES[gpuGrade]} ({gpuAttackFrames}f) · 다운로드 x{OMG.calcDownloadSpeedBonus(scaUpgrades).toFixed(1)}</p>
+              <p className="text-[10px] font-mono text-cyan-300/70">게임 배속 29/{gameSpeedFrames}프레임 (x{gameSpeedMult.toFixed(2)}) · GPU {OMG.GPU_GRADE_NAMES[gpuGrade]} ({gpuAttackFrames}f) · 다운로드 x{OMG.calcDownloadSpeedBonus(scaUpgrades).toFixed(1)}</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {OMG.SCA_SHOP_ITEMS.map(item => {
                 const bought = scaUpgrades[item.id] || 0;
@@ -1137,9 +1148,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <div className="p-4 bg-slate-950/60 rounded border border-slate-800 col-span-2 space-y-3.5 animate-fade-in">
                     <div className="flex justify-between items-center">
                       <div>
-                        <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 부품 상점 — 티어별 직접 구매 (Normal 코인)</span>
+                        <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 부품 상점 — 부품별 구매 가능 강 (Normal 코인)</span>
                         <p className="text-xs text-slate-400">
-                          미네랄 1,000만원(천만 원)이 Normal 코인(C) 1개로 자동 환전됩니다. 원작처럼 1~최고강까지 원하는 티어를 코인으로 바로 구매할 수 있습니다. RAM은 창고 최대 4개 · 판매 시 구매가의 50% 환급.
+                          미네랄 1,000만원(천만 원)이 Normal 코인(C) 1개로 자동 환전됩니다. <strong className="text-cyan-300">원작처럼 부품마다 직접 구매 가능한 강이 다릅니다.</strong> 인텔 CPU는 1·4·7·10·11강, AMD CPU는 1·3강, GPU는 1·3·5·7강, RAM은 1·5·10강, 쿨러·드라이브는 1강만 직접 구매할 수 있고, 그 외 강은 <strong className="text-amber-400">강화(확률·폭파)</strong>로 올려야 합니다. 🔒 표시는 강화로만 도달하는 강입니다. RAM은 창고 최대 4개 · 판매 시 구매가의 50% 환급.
                         </p>
                       </div>
                       {gpu.level >= 10 && (
@@ -1240,11 +1251,23 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                           <div key={type} className="p-3 bg-slate-900/40 rounded border border-slate-800 space-y-1">
                             <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1">
                               <span className="text-[10px] font-bold text-slate-200 font-mono">{emoji} {label}</span>
-                              <span className="text-[9px] text-slate-500 font-mono">{catalog.length}티어</span>
+                              <span className="text-[9px] text-slate-500 font-mono">구매 {catalog.filter((r) => r.purchasable).length}/{catalog.length}강</span>
                             </div>
                             {variants}
                             <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5">
                               {catalog.map((row) => {
+                                if (!row.purchasable) {
+                                  return (
+                                    <div
+                                      key={row.level}
+                                      title={`${row.name} — 강화로만 도달 가능`}
+                                      className="w-full flex items-center justify-between px-2 py-1 rounded text-[9px] font-mono border border-dashed border-slate-800 bg-slate-950/40 text-slate-600 cursor-not-allowed"
+                                    >
+                                      <span className="truncate mr-2">🔒 +{row.level}강 {row.name}</span>
+                                      <span className="shrink-0 font-bold text-amber-500/70">강화 전용</span>
+                                    </div>
+                                  );
+                                }
                                 const affordable = normalCoins >= row.costC;
                                 const disabled = ramFull || !affordable;
                                 return (
@@ -1285,7 +1308,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
 
                     {inventory.length === 0 ? (
                       <div className="py-8 text-center text-xs text-slate-600 font-mono border border-slate-900 border-dashed rounded">
-                        창고에 보관 중인 여비 장비가 없습니다. 위 상점에서 원하는 강 티어를 구매하세요.
+                        창고에 보관 중인 여비 장비가 없습니다. 위 상점에서 1강 부품을 구매한 뒤 강화로 올리세요. (드라이브는 티어 직접 구매 가능)
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1">
