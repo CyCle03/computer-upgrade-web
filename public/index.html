@@ -396,7 +396,7 @@
 
       useEffect(() => {
         if (isPartyHunting) return;
-        const tickMs = Math.max(50, Math.round(1000 / gameSpeedMult));
+        const tickMs = OMG.calcGameSpeedTickMs(scaUpgrades);
         const interval = setInterval(() => {
           const earn = OMG.calcWorkIncomePerTick(
             workParts,
@@ -412,7 +412,7 @@
       }, [specs, workParts, workTaskIndex, rebirthIncomeMult, incomeBonusRate, isPartyHunting, gameSpeedMult, effectiveUnitLimit]);
 
       useEffect(() => {
-        const tickMs = Math.max(50, Math.round(1000 / gameSpeedMult));
+        const tickMs = OMG.calcGameSpeedTickMs(scaUpgrades);
         const interval = setInterval(() => {
           if (isDownloading) return;
           const earn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit);
@@ -424,7 +424,7 @@
         if (!isPartyHunting) return;
         const tier = OMG.PARTY_HUNTING_TIERS[partyHuntingTier];
         if (!tier) return;
-        const tickMs = Math.max(100, Math.round(3000 / gameSpeedMult));
+        const tickMs = OMG.calcGameSpeedTickMs(scaUpgrades, 3000);
         const iv = setInterval(() => {
           setMinerals(p => p + Math.round(tier.mineralPerTick * (1 + incomeBonusRate)));
           setScaCoins(p => p + tier.scaCoins);
@@ -809,7 +809,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             }
             return (nextSize / downloadTarget.sizeMb) * 100;
           });
-        }, Math.max(20, Math.round(100 / gameSpeedMult)));
+        }, Math.max(20, Math.round(OMG.calcGameSpeedTickMs(scaUpgrades, 100))));
 
         return () => clearInterval(interval);
       }, [isDownloading, specs.downloadSpeedMb, downloadTarget, gameSpeedMult]);

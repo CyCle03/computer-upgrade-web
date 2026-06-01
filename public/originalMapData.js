@@ -146,8 +146,12 @@
 
   const GAME_SPEED_BASE = 3;
   const GAME_SPEED_MAX = 13;
+  /** SCA/EUD Wait 주기 상한. 배속 N ≠ 실시간 N배 — 배율 = (REF−BASE) / (REF−N) */
+  const GAME_SPEED_FRAME_REF = 29;
   const GPU_GRADE_NAMES = ['엔트리', '메인스트림', '퍼포먼스', '하이엔드'];
   const GPU_GRADE_ATTACK_FRAMES = [20, 16, 12, 8];
+  /** 커뮤니티 13배속방 7→10 자동구매 통계용 등급별 내부 카운터 배율 (재미 참고치) */
+  const GPU_GRADE_BENCHMARK_MULTIPLIERS = [1, 4, 10, 25];
   const DOWNLOAD_BASE_MB = 25;
 
   const SCA_SHOP_ITEMS = [
@@ -393,8 +397,29 @@
     return Math.min(GAME_SPEED_MAX, GAME_SPEED_BASE + (scaUpgrades.gameSpeed1 || 0));
   }
 
+  function calcGameSpeedWaitFrames(scaUpgrades) {
+    return GAME_SPEED_FRAME_REF - calcGameSpeedFrames(scaUpgrades);
+  }
+
+  /**
+   * SCA 게임 배속 배율. 13배속방 ≠ 실시간 13배.
+   * 예: BASE 3 → 13일 때 (29−3)/(29−13) = 1.625배 (구버전 13/3=4.33배 아님)
+   */
   function calcGameSpeedMultiplier(scaUpgrades) {
-    return calcGameSpeedFrames(scaUpgrades) / GAME_SPEED_BASE;
+    const frames = calcGameSpeedFrames(scaUpgrades);
+    const baseWait = GAME_SPEED_FRAME_REF - GAME_SPEED_BASE;
+    const currentWait = GAME_SPEED_FRAME_REF - frames;
+    return Math.max(1, baseWait / currentWait);
+  }
+
+  /** 수입·다운로드 등 틱 간격(ms). baseMs 기본 1000(1초) */
+  function calcGameSpeedTickMs(scaUpgrades, baseMs) {
+    const base = baseMs == null ? 1000 : baseMs;
+    return Math.max(50, Math.round(base / calcGameSpeedMultiplier(scaUpgrades)));
+  }
+
+  function calcGpuBenchmarkMultiplier(scaUpgrades) {
+    return GPU_GRADE_BENCHMARK_MULTIPLIERS[calcGpuGrade(scaUpgrades)] || 1;
   }
 
   function calcGpuGrade(scaUpgrades) {
@@ -644,8 +669,9 @@ function getPartLevel(part) {
   }
 
   global.OriginalMapGame = {
-    MINERAL_PER_COIN, MANWON_MINERALS, REBIRTH_MINERAL_CAP, GAME_SPEED_BASE, GAME_SPEED_MAX,
-    GPU_GRADE_NAMES, GPU_GRADE_ATTACK_FRAMES, DOWNLOAD_BASE_MB,
+    MINERAL_PER_COIN, MANWON_MINERALS, REBIRTH_MINERAL_CAP,
+    GAME_SPEED_BASE, GAME_SPEED_MAX, GAME_SPEED_FRAME_REF,
+    GPU_GRADE_NAMES, GPU_GRADE_ATTACK_FRAMES, GPU_GRADE_BENCHMARK_MULTIPLIERS, DOWNLOAD_BASE_MB,
     INTEL_CPU, AMD_CPU, GPU, RAM, COOLER_AIR, COOLER_WATER, HDD, NVME,
     MOTHERBOARDS, WORK_TASKS, GAME_HUNTING, WORK_HUNTING_GROUNDS, PARTY_HUNTING_TIERS, SCA_SHOP_ITEMS, DOWNLOAD_TARGETS, GPU_RAM_PER_UNIT_GB,
     getPartTable, getMaxLevel, getTier, getUpgradeCost, getUpgradeProbability, getPartName,
@@ -654,7 +680,8 @@ function getPartLevel(part) {
     calcRebirthStartMinerals, calcRebirthIncomeMultiplier,
     calcIncomeBonus, calcProbBonus,
     REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
-    calcGameSpeedFrames, calcGameSpeedMultiplier, calcGpuGrade, calcGpuAttackFrames,
+    calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs,
+    calcGpuGrade, calcGpuAttackFrames, calcGpuBenchmarkMultiplier,
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
     MAX_RAM_INVENTORY, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, countRamInInventory, canPurchaseRam, buildInventoryPart,
     costToMinerals, formatMineral, formatManwon, getPurchaseCostMinerals,
