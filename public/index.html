@@ -1195,8 +1195,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR4' });
                             badgeStyle = 'bg-slate-800 text-slate-300';
                           }
 
-                          const cost = p.level >= OMG.getMaxLevel(p.type, p) ? null : getUpgradeCost(p.type, p.level, p);
-                          const prob = cost ? getUpgradeProbability(p.type, p.level, p) : 0;
+                          const isMax = p.level >= OMG.getMaxLevel(p.type, p);
+                          const prob = isMax ? 0 : getUpgradeProbability(p.type, p.level, p);
 
                           return (
                             <div key={p.id} className="p-3 bg-slate-900/60 rounded border border-slate-800 hover:border-slate-700 transition flex flex-col justify-between space-y-2">
@@ -1210,7 +1210,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR4' });
                                 <p className="text-[11px] font-bold text-slate-200 truncate">{partName}</p>
                                 <p className="text-[9px] text-slate-500 font-mono mt-0.5">{specDetail}</p>
                                 <p className="text-[9px] text-amber-500/80 font-mono mt-1">
-                                  [확률: {Math.round(prob * 100)}%] {p.level > 5 && (p.level > 7 ? '⚠️실패 시 파괴' : '⚠️실패 시 하락')}
+                                  [확률: {Math.round(prob * 100)}%] {!isMax && '⚠️실패 시 파괴'}
                                 </p>
                               </div>
                               
@@ -1220,7 +1220,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR4' });
                                   disabled={isUpgrading}
                                   className="flex-1 py-1 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-[9px] font-bold font-mono transition disabled:opacity-50 text-center truncate"
                                 >
-                                  {cost ? `강화: ${cost}C` : '최고강'}
+                                  {isMax ? '최고강' : '강화하기'}
                                 </button>
                                 <button 
                                   onClick={() => handleEquipComponent(p.id)}
