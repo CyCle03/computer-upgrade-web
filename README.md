@@ -3,6 +3,14 @@
 스타크래프트 유즈맵 **「컴퓨터 강화하기」** 웹 복원판의 백엔드 서버입니다.  
 일일 100층 레이드 마일스톤 보상 검증, PostgreSQL 기반 영구 재화(SCA 코인) 관리, Socket.io 실시간 멀티플레이 레이드, 하드웨어 스펙 시뮬레이션을 제공합니다.
 
+
+
+## 라이브 데모
+
+배포된 서비스: **[https://computer-upgrade-web.onrender.com](https://computer-upgrade-web.onrender.com)**
+
+Render.com에 호스팅되어 있으며, 웹 대시보드·실시간 레이드·보상 API를 바로 체험할 수 있습니다.
+
 ## 주요 기능
 
 | 기능 | 설명 |
@@ -92,6 +100,8 @@ npm run dev
 ```
 
 브라우저에서 [http://localhost:3000](http://localhost:3000) 으로 접속합니다.
+
+배포 환경: [https://computer-upgrade-web.onrender.com](https://computer-upgrade-web.onrender.com)
 
 ### 5. 프로덕션 빌드 및 실행
 
