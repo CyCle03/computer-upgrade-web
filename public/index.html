@@ -94,6 +94,7 @@
       const [coolerBuyKind, setCoolerBuyKind] = useState('air');
       const [storageBuyKind, setStorageBuyKind] = useState('hdd');
       const [buyLevelIndex, setBuyLevelIndex] = useState({ cpu: 0, gpu: 0, ram: 0, cooler: 0, storage: 0 });
+      const [motherboardBuyManufacturer, setMotherboardBuyManufacturer] = useState('Intel');
       const [motherboardBuyIndex, setMotherboardBuyIndex] = useState(0);
 
       // ----------------------------------------------------------------------
@@ -610,9 +611,11 @@
       };
 
 
+      const getMotherboardCatalog = (manufacturer) => OMG.MOTHERBOARDS.filter((b) => b.socketManufacturer === manufacturer);
+
       const adjustMotherboardBuyIndex = (delta) => {
-        const count = OMG.MOTHERBOARDS.length;
-        setMotherboardBuyIndex((cur) => Math.max(0, Math.min(count - 1, cur + delta)));
+        const boards = getMotherboardCatalog(motherboardBuyManufacturer);
+        setMotherboardBuyIndex((cur) => Math.max(0, Math.min(boards.length - 1, cur + delta)));
       };
       const getComponentBuyMeta = (type) => ({
         type,
@@ -1272,16 +1275,20 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         );
                       })}
                       {(() => {
-                        const boards = OMG.MOTHERBOARDS;
-                        const mbIdx = Math.min(motherboardBuyIndex, boards.length - 1);
+                        const boards = getMotherboardCatalog(motherboardBuyManufacturer);
+                        const mbIdx = Math.min(motherboardBuyIndex, Math.max(0, boards.length - 1));
                         const board = boards[mbIdx];
-                        const mbCost = OMG.costToMinerals(board.cost);
-                        const affordable = minerals >= mbCost;
+                        const mbCost = board ? OMG.costToMinerals(board.cost) : 0;
+                        const affordable = board && minerals >= mbCost;
                         return (
                           <div className="p-2.5 bg-slate-900/40 rounded border border-slate-800 space-y-2 flex flex-col">
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-[10px] font-bold text-slate-200 font-mono shrink-0">🔌 Motherboard</span>
-                              <span className="text-[9px] font-mono text-cyan-400">{board.socketManufacturer}</span>
+                              <div className="flex gap-1">
+                                {['Intel', 'AMD'].map((m) => (
+                                  <button key={m} type="button" onClick={() => { setMotherboardBuyManufacturer(m); setMotherboardBuyIndex(0); }} className={`px-2 py-0.5 text-[9px] font-mono rounded border ${motherboardBuyManufacturer === m ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{m}</button>
+                                ))}
+                              </div>
                             </div>
                             <div className="flex items-center gap-1">
                               <button type="button" onClick={() => adjustMotherboardBuyIndex(-1)} disabled={mbIdx <= 0} className={`px-2.5 py-2 rounded border text-xs font-bold ${mbIdx <= 0 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>◀</button>
@@ -1291,7 +1298,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                               </div>
                               <button type="button" onClick={() => adjustMotherboardBuyIndex(1)} disabled={mbIdx >= boards.length - 1} className={`px-2.5 py-2 rounded border text-xs font-bold ${mbIdx >= boards.length - 1 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>▶</button>
                             </div>
-                            <button type="button" onClick={() => handlePurchaseMotherboard(board)} disabled={!affordable} className={`w-full py-1.5 rounded text-[10px] font-bold font-mono border transition mt-auto ${!affordable ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed opacity-60' : 'bg-cyan-600/20 border-cyan-500 text-cyan-200 hover:bg-cyan-500/30'}`}>
+                            <button type="button" onClick={() => board && handlePurchaseMotherboard(board)} disabled={!affordable || !board} className={`w-full py-1.5 rounded text-[10px] font-bold font-mono border transition mt-auto ${!affordable ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed opacity-60' : 'bg-cyan-600/20 border-cyan-500 text-cyan-200 hover:bg-cyan-500/30'}`}>
                               구매 {OMG.formatMineral(mbCost)}
                             </button>
                           </div>
@@ -1450,26 +1457,6 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         })}
                       </div>
                     )}
-                  </div>
-
-{/* 저장장치 교체 상점 */}
-                  <div className="p-4 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center col-span-2">
-                    <div className="max-w-[70%]">
-                      <span className="text-xs font-bold text-emerald-400 font-mono block mb-1">STORAGE ENGINE EXCHANGE</span>
-                      <p className="text-xs text-slate-400">
-                        HDD를 SSD로 교체 시 게임 다운로드 속도가 **정확히 4배** 가속화되어 더 고사양 사냥터로 고속 승급 가능합니다.
-                      </p>
-                    </div>
-                    <div className="flex space-x-2">
-                      <button onClick={() => { const c = OMG.getUpgradeCost('storage', 0, { type: 'storage', storageKind: 'nvme' }); if (minerals >= OMG.costToMinerals(c)) { setMinerals(p=>p-OMG.costToMinerals(c)); setStorage({ type: 'SSD', storageKind: 'nvme', level: 1, capacityGb: 250 }); } else alert('미네랄 부족'); }} className="px-3 py-2 bg-slate-900 border border-slate-800 rounded flex flex-col items-center">
-                        <span className="text-[10px] font-bold text-slate-300">NVMe 1강</span>
-                        <span className="text-[9px] text-cyan-400 font-bold mt-1">{OMG.formatMineral(OMG.getUpgradeCost('storage', 0, { type: 'storage', storageKind: 'nvme' }))}</span>
-                      </button>
-                      <button onClick={() => { const sl = storage.level||1; const kind = storage.storageKind||'hdd'; const c = OMG.getUpgradeCost('storage', sl, { type: 'storage', storageKind: kind }); if (minerals < OMG.costToMinerals(c)) return alert('미네랄 부족'); setMinerals(p=>p-OMG.costToMinerals(c)); const u = OMG.applyTierStats({ type: 'storage', storageKind: kind, storageType: storage.type, level: sl }, sl+1); setStorage({ type: u.storageType, storageKind: kind, level: u.level, capacityGb: u.capacityGb }); }} className="px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded flex flex-col items-center text-emerald-400">
-                        <span className="text-[10px] font-bold">용량 강화</span>
-                        <span className="text-[9px] mt-1">{OMG.formatMineral(OMG.getUpgradeCost('storage', storage.level || 1, { type: 'storage', storageKind: storage.storageKind || 'hdd' }))}</span>
-                      </button>
-                    </div>
                   </div>
 
                 </div>
