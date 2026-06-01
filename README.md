@@ -16,7 +16,8 @@ Render.com에 호스팅되어 있으며, 웹 대시보드·실시간 레이드·
 
 원본 **[SCA] 컴퓨터 강화하기 V1.2.9** 규칙(재화, 상점, 환생, 부품 테이블 등)은 아래 문서를 참고하세요.
 
-- [docs/original-map-v1.2.9.md](docs/original-map-v1.2.9.md)
+- [docs/original-map-v1.2.9.md](docs/original-map-v1.2.9.md) — 원작 규칙·웹 구현 현황
+- [docs/spreadsheet-prices-v1.2.9.md](docs/spreadsheet-prices-v1.2.9.md) — 부품 구매가 고정본 (스프레드시트)
 
 ## 주요 기능
 
@@ -25,7 +26,7 @@ Render.com에 호스팅되어 있으며, 웹 대시보드·실시간 레이드·
 | **일일 레이드 보상** | 10~100층 마일스톤(10층 단위) 클리어 시 SCA 코인 지급. 하루 1회 리셋, 중복 수령·Race Condition 방지 |
 | **실시간 레이드** | Socket.io 기반 4인 파티 100층 보스 레이드 시뮬레이션 |
 | **하드웨어 시뮬레이터** | CPU/GPU/RAM/쿨러/메인보드/저장장치 조합에 따른 DPS·페널티 연산 |
-| **웹 대시보드** | `public/index.html` — React 기반 인게임 UI (부품 강화, 사냥터, 레이드 입장) |
+| **웹 대시보드** | `public/index.html` + `public/originalMapData.js` — V1.2.9 원작 규칙(미네랄 1:1, 작업·사냥, ◀▶ 상점, AUTO 강화, 레이드) |
 
 ## 기술 스택
 
@@ -40,7 +41,11 @@ Render.com에 호스팅되어 있으며, 웹 대시보드·실시간 레이드·
 ```
 .
 ├── public/
-│   └── index.html          # 웹 복원판 대시보드 (React SPA)
+│   ├── index.html          # 웹 복원판 대시보드 (React SPA)
+│   └── originalMapData.js  # V1.2.9 부품·상점·작업·사냥 데이터
+├── docs/
+│   ├── original-map-v1.2.9.md
+│   └── spreadsheet-prices-v1.2.9.md
 ├── src/
 │   ├── server.ts           # Express HTTP 서버 진입점
 │   ├── socketServer.ts     # Socket.io 레이드 방 관리

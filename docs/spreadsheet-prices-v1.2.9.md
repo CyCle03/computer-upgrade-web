@@ -1,6 +1,6 @@
 # [SCA] 부품 가격표 — 스프레드시트 고정본
 
-> **고정일:** 2026-06-01  
+> **고정일:** 2026-06-01 · **웹 UI 동기화:** 2026-06-01  
 > **원본:** [Google 스프레드시트](https://docs.google.com/spreadsheets/d/16NKxKboxmQIDvX4hjv8xV_OK6F-lLHatctZOVugU54Y/edit)  
 > **용도:** `public/originalMapData.js`의 `tier.cost` 단일 기준. 이후 시트 변경 시 **이 문서 + 코드를 함께** 갱신.
 
@@ -156,5 +156,34 @@
 ## 코드 매핑
 
 - `public/originalMapData.js` — `INTEL_CPU`, `AMD_CPU`, `GPU`, `RAM`, `COOLER_AIR`, `COOLER_WATER`, `HDD`, `NVME`, `MOTHERBOARDS`
-- `getShopCatalog()` — `cost > 0` 티어만 상점 노출
-- `getShopTierCostMinerals()` — `tier.cost` 그대로 반환 (원 1:1)
+- `SHOP_PURCHASABLE_LEVELS` — 웹 ◀▶ 상점에 노출할 강 (위 표)
+- `getPurchasableLevels()` / `isPurchasableLevel()` — 직접 구매 가능 여부
+- `getShopCatalog()` — 구매 가능 강만 `costMinerals` 포함해 반환
+- `getShopTierCostMinerals()` — `tier.cost` 그대로 (원 1:1)
+- `getShopSellPriceMinerals()` — 판매가 50%
+- `public/index.html` — ◀▶ 상점 UI · AUTO · 장착 패널
+
+---
+
+## 웹 상점 — 직접 구매 가능 강 (`SHOP_PURCHASABLE_LEVELS`)
+
+스프레드시트에서 `cost > 0`인 모든 강이 상점에 노출되는 것은 **아닙니다.**  
+웹은 원작처럼 **일부 강만 ◀▶ 상점에서 직접 구매**하고, 나머지(`cost = 0`, `-`)는 **인벤 강화**로만 올립니다.
+
+| 부품 | 직접 구매 가능 강 | 변형 |
+|------|-------------------|------|
+| CPU | Intel: **1, 4, 7, 10, 11** · AMD: **1, 3** | Intel / AMD 탭 |
+| GPU | **1, 3, 5, 7** | — |
+| RAM | **1, 5, 10** | 창고 최대 **4개** |
+| 쿨러 | **1** (공랭·수랭 각 1강) | 공랭 / 수랭 탭 |
+| 드라이브 | **1** (HDD / NVMe 각 1강) | HDD / NVMe 탭 |
+| 메인보드 | **14종 전체** (`cost > 0`) | Intel / AMD 탭 · ◀▶ · **DDR·실드** 표시 |
+
+### 웹 UI 동작 (2026-06)
+
+- **◀▶ 강 선택:** 위 표에 해당하는 강만 순환 · `getShopCatalog()` + `getPurchasableLevels()`
+- **구매:** `getShopTierCostMinerals()` → 미네랄(원) 1:1 차감 · `buildInventoryPart()`
+- **판매:** 구매가의 **50%** (`getShopSellPriceMinerals`)
+- **AUTO ON:** 상점에서 **현재 선택한 강**을 구매 → **목표 N강**까지 무료 강화 (`getShopSelectedBuyLevel` + `autoTargetLevels`)
+- **제거됨:** `STORAGE ENGINE EXCHANGE` (NVMe 직구·용량 강화 별도 패널) — Storage는 부품 상점(HDD/NVMe)만 사용
+
