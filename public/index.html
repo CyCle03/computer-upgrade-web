@@ -47,10 +47,14 @@
         const saved = localStorage.getItem('sca_minerals');
         return saved !== null ? parseInt(saved, 10) : 2000;
       });
-      const [normalCoins, setNormalCoins] = useState(() => {
-        const saved = localStorage.getItem('sca_normalCoins');
-        return saved !== null ? parseInt(saved, 10) : 0;
-      });
+      useEffect(() => {
+        const legacy = localStorage.getItem('sca_normalCoins');
+        if (!legacy) return;
+        const coins = parseInt(legacy, 10);
+        localStorage.removeItem('sca_normalCoins');
+        if (coins > 0) setMinerals((m) => m + coins * OMG.MINERAL_PER_COIN);
+      }, []);
+
       const [scaCoins, setScaCoins] = useState(() => {
         const saved = localStorage.getItem('sca_scaCoins');
         return saved !== null ? parseInt(saved, 10) : 0;
@@ -439,7 +443,6 @@
       // ----------------------------------------------------------------------
       useEffect(() => {
         localStorage.setItem('sca_minerals', minerals.toString());
-        localStorage.setItem('sca_normalCoins', normalCoins.toString());
         localStorage.setItem('sca_scaCoins', scaCoins.toString());
         localStorage.setItem('sca_rebirthCount', rebirthCount.toString());
         localStorage.setItem('sca_rebirthStat', rebirthStat.toString());
@@ -461,7 +464,7 @@
         localStorage.setItem('sca_autoBuyRam', autoBuyRam.toString());
         localStorage.setItem('sca_autoBuyCooler', autoBuyCooler.toString());
         localStorage.setItem('sca_autoBuyStorage', autoBuyStorage.toString());
-      }, [minerals, normalCoins, scaCoins, rebirthCount, rebirthStat, autoTargetLevels, scaUpgrades, partyHuntingTier, cpu, gpu, ram, cooler, motherboard, storage, workTaskIndex, unlockedGameIndex, downloadTarget, inventory, autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage]);
+      }, [minerals, scaCoins, rebirthCount, rebirthStat, autoTargetLevels, scaUpgrades, partyHuntingTier, cpu, gpu, ram, cooler, motherboard, storage, workTaskIndex, unlockedGameIndex, downloadTarget, inventory, autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage]);
 
       // ----------------------------------------------------------------------
       // 6.6. 가상 사냥터 실시간 전투 매트릭스 로그 생성기 (스타1 콘솔 싱크)
@@ -522,10 +525,10 @@
                 break;
               }
               const buyMeta = getComponentBuyMeta(type);
-              const costC = OMG.getShopTierCost(type, 1, buyMeta);
-              if (normalCoins >= costC) { handleBuyComponentPack(type, 1); break; }
+              const costM = OMG.getShopTierCostMinerals(type, 1, buyMeta);
+              if (minerals >= costM) { handleBuyComponentPack(type, 1); break; }
               setAuto(false);
-              setCombatLogs(prev => [...prev.slice(-7), `⚠️ [SYSTEM] Normal 코인 부족으로 ${type.toUpperCase()} 자동 구매가 중단되었습니다.`]);
+              setCombatLogs(prev => [...prev.slice(-7), `⚠️ [SYSTEM] 미네랄 부족으로 ${type.toUpperCase()} 자동 구매가 중단되었습니다.`]);
               break;
             } else {
               const goal = autoTargetLevels[type] || 1;
@@ -544,10 +547,10 @@
         }, 650);
 
         return () => clearInterval(interval);
-      }, [autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage, autoTargetLevels, isUpgrading, inventory, normalCoins, cpuBuyManufacturer, coolerBuyKind, storageBuyKind]);
+      }, [autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage, autoTargetLevels, isUpgrading, inventory, cpuBuyManufacturer, coolerBuyKind, storageBuyKind]);
 
       // ----------------------------------------------------------------------
-      // 7. V1.2.9 원작 강화 (Normal 코인)
+      // 7. V1.2.9 원작 강화 (미네랄 상점)
       // ----------------------------------------------------------------------
       const getUpgradeCost = (type, level, part) => OMG.getUpgradeCost(type, level, part || { type });
       const getUpgradeProbability = (type, level, part) => OMG.getUpgradeProbability(type, level, part || { type }, probBonusRate);
@@ -587,12 +590,12 @@
           return;
         }
         const buyMeta = getComponentBuyMeta(type);
-        const costC = OMG.getShopTierCost(type, level, buyMeta);
-        if (normalCoins < costC) {
-          alert(`Normal 코인 부족 (필요 ${OMG.formatCoin(costC)} · 보유 ${OMG.formatCoin(normalCoins)})`);
+        const costM = OMG.getShopTierCostMinerals(type, level, buyMeta);
+        if (minerals < costM) {
+          alert(`미네랄 부족 (필요 ${OMG.formatMineral(costM)} · 보유 ${OMG.formatMineral(minerals)})`);
           return;
         }
-        setNormalCoins((prev) => prev - costC);
+        setMinerals((prev) => prev - costM);
         const newPart = OMG.buildInventoryPart(type, level, {
           manufacturer: cpuBuyManufacturer,
           ddrGeneration: motherboard.supportedDdrGeneration || 'DDR3',
@@ -602,17 +605,17 @@
         setInventory((prev) => [...prev, newPart]);
         const tierName = OMG.getPartName(type, level, newPart);
         setUpgradeStatus('success');
-        setUpgradeMessage(`📦 [구매] ${tierName} (+${level}강, -${OMG.formatCoin(costC)})`);
+        setUpgradeMessage(`📦 [구매] ${tierName} (+${level}강, -${OMG.formatMineral(costM)})`);
         setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 2500);
       };
 
       const handleSellComponent = (itemId) => {
         const part = inventory.find(p => p.id === itemId);
         if (!part) return;
-        const sellC = OMG.getShopSellPrice(part.type, part.level, part);
-        setNormalCoins((prev) => prev + sellC);
+        const sellM = OMG.getShopSellPriceMinerals(part.type, part.level, part);
+        setMinerals((prev) => prev + sellM);
         setInventory((prev) => prev.filter(p => p.id !== itemId));
-        setUpgradeMessage(`💰 [판매] +${OMG.formatCoin(sellC)} (${OMG.getPartName(part.type, part.level, part)})`);
+        setUpgradeMessage(`💰 [판매] +${OMG.formatMineral(sellM)} (${OMG.getPartName(part.type, part.level, part)})`);
         setUpgradeStatus('success');
         setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 2500);
       };
@@ -645,7 +648,7 @@
       const handleRebirth = () => {
         if (gpu.level < 10) { alert('GPU 10강 필요'); return; }
         if (isDownloading) { alert('게임 다운로드 중에는 환생할 수 없습니다. (v1.0.6)'); return; }
-        if (!confirm('환생 시 부품·미네랄·Normal 코인이 초기화됩니다. SCA 코인/센터·환생 수치는 유지됩니다.')) return;
+        if (!confirm('환생 시 부품·미네랄이 초기화됩니다. SCA 코인/센터·환생 수치는 유지됩니다.')) return;
         const parts = { cpu, gpu, ram, cooler, storage };
         const outcome = OMG.calcRebirthOutcome(parts, rebirthStat);
         const startMinerals = OMG.calcRebirthStartMinerals(scaUpgrades);
@@ -653,7 +656,6 @@
         setRebirthStat(outcome.correctedStat);
         setRebirthCount((prev) => prev + 1);
         setMinerals(startMinerals);
-        setNormalCoins(0);
 setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setGpu({ level: 1 });
         setRam({ level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' });
@@ -891,7 +893,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           {/* ================================================================== */}
           {/* 상단 자원 바 */}
           {/* ================================================================== */}
-          <header className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 items-center bg-slate-900/60 p-4 rounded-xl border border-emerald-500/20 neon-border-emerald">
+          <header className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 items-center bg-slate-900/60 p-4 rounded-xl border border-emerald-500/20 neon-border-emerald">
             <div className="flex items-center space-x-3">
               <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-400 border border-emerald-500/30">
                 <span className="text-xl">🧠</span>
@@ -906,16 +908,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">MINERALS (원)</span>
               <span className="text-lg font-bold text-emerald-400 font-mono flex items-center space-x-1">
                 <span>{minerals.toLocaleString()}<span className="text-slate-500 text-[10px] ml-1">원</span></span>
-                <span className="text-xs text-emerald-500/60 ml-1">/ {OMG.formatMineral(OMG.MINERAL_PER_COIN)}→1C</span>
               </span>
             </div>
 
-            <div className="flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border border-slate-800">
-              <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">Normal 코인</span>
-              <span className="text-lg font-bold text-cyan-400 font-mono">
-                {normalCoins.toLocaleString()}
-              </span>
-            </div>
 
             <div className="flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border border-cyan-500/30 neon-border-cyan">
               <div className="flex items-center space-x-1.5">
@@ -1137,9 +1132,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <div className="p-4 bg-slate-950/60 rounded border border-slate-800 col-span-2 space-y-3.5 animate-fade-in">
                     <div className="flex justify-between items-center">
                       <div>
-                        <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 부품 상점 — 티어별 직접 구매 (Normal 코인)</span>
+                        <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 부품 상점 — 티어별 직접 구매 (미네랄)</span>
                         <p className="text-xs text-slate-400">
-                          미네랄 1,000만원(천만 원)이 Normal 코인 1C로 자동 환전됩니다. 원작처럼 1~최고강까지 원하는 티어를 코인(C)으로 바로 구매할 수 있습니다. RAM은 창고 최대 4개 · 판매 시 구매가의 50% 환급.
+                          미네랄(원)으로 1~최고강 티어를 바로 구매합니다. (원작 1C = 1,000만원) RAM 창고 최대 4개 · 판매 50% 환급.
                         </p>
                       </div>
                       {gpu.level >= 10 && (
@@ -1245,7 +1240,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                             {variants}
                             <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5">
                               {catalog.map((row) => {
-                                const affordable = normalCoins >= row.costC;
+                                const affordable = minerals >= row.costMinerals;
                                 const disabled = ramFull || !affordable;
                                 return (
                                   <button
@@ -1261,7 +1256,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                                     }`}
                                   >
                                     <span className="truncate mr-2">+{row.level}강 {row.name}</span>
-                                    <span className={`shrink-0 font-bold ${affordable ? 'text-cyan-400' : 'text-rose-400/80'}`}>{OMG.formatCoin(row.costC)}</span>
+                                    <span className={`shrink-0 font-bold ${affordable ? 'text-cyan-400' : 'text-rose-400/80'}`}>{OMG.formatMineral(row.costMinerals)}</span>
                                   </button>
                                 );
                               })}
@@ -1359,7 +1354,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                                   onClick={() => handleSellComponent(p.id)}
                                   className="flex-1 py-1 bg-rose-500/10 hover:bg-rose-500 hover:text-slate-950 text-rose-400 border border-rose-500/30 rounded text-[9px] font-bold font-mono transition text-center truncate"
                                 >
-                                  💰 {OMG.formatCoin(OMG.getShopSellPrice(p.type, p.level, p))}
+                                  💰 {OMG.formatMineral(OMG.getShopSellPriceMinerals(p.type, p.level, p))}
                                 </button>
                               </div>
                             </div>

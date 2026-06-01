@@ -1,6 +1,6 @@
 /**
  * [SCA] 컴퓨터 강화하기 V1.2.9 — 원본 유즈맵 기준 게임 데이터
- * 미네랄 = 원(1:1). Normal 코인 환전: 천만 원 = 1 코인.
+ * 미네랄 = 원(1:1). 상점 tier.cost × MINERAL_PER_COIN(천만) = 구매가(원).
  */
 (function (global) {
   const MINERAL_PER_COIN = 10000000;
@@ -186,11 +186,23 @@
     return cost === Infinity ? 0 : Math.floor(cost * 0.5);
   }
 
+  /** tier.cost(천만 원 단위) → 미네랄(원) 구매가 */
+  function getShopTierCostMinerals(type, level, part) {
+    const c = getShopTierCost(type, level, part);
+    return c === Infinity ? Infinity : Math.floor(c * MINERAL_PER_COIN);
+  }
+
+  function getShopSellPriceMinerals(type, level, part) {
+    const buy = getShopTierCostMinerals(type, level, part);
+    return buy === Infinity ? 0 : Math.floor(buy * 0.5);
+  }
+
   function getShopCatalog(type, part) {
     return getPartTable(type, part).map((row) => ({
       level: row.level,
       name: row.name,
       costC: row.cost,
+      costMinerals: Math.floor(row.cost * MINERAL_PER_COIN),
       prob: row.prob,
       cores: row.cores,
       cooling: row.cooling,
@@ -425,11 +437,6 @@
 
   const formatManwon = formatMineral;
 
-  /** Normal 코인 표기 (문서 §3 구매가: 1C, 5C …) */
-  function formatCoin(amount) {
-    const n = Math.max(0, Math.floor(amount || 0));
-    return n.toLocaleString() + 'C';
-  }
 
   function getPurchaseCostMinerals(type, level, part) {
     return costToMinerals(getUpgradeCost(type, level, part));
@@ -649,8 +656,8 @@ function getPartLevel(part) {
     REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
     calcGameSpeedFrames, calcGameSpeedMultiplier, calcGpuGrade, calcGpuAttackFrames,
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
-    MAX_RAM_INVENTORY, getShopTierCost, getShopSellPrice, getShopCatalog, countRamInInventory, canPurchaseRam, buildInventoryPart,
-    costToMinerals, formatMineral, formatManwon, formatCoin, getPurchaseCostMinerals,
+    MAX_RAM_INVENTORY, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, countRamInInventory, canPurchaseRam, buildInventoryPart,
+    costToMinerals, formatMineral, formatManwon, getPurchaseCostMinerals,
     getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getWorkTask, getGameHunt, getDownloadTargetMeta,
     getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
