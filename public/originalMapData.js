@@ -43,6 +43,10 @@
     { level: 10, name: 'GeForce RTX 4090', cost: 2500, prob: 0.10 },
   ];
 
+
+  /** GPU 등급별 사냥 유닛 1기당 RAM 점유(GB) — 가이드 센터 '램 용량' (원작) */
+  const GPU_RAM_PER_UNIT_GB = [1, 2, 2, 4, 4, 8, 8, 16, 16, 32];
+
   const RAM = [
     { level: 1, name: 'DDR3-1333 (1GB)', cost: 1, prob: 0.40, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' },
     { level: 2, name: 'DDR3-1333 (2GB)', cost: 3, prob: 0.35, clockMhz: 1333, capacityGb: 2, ddrGeneration: 'DDR3' },
@@ -98,14 +102,30 @@
     { name: 'AMD X670E (DDR5)', socketManufacturer: 'AMD', supportedDdrGeneration: 'DDR5', shieldIncrease: 900, cost: 100 },
   ];
 
-  // 원작 UI: 작업명 [필요 RAM GB] — tierIndex 0=시작, 상위는 다운로드로만 해금
-  const WORK_HUNTING_GROUNDS = [
-    { name: '간단한 문서작업 (1단계)', multiplier: 1.0, mineralBase: 10, tierIndex: 0, requiredRamGb: 1 },
-    { name: '2D/3D 그래픽 작업 (2단계)', multiplier: 2.5, mineralBase: 25, tierIndex: 1, requiredRamGb: 4 },
-    { name: 'AI 작업 (3단계)', multiplier: 5.0, mineralBase: 50, tierIndex: 2, requiredRamGb: 8 },
-    { name: '스타크래프트 8K 게이밍 (4단계)', multiplier: 10.0, mineralBase: 100, tierIndex: 3, requiredRamGb: 16 },
-    { name: '사이버펑크 2077 (5단계)', multiplier: 20.0, mineralBase: 200, tierIndex: 4, requiredRamGb: 32 },
+  // 작업(Work) — RAM [NGB] 점유 · 다운로드와 무관, RAM만 충족하면 선택 가능
+  const WORK_TASKS = [
+    { name: '간단한 문서작업', mineralBase: 10, taskIndex: 0, requiredRamGb: 1 },
+    { name: '2D/3D 그래픽 작업', mineralBase: 25, taskIndex: 1, requiredRamGb: 4 },
+    { name: '간단한 AI 작업', mineralBase: 40, taskIndex: 2, requiredRamGb: 4 },
+    { name: '3D 그래픽 / 전문 편집', mineralBase: 50, taskIndex: 3, requiredRamGb: 8 },
+    { name: '고사양 AI / 렌더링', mineralBase: 80, taskIndex: 4, requiredRamGb: 16 },
   ];
+
+  // 게임 사냥터(Gaming) — 다운로드로 해금 · 작업과 동시 진행
+  const GAME_HUNTING = [
+    { name: '대항해시대', mineralPerUnit: 5, gameIndex: 0 },
+    { name: '스타크래프트 8K 게이밍', mineralPerUnit: 15, gameIndex: 1 },
+    { name: '사이버펑크 2077', mineralPerUnit: 30, gameIndex: 2 },
+  ];
+
+  // 하위 호환 alias
+  const WORK_HUNTING_GROUNDS = WORK_TASKS.map((t, i) => ({
+    name: t.name,
+    multiplier: t.mineralBase / 10,
+    mineralBase: t.mineralBase,
+    tierIndex: i,
+    requiredRamGb: t.requiredRamGb,
+  }));
 
   const PARTY_HUNTING_TIERS = [
     { name: '파티 1-1', mineralPerTick: 30, scaCoins: 2 },
@@ -139,10 +159,9 @@
   ];
 
   const DOWNLOAD_TARGETS = [
-    { name: '2D/3D 그래픽 작업 (2단계)', sizeMb: 5000, requiredGb: 500, requiredRamGb: 4, groundIndex: 1 },
-    { name: 'AI 작업 (3단계)', sizeMb: 15000, requiredGb: 1000, requiredRamGb: 8, groundIndex: 2 },
-    { name: '스타크래프트 8K 게이밍 (4단계)', sizeMb: 50000, requiredGb: 2000, requiredRamGb: 16, groundIndex: 3 },
-    { name: '사이버펑크 2077 (5단계)', sizeMb: 150000, requiredGb: 4000, requiredRamGb: 32, groundIndex: 4 },
+    { name: '대항해시대', sizeMb: 5000, requiredGb: 250, gameIndex: 0 },
+    { name: '스타크래프트 8K 게이밍', sizeMb: 50000, requiredGb: 2000, gameIndex: 1 },
+    { name: '사이버펑크 2077', sizeMb: 150000, requiredGb: 4000, gameIndex: 2 },
   ];
 
   function getPartTable(type, part) {
@@ -341,6 +360,20 @@
   }
 
 
+  function costToMinerals(manwonCost) {
+    return Math.max(0, Math.floor((manwonCost || 0) * MINERAL_PER_COIN));
+  }
+
+  function formatManwon(manwonCost) {
+    const n = manwonCost || 0;
+    if (n >= 1) return n.toLocaleString() + '만원';
+    return (n * MINERAL_PER_COIN).toLocaleString() + '원';
+  }
+
+  function getPurchaseCostMinerals(type, level, part) {
+    return costToMinerals(getUpgradeCost(type, level, part));
+  }
+
   function getRamCapacityGb(ram) {
     return (ram && ram.capacityGb) || 1;
   }
@@ -349,69 +382,94 @@
     return (storage && storage.capacityGb) || 60;
   }
 
-  function getWorkTier(tierIndex) {
-    const idx = Math.max(0, Math.min(WORK_HUNTING_GROUNDS.length - 1, tierIndex || 0));
-    return WORK_HUNTING_GROUNDS[idx];
+  function getGpuRamPerUnit(gpu) {
+    const lv = Math.max(1, Math.min(GPU_RAM_PER_UNIT_GB.length, (gpu && gpu.level) || 1));
+    return GPU_RAM_PER_UNIT_GB[lv - 1];
   }
 
-  /** 저장값·UI 조작으로 티어가 앞당겨진 경우 원작 순서(다운로드 해금)에 맞게 보정 */
-  function normalizeWorkProgress(huntingGround, downloadTarget) {
-    let groundIdx = Math.max(0, Math.min(WORK_HUNTING_GROUNDS.length - 1, (huntingGround && huntingGround.groundIndex) || 0));
-    let nextTarget = null;
+  function getWorkTask(taskIndex) {
+    const idx = Math.max(0, Math.min(WORK_TASKS.length - 1, taskIndex || 0));
+    return WORK_TASKS[idx];
+  }
 
-    if (downloadTarget && downloadTarget.groundIndex != null) {
-      const maxAllowed = downloadTarget.groundIndex - 1;
-      if (groundIdx > maxAllowed) groundIdx = maxAllowed;
-      nextTarget = DOWNLOAD_TARGETS.find((t) => t.groundIndex === downloadTarget.groundIndex) || DOWNLOAD_TARGETS[0];
-    } else if (groundIdx < WORK_HUNTING_GROUNDS.length - 1) {
-      nextTarget = DOWNLOAD_TARGETS.find((t) => t.groundIndex === groundIdx + 1) || null;
-    }
+  function getGameHunt(gameIndex) {
+    return GAME_HUNTING.find((g) => g.gameIndex === gameIndex) || null;
+  }
 
-    const tier = getWorkTier(groundIdx);
+  /** RAM: 작업 점유 후 남은 용량으로 사냥 유닛 수 계산 (작업·게임 동시) */
+  function calcRamAllocation(parts, workTaskIndex) {
+    const totalRam = getRamCapacityGb(parts && parts.ram);
+    const work = getWorkTask(workTaskIndex);
+    const workRamUsed = work.requiredRamGb;
+    const huntRamFree = Math.max(0, totalRam - workRamUsed);
+    const ramPerUnit = getGpuRamPerUnit(parts && parts.gpu);
+    const maxByRam = ramPerUnit > 0 ? Math.floor(huntRamFree / ramPerUnit) : 0;
+    const maxByCpu = getCpuCores(parts && parts.cpu);
+    const activeHuntingUnits = Math.max(0, Math.min(maxByRam, maxByCpu));
     return {
-      huntingGround: {
-        name: tier.name,
-        multiplier: tier.multiplier,
-        mineralBase: tier.mineralBase,
-        groundIndex: groundIdx,
-      },
+      totalRam,
+      workRamUsed,
+      huntRamFree,
+      ramPerUnit,
+      maxByRam,
+      maxByCpu,
+      activeHuntingUnits,
+      canRunWork: totalRam >= workRamUsed,
+    };
+  }
+
+  function canSelectWorkTask(parts, taskIndex) {
+    const task = getWorkTask(taskIndex);
+    return getRamCapacityGb(parts && parts.ram) >= task.requiredRamGb;
+  }
+
+  function normalizeGameProgress(unlockedGameIndex, downloadTarget) {
+    let unlocked = Math.max(-1, Math.min(GAME_HUNTING.length - 1, unlockedGameIndex ?? -1));
+    let nextTarget = null;
+    if (downloadTarget && downloadTarget.gameIndex != null) {
+      const found = DOWNLOAD_TARGETS.find((t) => t.gameIndex === downloadTarget.gameIndex);
+      nextTarget = found || DOWNLOAD_TARGETS[0];
+      if (unlocked >= nextTarget.gameIndex) unlocked = nextTarget.gameIndex - 1;
+    } else if (unlocked < GAME_HUNTING.length - 1) {
+      nextTarget = DOWNLOAD_TARGETS.find((t) => t.gameIndex === unlocked + 1) || null;
+    }
+    return {
+      unlockedGameIndex: unlocked,
       downloadTarget: nextTarget
-        ? {
-            name: nextTarget.name,
-            sizeMb: nextTarget.sizeMb,
-            requiredGb: nextTarget.requiredGb,
-            requiredRamGb: nextTarget.requiredRamGb,
-            groundIndex: nextTarget.groundIndex,
-          }
+        ? { name: nextTarget.name, sizeMb: nextTarget.sizeMb, requiredGb: nextTarget.requiredGb, gameIndex: nextTarget.gameIndex }
         : null,
     };
   }
 
-  function canRunWorkTier(parts, tierIndex) {
-    const tier = getWorkTier(tierIndex);
-    return getRamCapacityGb(parts && parts.ram) >= tier.requiredRamGb;
-  }
-
-  /** 다운로드 시도 가능 여부 — 스펙·순서·진행 상태 검증 (미달 시 시도 불가) */
-  function validateDownloadStart(parts, huntingGround, downloadTarget, isDownloading) {
+  function validateDownloadStart(parts, unlockedGameIndex, downloadTarget, isDownloading) {
     if (isDownloading) return { ok: false, reason: '이미 다운로드가 진행 중입니다.' };
-    if (!downloadTarget || downloadTarget.groundIndex == null) {
-      return { ok: false, reason: '모든 작업/게임을 다운로드했습니다.' };
+    if (!downloadTarget || downloadTarget.gameIndex == null) {
+      return { ok: false, reason: '다운로드할 게임이 없습니다.' };
     }
-    const currentIdx = (huntingGround && huntingGround.groundIndex) || 0;
-    if (currentIdx !== downloadTarget.groundIndex - 1) {
-      return { ok: false, reason: '현재 작업 단계를 완료한 뒤에만 다음 다운로드를 시작할 수 있습니다.' };
+    if ((unlockedGameIndex ?? -1) !== downloadTarget.gameIndex - 1) {
+      return { ok: false, reason: '이전 게임을 다운로드한 뒤에만 다음 게임을 받을 수 있습니다.' };
     }
     const storageGb = getStorageCapacityGb(parts && parts.storage);
     if (storageGb < downloadTarget.requiredGb) {
       return { ok: false, reason: `저장장치 용량 부족 (필요 ${downloadTarget.requiredGb}GB / 현재 ${storageGb}GB)` };
     }
-    const ramGb = getRamCapacityGb(parts && parts.ram);
-    const reqRam = downloadTarget.requiredRamGb || getWorkTier(downloadTarget.groundIndex).requiredRamGb;
-    if (ramGb < reqRam) {
-      return { ok: false, reason: `RAM 용량 부족 (필요 ${reqRam}GB / 현재 ${ramGb}GB)` };
-    }
     return { ok: true, reason: '' };
+  }
+
+  function calcHuntIncomePerTick(parts, workTaskIndex, unlockedGameIndex, incomeBonusRate) {
+    const alloc = calcRamAllocation(parts, workTaskIndex);
+    const game = getGameHunt(unlockedGameIndex);
+    if (!game || alloc.activeHuntingUnits <= 0) return 0;
+    const bonus = 1 + (incomeBonusRate || 0);
+    return Math.round(game.mineralPerUnit * alloc.activeHuntingUnits * bonus);
+  }
+
+  function calcWorkIncomePerTick(parts, workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate) {
+    const task = getWorkTask(workTaskIndex);
+    if (!canSelectWorkTask(parts, workTaskIndex)) return 0;
+    return Math.round(
+      task.mineralBase * (mineralMultiplier || 1) * (rebirthIncomeMult || 1) * (1 + (incomeBonusRate || 0))
+    );
   }
 
   function createIntelCpu11InventoryItem() {
@@ -430,7 +488,7 @@
     MINERAL_PER_COIN, REBIRTH_MINERAL_CAP, GAME_SPEED_BASE, GAME_SPEED_MAX,
     GPU_GRADE_NAMES, GPU_GRADE_ATTACK_FRAMES, DOWNLOAD_BASE_MB,
     INTEL_CPU, AMD_CPU, GPU, RAM, COOLER_AIR, COOLER_WATER, HDD, NVME,
-    MOTHERBOARDS, WORK_HUNTING_GROUNDS, PARTY_HUNTING_TIERS, SCA_SHOP_ITEMS, DOWNLOAD_TARGETS,
+    MOTHERBOARDS, WORK_TASKS, GAME_HUNTING, WORK_HUNTING_GROUNDS, PARTY_HUNTING_TIERS, SCA_SHOP_ITEMS, DOWNLOAD_TARGETS, GPU_RAM_PER_UNIT_GB,
     getPartTable, getMaxLevel, getTier, getUpgradeCost, getUpgradeProbability, getPartName,
     applyTierStats, getCpuCoolingRequired, getCpuCores, convertMineralsToCoins,
     calcRebirthPerformanceScore, calcRebirthStatGain, calcRebirthScaReward,
@@ -439,8 +497,10 @@
     REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
     calcGameSpeedFrames, calcGameSpeedMultiplier, calcGpuGrade, calcGpuAttackFrames,
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
-    getRamCapacityGb, getStorageCapacityGb, getWorkTier, normalizeWorkProgress,
-    canRunWorkTier, validateDownloadStart,
+    costToMinerals, formatManwon, getPurchaseCostMinerals,
+    getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getWorkTask, getGameHunt,
+    calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
+    calcHuntIncomePerTick, calcWorkIncomePerTick,
     createIntelCpu11InventoryItem,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

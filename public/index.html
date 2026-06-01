@@ -133,15 +133,24 @@
       // ----------------------------------------------------------------------
       // 3. 사냥터 및 다운로드 진행 상태 정의
       // ----------------------------------------------------------------------
-      const [huntingGround, setHuntingGround] = useState(() => {
-        const saved = localStorage.getItem('sca_huntingGround');
-        if (saved !== null) return JSON.parse(saved); const g = OMG.WORK_HUNTING_GROUNDS[0]; return { name: g.name, multiplier: g.multiplier, mineralBase: g.mineralBase, groundIndex: 0 };
+      const [workTaskIndex, setWorkTaskIndex] = useState(() => {
+        const saved = localStorage.getItem('sca_workTaskIndex');
+        if (saved !== null) return parseInt(saved, 10);
+        const legacy = localStorage.getItem('sca_huntingGround');
+        if (legacy) { try { return JSON.parse(legacy).groundIndex ?? 0; } catch (e) {} }
+        return 0;
+      });
+      const [unlockedGameIndex, setUnlockedGameIndex] = useState(() => {
+        const saved = localStorage.getItem('sca_unlockedGameIndex');
+        return saved !== null ? parseInt(saved, 10) : -1;
       });
       const [isDownloading, setIsDownloading] = useState(false);
       const [downloadProgress, setDownloadProgress] = useState(0);
       const [downloadTarget, setDownloadTarget] = useState(() => {
         const saved = localStorage.getItem('sca_downloadTarget');
-        if (saved !== null) return JSON.parse(saved); const t = OMG.DOWNLOAD_TARGETS[0]; return { name: t.name, sizeMb: t.sizeMb, requiredGb: t.requiredGb, groundIndex: t.groundIndex };
+        if (saved !== null) return JSON.parse(saved);
+        const t = OMG.DOWNLOAD_TARGETS[0];
+        return { name: t.name, sizeMb: t.sizeMb, requiredGb: t.requiredGb, gameIndex: t.gameIndex };
       });
 
       // ----------------------------------------------------------------------
@@ -227,17 +236,18 @@
       const gpuAttackFrames = useMemo(() => OMG.calcGpuAttackFrames(scaUpgrades), [scaUpgrades]);
 
       const workParts = useMemo(() => ({ cpu, gpu, ram, cooler, storage }), [cpu, gpu, ram, cooler, storage]);
+      const ramAlloc = useMemo(
+        () => OMG.calcRamAllocation(workParts, workTaskIndex),
+        [workParts, workTaskIndex]
+      );
+      const currentWorkTask = useMemo(() => OMG.getWorkTask(workTaskIndex), [workTaskIndex]);
+      const activeGame = useMemo(
+        () => (unlockedGameIndex >= 0 ? OMG.getGameHunt(unlockedGameIndex) : null),
+        [unlockedGameIndex]
+      );
       const downloadValidation = useMemo(
-        () => OMG.validateDownloadStart(workParts, huntingGround, downloadTarget, isDownloading),
-        [workParts, huntingGround, downloadTarget, isDownloading]
-      );
-      const canRunCurrentWork = useMemo(
-        () => OMG.canRunWorkTier(workParts, huntingGround.groundIndex ?? 0),
-        [workParts, huntingGround]
-      );
-      const currentWorkTier = useMemo(
-        () => OMG.getWorkTier(huntingGround.groundIndex ?? 0),
-        [huntingGround]
+        () => OMG.validateDownloadStart(workParts, unlockedGameIndex, downloadTarget, isDownloading),
+        [workParts, unlockedGameIndex, downloadTarget, isDownloading]
       );
 
       const getCpuName = (level, m) => OMG.getPartName('cpu', level, { type: 'cpu', manufacturer: m || cpu.manufacturer });
@@ -264,13 +274,14 @@
         const hpDecayRate = isDdrMismatched ? (ddrSet.size === 2 ? 0.50 : 1.00) : 0.00;
 
         // D. 가용 유닛 수 상한
-        let unitLimit = OMG.getCpuCores(cpu) * 2;
+        let unitLimit = OMG.getCpuCores(cpu);
         if (isSocketMismatched) {
           unitLimit = Math.max(1, Math.floor(unitLimit * 0.5));
         }
 
-        // E. 사냥터 가용 유닛 수 (RAM 용량)
-        const maxHuntingUnits = Math.floor(ram.capacityGb / 4);
+        // E. RAM 분배: 작업 점유 후 남은 RAM으로 사냥 유닛 (GPU 1기당 RAM × CPU 코어)
+        const ramAllocation = OMG.calcRamAllocation({ cpu, gpu, ram, cooler, storage }, workTaskIndex);
+        const maxHuntingUnits = ramAllocation.activeHuntingUnits;
 
         // F. 유닛 체력 및 메인보드 고정 실드
         const unitHp = 100 * cpu.level;
@@ -302,6 +313,10 @@
           unitDefense,
           downloadSpeedMb,
           storageDownloadMult,
+          ramAllocation,
+          workRamUsed: ramAllocation.workRamUsed,
+          huntRamFree: ramAllocation.huntRamFree,
+          gpuRamPerUnit: ramAllocation.ramPerUnit,
           gpuGrade,
           gpuAttackFrames,
           gameSpeedFrames,
@@ -346,12 +361,10 @@
       }, []);
 
       useEffect(() => {
-        const normalized = OMG.normalizeWorkProgress(huntingGround, downloadTarget);
-        const hg = normalized.huntingGround;
+        const normalized = OMG.normalizeGameProgress(unlockedGameIndex, downloadTarget);
+        if (normalized.unlockedGameIndex !== unlockedGameIndex) setUnlockedGameIndex(normalized.unlockedGameIndex);
         const dt = normalized.downloadTarget;
-        const hgChanged = (huntingGround.groundIndex ?? 0) !== hg.groundIndex || huntingGround.name !== hg.name;
-        const dtChanged = (downloadTarget && downloadTarget.groundIndex) !== (dt && dt.groundIndex) || (downloadTarget && downloadTarget.name) !== (dt && dt.name);
-        if (hgChanged) setHuntingGround(hg);
+        const dtChanged = (downloadTarget && downloadTarget.gameIndex) !== (dt && dt.gameIndex) || (downloadTarget && downloadTarget.name) !== (dt && dt.name);
         if (dtChanged) setDownloadTarget(dt);
       }, []);
 
@@ -365,12 +378,26 @@
         if (isPartyHunting) return;
         const tickMs = Math.max(50, Math.round(1000 / gameSpeedMult));
         const interval = setInterval(() => {
-          if (!OMG.canRunWorkTier(workParts, huntingGround.groundIndex ?? 0)) return;
-          const base = huntingGround.mineralBase || 10 * huntingGround.multiplier;
-          setMinerals(p => p + Math.round(base * specs.penalties.mineralMultiplier * rebirthIncomeMult * (1 + incomeBonusRate)));
+          const earn = OMG.calcWorkIncomePerTick(
+            workParts,
+            workTaskIndex,
+            specs.penalties.mineralMultiplier,
+            rebirthIncomeMult,
+            incomeBonusRate
+          );
+          if (earn > 0) setMinerals((p) => p + earn);
         }, tickMs);
         return () => clearInterval(interval);
-      }, [specs, workParts, huntingGround, rebirthIncomeMult, incomeBonusRate, isPartyHunting, gameSpeedMult]);
+      }, [specs, workParts, workTaskIndex, rebirthIncomeMult, incomeBonusRate, isPartyHunting, gameSpeedMult]);
+
+      useEffect(() => {
+        const tickMs = Math.max(50, Math.round(1000 / gameSpeedMult));
+        const interval = setInterval(() => {
+          const earn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate);
+          if (earn > 0) setMinerals((p) => p + earn);
+        }, tickMs);
+        return () => clearInterval(interval);
+      }, [workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, gameSpeedMult]);
       useEffect(() => {
         if (!isPartyHunting) return;
         const tier = OMG.PARTY_HUNTING_TIERS[partyHuntingTier];
@@ -401,7 +428,8 @@
         localStorage.setItem('sca_cooler', JSON.stringify(cooler));
         localStorage.setItem('sca_motherboard', JSON.stringify(motherboard));
         localStorage.setItem('sca_storage', JSON.stringify(storage));
-        localStorage.setItem('sca_huntingGround', JSON.stringify(huntingGround));
+        localStorage.setItem('sca_workTaskIndex', String(workTaskIndex));
+        localStorage.setItem('sca_unlockedGameIndex', String(unlockedGameIndex));
         localStorage.setItem('sca_downloadTarget', JSON.stringify(downloadTarget));
         localStorage.setItem('sca_inventory', JSON.stringify(inventory));
         localStorage.setItem('sca_autoBuyCpu', autoBuyCpu.toString());
@@ -409,7 +437,7 @@
         localStorage.setItem('sca_autoBuyRam', autoBuyRam.toString());
         localStorage.setItem('sca_autoBuyCooler', autoBuyCooler.toString());
         localStorage.setItem('sca_autoBuyStorage', autoBuyStorage.toString());
-      }, [minerals, normalCoins, scaCoins, rebirthCount, rebirthStat, autoTargetLevels, scaUpgrades, partyHuntingTier, cpu, gpu, ram, cooler, motherboard, storage, huntingGround, downloadTarget, inventory, autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage]);
+      }, [minerals, normalCoins, scaCoins, rebirthCount, rebirthStat, autoTargetLevels, scaUpgrades, partyHuntingTier, cpu, gpu, ram, cooler, motherboard, storage, workTaskIndex, unlockedGameIndex, downloadTarget, inventory, autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage]);
 
       // ----------------------------------------------------------------------
       // 6.6. 가상 사냥터 실시간 전투 매트릭스 로그 생성기 (스타1 콘솔 싱크)
@@ -424,9 +452,10 @@
             const mEarn = Math.round(tier.mineralPerTick * (1 + incomeBonusRate));
             newLog = `[${time}] 👥 파티 :: ${tier.name} +${mEarn}원 +${tier.scaCoins}C`;
           } else {
-            const base = huntingGround.mineralBase || 10 * huntingGround.multiplier;
-            const earn = Math.round(base * specs.penalties.mineralMultiplier * rebirthIncomeMult * (1 + incomeBonusRate));
-            newLog = `[${time}] 💼 작업 :: ${huntingGround.name} 자동 수입 +${earn}원`;
+            const workEarn = OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate);
+            const huntEarn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate);
+            const gameName = activeGame ? activeGame.name : '게임 없음';
+            newLog = `[${time}] 💼작업 +${workEarn}원 · 🎮${gameName} ${specs.maxHuntingUnits}기 +${huntEarn}원`;
           }
           setCombatLogs(prev => {
             const nextLogs = [...prev, newLog];
@@ -435,7 +464,7 @@
           });
         }, 1500);
         return () => clearInterval(interval);
-      }, [cpu.level, specs, huntingGround, rebirthIncomeMult, incomeBonusRate, isPartyHunting, partyHuntingTier]);
+      }, [cpu.level, specs, workParts, workTaskIndex, unlockedGameIndex, activeGame, rebirthIncomeMult, incomeBonusRate, isPartyHunting, partyHuntingTier]);
 
       // ----------------------------------------------------------------------
       // 6.7. 지능형 자동 구매 및 자동 강화(Auto Buy & Upgrade) 통합 루프 엔진
@@ -464,7 +493,7 @@
             
             if (owned.length === 0) {
               const buyMeta = { type, manufacturer: type === 'cpu' ? cpuBuyManufacturer : undefined, coolerKind: type === 'cooler' ? coolerBuyKind : undefined, storageKind: type === 'storage' ? storageBuyKind : undefined };
-              if (normalCoins >= OMG.getUpgradeCost(type, 0, buyMeta)) { handleBuyComponentPack(type); break; }
+              if (minerals >= OMG.getPurchaseCostMinerals(type, 0, buyMeta)) { handleBuyComponentPack(type); break; }
               setAuto(false); break;
             } else {
               const goal = autoTargetLevels[type] || 1;
@@ -483,7 +512,7 @@
         }, 650);
 
         return () => clearInterval(interval);
-      }, [autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage, autoTargetLevels, isUpgrading, inventory, normalCoins, cpuBuyManufacturer, coolerBuyKind, storageBuyKind]);
+      }, [autoBuyCpu, autoBuyGpu, autoBuyRam, autoBuyCooler, autoBuyStorage, autoTargetLevels, isUpgrading, inventory, minerals, cpuBuyManufacturer, coolerBuyKind, storageBuyKind]);
 
       // ----------------------------------------------------------------------
       // 7. V1.2.9 원작 강화 (Normal 코인)
@@ -516,8 +545,9 @@
       const handleBuyComponentPack = (type) => {
         const buyMeta = { type, manufacturer: type === 'cpu' ? cpuBuyManufacturer : undefined, coolerKind: type === 'cooler' ? coolerBuyKind : undefined, storageKind: type === 'storage' ? storageBuyKind : undefined };
         const cost = OMG.getUpgradeCost(type, 0, buyMeta);
-        if (normalCoins < cost) { alert('Normal 코인 부족 (미네랄 10,000원 = 1코인)'); return; }
-        setNormalCoins((prev) => prev - cost);
+        const mineralCost = OMG.costToMinerals(cost);
+        if (minerals < mineralCost) { alert(`미네랄 부족 (필요 ${OMG.formatManwon(cost)})`); return; }
+        setMinerals((prev) => prev - mineralCost);
         const newId = `inv-${type}-${Math.random().toString(36).substring(2, 9)}`;
         let newPart = { id: newId, type, level: 1 };
         if (type === 'cpu') { newPart.manufacturer = cpuBuyManufacturer; newPart.ddrGeneration = motherboard.supportedDdrGeneration || 'DDR3'; }
@@ -526,17 +556,18 @@
         else if (type === 'storage') { newPart.storageKind = storageBuyKind; const t = OMG.getTier('storage', newPart, 1); newPart.storageType = t.storageType; newPart.capacityGb = t.capacityGb; }
         setInventory((prev) => [...prev, newPart]);
         setUpgradeStatus('success');
-        setUpgradeMessage(`📦 [구매] ${type.toUpperCase()} 1강 (+${cost}C)`);
+        setUpgradeMessage(`📦 [구매] ${type.toUpperCase()} 1강 (-${OMG.formatManwon(cost)})`);
         setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 2500);
       };
 
       const handleSellComponent = (itemId) => {
         const part = inventory.find(p => p.id === itemId);
         if (!part) return;
-        const sellPrice = Math.max(1, Math.floor(OMG.getUpgradeCost(part.type, Math.max(0, part.level - 1), part) * 0.5));
-        setNormalCoins((prev) => prev + sellPrice);
+        const sellManwon = Math.max(1, Math.floor(OMG.getUpgradeCost(part.type, Math.max(0, part.level - 1), part) * 0.5));
+        const sellPrice = OMG.costToMinerals(sellManwon);
+        setMinerals((prev) => prev + sellPrice);
         setInventory((prev) => prev.filter(p => p.id !== itemId));
-        setUpgradeMessage(`💰 판매 +${sellPrice}C`);
+        setUpgradeMessage(`💰 판매 +${sellPrice.toLocaleString()}원`);
         setUpgradeStatus('success');
         setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 2500);
       };
@@ -591,10 +622,10 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           { id: 'inv-cooler-1', type: 'cooler', level: 1, coolingCapacity: 100, coolerKind: 'air' },
           { id: 'inv-storage-1', type: 'storage', level: 1, storageType: 'HDD', storageKind: 'hdd', capacityGb: 60 }
         ]);
-        const g0 = OMG.WORK_HUNTING_GROUNDS[0];
-        setHuntingGround({ name: g0.name, multiplier: g0.multiplier, mineralBase: g0.mineralBase, groundIndex: 0 });
+        setWorkTaskIndex(0);
+        setUnlockedGameIndex(-1);
         const dt = OMG.DOWNLOAD_TARGETS[0];
-        setDownloadTarget({ name: dt.name, sizeMb: dt.sizeMb, requiredGb: dt.requiredGb, requiredRamGb: dt.requiredRamGb, groundIndex: dt.groundIndex });
+        setDownloadTarget({ name: dt.name, sizeMb: dt.sizeMb, requiredGb: dt.requiredGb, gameIndex: dt.gameIndex });
         setIsDownloading(false);
         setDownloadProgress(0);
         setIsPartyHunting(false);
@@ -604,8 +635,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       };
 
       const handlePurchaseMotherboard = (board) => {
-        if (normalCoins < board.cost) { alert('Normal 코인 부족'); return; }
-        setNormalCoins((prev) => prev - board.cost);
+        const mbCost = OMG.costToMinerals(board.cost);
+        if (minerals < mbCost) { alert(`미네랄 부족 (필요 ${OMG.formatManwon(board.cost)})`); return; }
+        setMinerals((prev) => prev - mbCost);
         setMotherboard({ socketManufacturer: board.socketManufacturer, supportedDdrGeneration: board.supportedDdrGeneration, shieldIncrease: board.shieldIncrease });
       };
 
@@ -696,7 +728,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       // 8. 상위 사냥터(게임) 다운로드 진행도 시뮬레이션
       // ----------------------------------------------------------------------
       const startDownload = () => {
-        const check = OMG.validateDownloadStart(workParts, huntingGround, downloadTarget, isDownloading);
+        const check = OMG.validateDownloadStart(workParts, unlockedGameIndex, downloadTarget, isDownloading);
         if (!check.ok) {
           alert(check.reason);
           return;
@@ -716,16 +748,14 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             if (nextSize >= downloadTarget.sizeMb) {
               clearInterval(interval);
               setIsDownloading(false);
-              const ground = OMG.WORK_HUNTING_GROUNDS[downloadTarget.groundIndex];
-              setHuntingGround({ name: ground.name, multiplier: ground.multiplier, mineralBase: ground.mineralBase, groundIndex: downloadTarget.groundIndex });
-              const nextTarget = OMG.DOWNLOAD_TARGETS.find(t => t.groundIndex === downloadTarget.groundIndex + 1);
+              setUnlockedGameIndex(downloadTarget.gameIndex);
+              const nextTarget = OMG.DOWNLOAD_TARGETS.find(t => t.gameIndex === downloadTarget.gameIndex + 1);
               if (nextTarget) {
                 setDownloadTarget({
                   name: nextTarget.name,
                   sizeMb: nextTarget.sizeMb,
                   requiredGb: nextTarget.requiredGb,
-                  requiredRamGb: nextTarget.requiredRamGb,
-                  groundIndex: nextTarget.groundIndex,
+                  gameIndex: nextTarget.gameIndex,
                 });
               } else {
                 setDownloadTarget(null);
@@ -826,7 +856,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             <div className="flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border border-slate-800">
               <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">MINERALS (원)</span>
               <span className="text-lg font-bold text-emerald-400 font-mono flex items-center space-x-1">
-                <span>{minerals.toLocaleString()}</span>
+                <span>{minerals.toLocaleString()}<span className="text-slate-500 text-[10px] ml-1">원</span></span>
                 <span className="text-xs text-emerald-500/60 ml-1">/ 10,000→1C</span>
               </span>
             </div>
@@ -997,7 +1027,11 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     <span className="text-emerald-400 font-bold">{specs.unitLimit}기</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">사냥터 배치 수:</span>
+                    <span className="text-slate-500">RAM (작업/사냥):</span>
+                    <span className="text-emerald-400 font-bold">{specs.workRamUsed}GB / {specs.huntRamFree}GB · GPU {specs.gpuRamPerUnit}GB/기</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">게임 사냥 유닛:</span>
                     <span className="text-emerald-400 font-bold">{specs.maxHuntingUnits}기</span>
                   </div>
                   <div className="flex justify-between col-span-2 text-cyan-300 font-semibold border-b border-slate-900 pb-1.5 mt-0.5">
@@ -1306,7 +1340,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       {OMG.MOTHERBOARDS.map(board => (
                         <button key={board.name} onClick={() => handlePurchaseMotherboard(board)} className="p-2 bg-slate-900 border border-slate-800 rounded text-center">
                           <span className="text-[10px] font-bold text-slate-200">{board.name}</span>
-                          <span className="text-[9px] text-cyan-400 font-mono block">{board.cost} C</span>
+                          <span className="text-[9px] text-cyan-400 font-mono block">{OMG.formatManwon(board.cost)}</span>
                         </button>
                       ))}
                     </div>
@@ -1321,11 +1355,11 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       </p>
                     </div>
                     <div className="flex space-x-2">
-                      <button onClick={() => { const c = OMG.getUpgradeCost('storage', 0, { type: 'storage', storageKind: 'nvme' }); if (normalCoins >= c) { setNormalCoins(p=>p-c); setStorage({ type: 'SSD', storageKind: 'nvme', level: 1, capacityGb: 250 }); } else alert('Normal 코인 부족'); }} className="px-3 py-2 bg-slate-900 border border-slate-800 rounded flex flex-col items-center">
+                      <button onClick={() => { const c = OMG.getUpgradeCost('storage', 0, { type: 'storage', storageKind: 'nvme' }); if (minerals >= OMG.costToMinerals(c)) { setMinerals(p=>p-OMG.costToMinerals(c)); setStorage({ type: 'SSD', storageKind: 'nvme', level: 1, capacityGb: 250 }); } else alert('Normal 코인 부족'); }} className="px-3 py-2 bg-slate-900 border border-slate-800 rounded flex flex-col items-center">
                         <span className="text-[10px] font-bold text-slate-300">NVMe 1강</span>
                         <span className="text-[9px] text-cyan-400 font-bold mt-1">{OMG.getUpgradeCost('storage', 0, { type: 'storage', storageKind: 'nvme' })} C</span>
                       </button>
-                      <button onClick={() => { const sl = storage.level||1; const kind = storage.storageKind||'hdd'; const c = OMG.getUpgradeCost('storage', sl, { type: 'storage', storageKind: kind }); if (normalCoins < c) return alert('Normal 코인 부족'); setNormalCoins(p=>p-c); const u = OMG.applyTierStats({ type: 'storage', storageKind: kind, storageType: storage.type, level: sl }, sl+1); setStorage({ type: u.storageType, storageKind: kind, level: u.level, capacityGb: u.capacityGb }); }} className="px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded flex flex-col items-center text-emerald-400">
+                      <button onClick={() => { const sl = storage.level||1; const kind = storage.storageKind||'hdd'; const c = OMG.getUpgradeCost('storage', sl, { type: 'storage', storageKind: kind }); if (minerals < OMG.costToMinerals(c)) return alert('미네랄 부족'); setMinerals(p=>p-OMG.costToMinerals(c)); const u = OMG.applyTierStats({ type: 'storage', storageKind: kind, storageType: storage.type, level: sl }, sl+1); setStorage({ type: u.storageType, storageKind: kind, level: u.level, capacityGb: u.capacityGb }); }} className="px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded flex flex-col items-center text-emerald-400">
                         <span className="text-[10px] font-bold">용량 강화</span>
                         <span className="text-[9px] mt-1">{OMG.getUpgradeCost('storage', storage.level || 1, { type: 'storage', storageKind: storage.storageKind || 'hdd' })} C</span>
                       </button>
@@ -1343,64 +1377,62 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <span className="text-emerald-400 text-lg mr-1.5">💼</span>
                   <span>작업 사냥터</span>
                 </h2>
-                <p className="text-xs text-slate-400">미네랄 자동 수입 · 게임 다운로드 (원작 작업)</p>
-                <div className="flex flex-wrap gap-2">
-                  {OMG.WORK_HUNTING_GROUNDS.map((g, idx) => {
-                    const unlocked = idx <= (huntingGround.groundIndex ?? 0);
-                    const active = (huntingGround.groundIndex ?? 0) === idx;
-                    return (
-                      <span
-                        key={g.name}
-                        title={unlocked ? `RAM ${g.requiredRamGb}GB 이상 · 다운로드 해금됨` : '상위 작업은 게임 다운로드로 해금'}
-                        className={`text-[10px] px-2 py-1 rounded font-mono border ${active ? 'bg-emerald-600 border-emerald-500 text-white' : unlocked ? 'bg-slate-900 border-slate-700 text-slate-300' : 'bg-slate-950 border-slate-800 text-slate-600 opacity-60'}`}
-                      >
-                        {unlocked ? (active ? '▶ ' : '✓ ') : '🔒 '}{g.name} · RAM {g.requiredRamGb}GB
-                      </span>
-                    );
-                  })}
-                </div>
-                <div className="p-4 bg-slate-950/60 rounded border border-slate-800 flex flex-col space-y-4 md:flex-row md:space-y-0 md:justify-between md:items-center">
-                  <div>
-                    <span className="text-[10px] text-slate-500 font-mono uppercase">현재 작업</span>
-                    <p className="text-md font-bold text-emerald-400">{huntingGround.name}</p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      틱당 약 <strong className="text-emerald-400">{huntingGround.mineralBase || Math.round(10 * huntingGround.multiplier)}</strong>원 · 배율 x{huntingGround.multiplier.toFixed(1)}
-                      {isPartyHunting ? ' · 파티 ON — 작업 수입 중단' : canRunCurrentWork ? ' · 가동 중' : ` · RAM ${currentWorkTier.requiredRamGb}GB 미달 — 수입 중단`}
+                <p className="text-xs text-slate-400">작업(Work)과 게임 사냥(Gaming)은 <strong className="text-emerald-400">동시 진행</strong> · RAM = 작업 점유 + 사냥 유닛(GPU 1기당 RAM × CPU 코어)</p>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-slate-950/60 rounded border border-emerald-900/40 space-y-3">
+                    <span className="text-[10px] text-emerald-400 font-mono uppercase font-bold">💼 작업 (Work)</span>
+                    <div className="flex flex-wrap gap-2">
+                      {OMG.WORK_TASKS.map((task) => {
+                        const selectable = OMG.canSelectWorkTask(workParts, task.taskIndex);
+                        const active = workTaskIndex === task.taskIndex;
+                        return (
+                          <button
+                            key={task.name}
+                            type="button"
+                            disabled={!selectable}
+                            onClick={() => selectable && setWorkTaskIndex(task.taskIndex)}
+                            title={selectable ? `RAM ${task.requiredRamGb}GB 점유 · 틱당 ${task.mineralBase}원` : `RAM ${task.requiredRamGb}GB 필요 (현재 ${ramAlloc.totalRam}GB)`}
+                            className={`text-[10px] px-2 py-1 rounded font-mono border ${active ? 'bg-emerald-600 border-emerald-500 text-white' : selectable ? 'bg-slate-900 border-slate-700 text-slate-300 hover:border-emerald-500/40' : 'bg-slate-950 border-slate-800 text-slate-600 opacity-50 cursor-not-allowed'}`}
+                          >
+                            {active ? '▶ ' : ''}{task.name} [{task.requiredRamGb}GB]
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      틱당 <strong className="text-emerald-400">{OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate).toLocaleString()}원</strong>
+                      {isPartyHunting ? ' · 파티 ON — 작업 중단' : ramAlloc.canRunWork ? '' : ' · RAM 부족'}
                     </p>
                   </div>
-                  <div className="flex flex-col space-y-2 min-w-[50%]">
+                  <div className="p-4 bg-slate-950/60 rounded border border-cyan-900/40 space-y-3">
+                    <span className="text-[10px] text-cyan-400 font-mono uppercase font-bold">🎮 게임 사냥 (Gaming)</span>
+                    <p className="text-xs text-slate-300 font-bold">{activeGame ? activeGame.name : '다운로드된 게임 없음'}</p>
+                    <p className="text-xs text-slate-400">
+                      배치 <strong className="text-cyan-400">{specs.maxHuntingUnits}기</strong>
+                      (RAM {specs.huntRamFree}GB / GPU {specs.gpuRamPerUnit}GB·기 · CPU {specs.ramAllocation.maxByCpu}코어)
+                      · 틱당 <strong className="text-cyan-400">{OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate).toLocaleString()}원</strong>
+                    </p>
                     {downloadTarget ? (
-                    <>
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-slate-400 font-mono">다음 작업 다운로드: <strong>{downloadTarget.name}</strong></span>
-                      <span className="text-slate-500 font-mono">저장 {downloadTarget.requiredGb}GB · RAM {downloadTarget.requiredRamGb || currentWorkTier.requiredRamGb}GB</span>
-                    </div>
-                    <div className="w-full bg-slate-950 rounded-full h-3.5 overflow-hidden border border-slate-800 p-0.5">
-                      <div className="bg-emerald-500 h-full rounded-full transition-all duration-100 flex justify-end items-center pr-1.5" style={{ width: `${downloadProgress}%` }}>
-                        <span className="text-[8px] font-bold text-slate-950 font-mono">{Math.round(downloadProgress)}%</span>
-                      </div>
-                    </div>
-                    <div className="flex justify-between items-center text-[10px] font-mono pt-1">
-                      <span className="text-slate-500">속도: {specs.downloadSpeedMb} MB/s (x{specs.storageDownloadMult} · {storage.storageKind === 'nvme' || storage.type === 'SSD' ? 'NVMe/SSD' : 'HDD'})</span>
-                      {!isDownloading ? (
-                        <button
-                          onClick={startDownload}
-                          disabled={!downloadValidation.ok}
-                          title={downloadValidation.ok ? '다운로드 시작' : downloadValidation.reason}
-                          className={`px-2.5 py-1 border rounded font-bold transition text-[10px] ${downloadValidation.ok ? 'bg-cyan-500/10 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 border-cyan-500/20' : 'bg-slate-900 text-slate-500 border-slate-800 cursor-not-allowed opacity-60'}`}
-                        >
-                          다운로드 시작
-                        </button>
-                      ) : (
-                        <span className="text-cyan-400 animate-pulse">다운로드 진행 중...</span>
-                      )}
-                    </div>
-                    {!downloadValidation.ok && !isDownloading && (
-                      <p className="text-[10px] text-rose-400/90 font-mono">{downloadValidation.reason}</p>
-                    )}
-                    </>
+                      <>
+                        <div className="text-[10px] font-mono text-slate-400">다음 다운로드: <strong>{downloadTarget.name}</strong> · 저장 {downloadTarget.requiredGb}GB</div>
+                        <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
+                          <div className="bg-cyan-500 h-full transition-all" style={{ width: `${downloadProgress}%` }} />
+                        </div>
+                        <div className="flex justify-between items-center text-[10px] font-mono">
+                          <span className="text-slate-500">{specs.downloadSpeedMb} MB/s</span>
+                          {!isDownloading ? (
+                            <button type="button" onClick={startDownload} disabled={!downloadValidation.ok} title={downloadValidation.reason}
+                              className={`px-2 py-1 rounded border ${downloadValidation.ok ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'opacity-50 cursor-not-allowed text-slate-500 border-slate-800'}`}>
+                              게임 다운로드
+                            </button>
+                          ) : <span className="text-cyan-400 animate-pulse">다운로드 중…</span>}
+                        </div>
+                        {!downloadValidation.ok && !isDownloading && (
+                          <p className="text-[10px] text-rose-400">{downloadValidation.reason}</p>
+                        )}
+                      </>
                     ) : (
-                      <p className="text-xs text-emerald-400 font-mono">모든 작업/게임 다운로드 완료</p>
+                      <p className="text-[10px] text-emerald-400 font-mono">모든 게임 다운로드 완료</p>
                     )}
                   </div>
                 </div>
