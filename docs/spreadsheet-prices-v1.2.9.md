@@ -1,6 +1,6 @@
 # [SCA] 부품 가격표 — 스프레드시트 고정본
 
-> **고정일:** 2026-06-01 · **웹 UI 동기화:** 2026-06-01  
+> **고정일:** 2026-06-01 · **웹 UI 동기화:** 2026-06-02  
 > **원본:** [Google 스프레드시트](https://docs.google.com/spreadsheets/d/16NKxKboxmQIDvX4hjv8xV_OK6F-lLHatctZOVugU54Y/edit)  
 > **용도:** `public/originalMapData.js`의 `tier.cost` 단일 기준. 이후 시트 변경 시 **이 문서 + 코드를 함께** 갱신.
 
@@ -187,3 +187,56 @@
 - **AUTO ON:** 상점에서 **현재 선택한 강**을 구매 → **목표 N강**까지 무료 강화 (`getShopSelectedBuyLevel` + `autoTargetLevels`)
 - **제거됨:** `STORAGE ENGINE EXCHANGE` (NVMe 직구·용량 강화 별도 패널) — Storage는 부품 상점(HDD/NVMe)만 사용
 
+---
+
+## 웹 추가 규칙 (스프레드시트 외 · `originalMapData.js`)
+
+### 램 슬롯
+
+| 슬롯 | 미네랄(원) | 비고 |
+|------|------------|------|
+| 2 | 5,000 | 1→2 업그레이드 |
+| 4 | 500,000 | 2→4 업그레이드 |
+
+장착 RAM 1개 × 슬롯 수 = 작업·사냥에 쓰는 **실효 용량** (`getRamEffectiveCapacityGb`). 창고 보관 상한은 **4개** (`MAX_RAM_INVENTORY`).
+
+### CPU DDR (장착·구매 시 동기화)
+
+| 제조사 | DDR4 | DDR5 |
+|--------|------|------|
+| Intel | 6강+ | 12강+ |
+| AMD | 1강+ | 6강+ |
+
+### 게임 다운로드 — 저장 공간 (누적)
+
+완료한 게임의 `requiredGb`를 **합산**해 사용량으로 계산. 다음 게임은 **여유 ≥ 이번 requiredGb** 일 때만 시작.
+
+### CPU 사냥 RAM (1기당)
+
+| CPU 성능(티어) | RAM/기 |
+|----------------|--------|
+| ≤ 75 | 1 GB |
+| ≤ 750 | 2 GB |
+| 그 외 | 4 GB |
+
+### GPU (웹)
+
+- **표시:** 등급별 `modelEntry`~`modelHighend` (강화 **세대명** 접두 없음)
+- **SCA 등급:** 엔트리(0) → 메인(1) → 퍼포(2) → 하이엔드(3), **40,000 SCA × 최대 3회**
+
+### SCA 상점 — 환생 미네랄 가격
+
+원작 UI의 SCA 코인 표기와 별도로, 웹은 **+10원 보너스당 500 SCA** 고정 (`getScaShopItemCost`).
+
+| id | 1회 SCA |
+|----|---------|
+| rebirthMineral500 (+500) | 25,000 |
+| rebirthMineralMax200 (+200) | 10,000 |
+| rebirthMineralMax2000 (+2000) | 100,000 |
+| rebirthMineralMax7500 (+7500) | 375,000 |
+
+**제거:** `intelCpu11` (Intel 11강은 일반 상점 **4C**만).
+
+### AUTO 구매 강
+
+`getAutoBuyLevel(type, goal)` — 목표 강 **미만** 중 `SHOP_PURCHASABLE_LEVELS`에 있는 **최고 강**을 구매한 뒤 목표까지 강화.
