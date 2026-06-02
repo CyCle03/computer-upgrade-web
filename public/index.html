@@ -262,6 +262,11 @@
         const saved = localStorage.getItem('sca_ram');
         return saved !== null ? JSON.parse(saved) : { level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' };
       });
+      const [ramSlots, setRamSlots] = useState(() => {
+        const saved = localStorage.getItem('sca_ramSlots');
+        const n = saved !== null ? parseInt(saved, 10) : 1;
+        return OMG.getRamSlotCount(n);
+      });
       const [cooler, setCooler] = useState(() => {
         const saved = localStorage.getItem('sca_cooler');
         return saved !== null ? JSON.parse(saved) : { level: 1, coolingCapacity: 500, coolerKind: 'air' };
@@ -397,7 +402,8 @@
       const gpuGrade = useMemo(() => OMG.calcGpuGrade(scaUpgrades), [scaUpgrades]);
       const gpuAttackFrames = useMemo(() => OMG.calcGpuAttackFrames(scaUpgrades), [scaUpgrades]);
 
-      const workParts = useMemo(() => ({ cpu, gpu, ram, cooler, storage, motherboard }), [cpu, gpu, ram, cooler, storage, motherboard]);
+      const effectiveRamGb = useMemo(() => OMG.getRamEffectiveCapacityGb(ram, ramSlots), [ram, ramSlots]);
+      const workParts = useMemo(() => ({ cpu, gpu, ram, cooler, storage, motherboard, ramSlots }), [cpu, gpu, ram, cooler, storage, motherboard, ramSlots]);
       const effectiveUnitLimit = useMemo(() => {
         let limit = OMG.getCpuCores(cpu);
         if (cpu.manufacturer !== motherboard.socketManufacturer) {
@@ -571,7 +577,7 @@
           }
         }
         setWorkTaskIndex(0);
-      }, [workParts, workTaskIndex, cpu.level, gpu.level, ram.level, ram.capacityGb, motherboard.shieldIncrease]);
+      }, [workParts, workTaskIndex, cpu.level, gpu.level, ram.level, ram.capacityGb, ramSlots, motherboard.shieldIncrease]);
 
       useEffect(() => {
         const normalized = OMG.normalizeGameProgress(unlockedGameIndex, downloadTarget);
@@ -634,6 +640,7 @@
         localStorage.setItem('sca_cpu', JSON.stringify(cpu));
         localStorage.setItem('sca_gpu', JSON.stringify(gpu));
         localStorage.setItem('sca_ram', JSON.stringify(ram));
+        localStorage.setItem('sca_ramSlots', String(ramSlots));
         localStorage.setItem('sca_cooler', JSON.stringify(cooler));
         localStorage.setItem('sca_motherboard', JSON.stringify(motherboard));
         localStorage.setItem('sca_storage', JSON.stringify(storage));
@@ -818,6 +825,20 @@
         }
       };
 
+
+      const handlePurchaseRamSlots = (targetSlots) => {
+        const check = OMG.validateRamSlotPurchase(ramSlots, targetSlots, minerals);
+        if (!check.ok) {
+          alert(check.reason);
+          return;
+        }
+        setMinerals((prev) => prev - check.cost);
+        setRamSlots(check.newSlots);
+        setUpgradeMessage(`📦 램 슬롯 ${check.newSlots}개 — 장착 1개당 동일 램 ${check.newSlots}배 용량 (-${OMG.formatMineral(check.cost)})`);
+        setUpgradeStatus('success');
+        setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 3000);
+      };
+
       const handleBuyComponentPack = (type, level = 1) => {
         if (type === 'ram' && !OMG.canPurchaseRam(inventory)) {
           alert(`RAM은 최대 ${OMG.MAX_RAM_INVENTORY}개까지 창고에 보관할 수 있습니다.`);
@@ -898,6 +919,7 @@
 setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setGpu({ level: 1 });
         setRam({ level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' });
+        setRamSlots(1);
         setCooler({ level: 1, coolingCapacity: 500, coolerKind: 'air' });
         setMotherboard({ socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 0 });
         setStorage({ type: 'HDD', capacityGb: 60, level: 1, storageKind: 'hdd' });
@@ -1277,7 +1299,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <div>
                     <p className="text-[10px] text-slate-500 font-mono">SYSTEM RAM (MEM)</p>
                     <p className="text-sm font-semibold text-slate-200">{getRamName(ram.level, ram)}</p>
-                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">Grade: +{ram.level || 1}강 · Cap: {ram.capacityGb}GB / Clock: {ram.clockMhz}Mhz</p>
+                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">Grade: +{ram.level || 1}강 · 유효 {effectiveRamGb}GB ({ramSlots}슬롯×{ram.capacityGb}GB) · {ram.clockMhz}Mhz</p>
                   </div>
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{ram.ddrGeneration}</span>
                 </div>
@@ -1383,7 +1405,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       <div>
                         <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 부품 상점 — 부품별 구매 가능 강 (미네랄)</span>
                         <p className="text-xs text-slate-400">
-                          스프레드시트 구매가 = 미네랄(원) 1:1 (C = N×천만). Intel CPU 1·4·7·10·11강, AMD 1·3강, GPU 1·3·5·7강, RAM 1·5·10강, 쿨러·드라이브 1강, 메인보드(DDR·소켓 표시) 직접 구매. ◀▶로 강 선택 · AUTO는 목표 미만 구매 가능 최고 강 구매 후 목표까지 강화. RAM 창고 최대 4개 · 판매 50% 환급.
+                          스프레드시트 구매가 = 미네랄(원) 1:1 (C = N×천만). Intel CPU 1·4·7·10·11강, AMD 1·3강, GPU 1·3·5·7강, RAM 1·5·10강, 쿨러·드라이브 1강, 메인보드(DDR·소켓 표시) 직접 구매. ◀▶로 강 선택 · AUTO는 목표 미만 구매 가능 최고 강 구매 후 목표까지 강화. 램 슬롯 2·4 구매 · 창고 RAM 최대 4개 · 판매 50% 환급.
                         </p>
                       </div>
                       {gpu.level >= 10 && (
@@ -1395,7 +1417,33 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         </button>
                       )}
                     </div>
-                    
+
+                    <div className="p-3 bg-slate-900/50 rounded border border-emerald-900/30 space-y-2 col-span-full">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold text-emerald-300 font-mono">⚡ 램 슬롯 (장착 1개 = 슬롯 수만큼 동일 효과)</span>
+                        <span className="text-[9px] font-mono text-slate-400">현재 <strong className="text-emerald-400">{ramSlots}슬롯</strong> · 유효 용량 <strong className="text-emerald-400">{effectiveRamGb}GB</strong></span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {OMG.RAM_SLOT_UPGRADES.map((opt) => {
+                          const owned = ramSlots >= opt.slots;
+                          const canBuy = OMG.canPurchaseRamSlotUpgrade(ramSlots, opt.slots);
+                          const affordable = minerals >= opt.cost;
+                          return (
+                            <button
+                              key={opt.slots}
+                              type="button"
+                              disabled={owned || !canBuy}
+                              onClick={() => handlePurchaseRamSlots(opt.slots)}
+                              className={`px-3 py-2 rounded border text-[10px] font-mono font-bold transition ${owned ? 'bg-slate-950 border-slate-800 text-slate-600 cursor-default' : canBuy && affordable ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20' : 'bg-slate-950 border-slate-800 text-slate-500 cursor-not-allowed'}`}
+                            >
+                              {owned ? `✓ ${opt.slots}슬롯` : `${opt.slots}슬롯 · ${OMG.formatMineral(opt.cost)}`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[8px] text-slate-500 font-mono">기본 1슬롯 무료 · 2슬롯 5,000원 · 4슬롯 500,000원 · 창고 RAM {OMG.MAX_RAM_INVENTORY}개는 예비 부품 보관(별도)</p>
+                    </div>
+
                     {/* 부품 구매 — ◀▶로 구매할 강 선택 후 구매 (강화 전용 강은 미표시) */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-2.5 border-t border-slate-900">
                       {[

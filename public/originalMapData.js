@@ -201,6 +201,12 @@
   ];
 
   const MAX_RAM_INVENTORY = 4;
+  /** 램 슬롯 구매 (시트) — 장착 1개 = 슬롯 수만큼 동일 램 효과 */
+  const RAM_SLOT_UPGRADES = [
+    { slots: 2, cost: 5000 },
+    { slots: 4, cost: 500000 },
+  ];
+  const DEFAULT_RAM_SLOTS = 1;
 
   const SHOP_PURCHASABLE_LEVELS = {
     cpu: { Intel: [1, 4, 7, 10, 11], AMD: [1, 3] },
@@ -552,6 +558,39 @@
     return costToMinerals(getUpgradeCost(type, level, part));
   }
 
+  function getRamSlotCount(ramSlots) {
+    const n = Number(ramSlots) || DEFAULT_RAM_SLOTS;
+    if (n >= 4) return 4;
+    if (n >= 2) return 2;
+    return 1;
+  }
+
+  function getRamEffectiveCapacityGb(ram, ramSlots) {
+    return getRamCapacityGb(ram) * getRamSlotCount(ramSlots);
+  }
+
+  function getRamSlotUpgradeCost(targetSlots) {
+    const row = RAM_SLOT_UPGRADES.find((u) => u.slots === targetSlots);
+    return row ? row.cost : null;
+  }
+
+  function canPurchaseRamSlotUpgrade(currentSlots, targetSlots) {
+    const cur = getRamSlotCount(currentSlots);
+    const tgt = getRamSlotCount(targetSlots);
+    return tgt > cur && RAM_SLOT_UPGRADES.some((u) => u.slots === tgt);
+  }
+
+  function validateRamSlotPurchase(currentSlots, targetSlots, minerals) {
+    if (!canPurchaseRamSlotUpgrade(currentSlots, targetSlots)) {
+      return { ok: false, reason: '이미 보유한 슬롯이거나 구매할 수 없는 단계입니다.' };
+    }
+    const cost = getRamSlotUpgradeCost(targetSlots);
+    if ((minerals ?? 0) < cost) {
+      return { ok: false, reason: `미네랄 부족 (필요 ${formatMineral(cost)} · 보유 ${formatMineral(minerals ?? 0)})` };
+    }
+    return { ok: true, cost, newSlots: getRamSlotCount(targetSlots) };
+  }
+
   function getRamCapacityGb(ram) {
     return (ram && ram.capacityGb) || 1;
   }
@@ -663,7 +702,8 @@ function getPartLevel(part) {
 
     const gpuLevel = getPartLevel(gpu);
     const ramLevel = getPartLevel(ram);
-    const ramGb = getRamCapacityGb(ram);
+    const ramSlots = (parts && parts.ramSlots) != null ? parts.ramSlots : DEFAULT_RAM_SLOTS;
+    const ramGb = getRamEffectiveCapacityGb(ram, ramSlots);
     const cpuCores = getCpuCores(cpu);
     const shield = motherboard.shieldIncrease || 0;
     const minRamGb = task.requiredRamGb || task.ramPerUnitGb || 1;
@@ -724,7 +764,8 @@ function getPartLevel(part) {
 
   /** RAM: 작업 점유 후 남은 용량으로 사냥 유닛 수 계산 (작업·게임 동시) */
   function calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride, scaUpgrades) {
-    const totalRam = getRamCapacityGb(parts && parts.ram);
+    const ramSlots = (parts && parts.ramSlots) != null ? parts.ramSlots : DEFAULT_RAM_SLOTS;
+    const totalRam = getRamEffectiveCapacityGb(parts && parts.ram, ramSlots);
     const maxByCpu = maxUnitsOverride != null ? maxUnitsOverride : getCpuCores(parts && parts.cpu);
     const workSpec = evaluateWorkTaskSpec(parts, workTaskIndex);
     const work = workSpec.task;
@@ -742,6 +783,7 @@ function getPartLevel(part) {
     const activeHuntingUnits = Math.max(0, Math.min(maxByRam, maxByCpu));
     return {
       totalRam,
+      ramSlots: getRamSlotCount(ramSlots),
       workRamUsed,
       huntRamFree,
       huntRamPerUnit,
@@ -884,9 +926,10 @@ function getPartLevel(part) {
     calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeEventIntervalMs,
     calcGpuGrade, calcGpuAttackFrames, calcGpuBenchmarkMultiplier,
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
-    MAX_RAM_INVENTORY, SHOP_PURCHASABLE_LEVELS, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, getPurchasableLevels, getPurchasableMaxLevel, isPurchasableLevel, countRamInInventory, canPurchaseRam, buildInventoryPart,
+    MAX_RAM_INVENTORY, RAM_SLOT_UPGRADES, DEFAULT_RAM_SLOTS, getRamSlotCount, getRamEffectiveCapacityGb, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase,
+    SHOP_PURCHASABLE_LEVELS, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, getPurchasableLevels, getPurchasableMaxLevel, isPurchasableLevel, countRamInInventory, canPurchaseRam, buildInventoryPart,
     costToMinerals, formatMineral, formatManwon, getPurchaseCostMinerals,
-    getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getGpuDisplayName, getGpuModelName, getGpuAttackPower, getGpuTierAttack, getCpuRequiredDdrGeneration, getCpuHuntRamPerUnitGb,
+    getRamCapacityGb, getRamEffectiveCapacityGb, getRamSlotCount, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase, getStorageCapacityGb, getGpuRamPerUnit, getGpuDisplayName, getGpuModelName, getGpuAttackPower, getGpuTierAttack, getCpuRequiredDdrGeneration, getCpuHuntRamPerUnitGb,
     calcStorageUsedGb, getStorageFreeGb,
     getWorkTask, getGameHunt, getDownloadTargetMeta,
     getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
