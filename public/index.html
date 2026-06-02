@@ -16,8 +16,18 @@
   <script src="/socket.io/socket.io.js"></script>
   <script src="/originalMapData.js"></script>
   <style>
+    /* 가독성: 기본 글자 크기 소폭 상향 (Tailwind rem + 소형 px 클래스) */
+    html {
+      font-size: 18px;
+    }
+    @media (min-width: 1280px) {
+      html {
+        font-size: 19px;
+      }
+    }
     body {
       font-family: 'Outfit', 'JetBrains Mono', sans-serif;
+      line-height: 1.5;
     }
     .neon-border-emerald {
       box-shadow: 0 0 10px rgba(16, 185, 129, 0.2), inset 0 0 10px rgba(16, 185, 129, 0.1);
@@ -1262,11 +1272,11 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               <div>
                 <h1 className="text-sm text-slate-400 uppercase tracking-widest font-semibold">복원 제어 터미널</h1>
                 <p className="text-xs text-emerald-500 font-mono">환생 {rebirthCount}회 · 환생수치 {rebirthStat.toLocaleString()} · 수입 x{rebirthIncomeMult.toFixed(2)} · 배속 {gameSpeedFrames}f</p>
-                <p className="text-[11px] text-slate-400 font-mono mt-0.5 flex items-center gap-2">
+                <p className="text-sm text-slate-400 font-mono mt-0.5 flex items-center gap-2">
                   <span>👤 {nickname}</span>
                   <button
                     onClick={() => { if (onLogout) onLogout(); }}
-                    className="px-2 py-0.5 text-[10px] border border-rose-500/40 rounded text-rose-300 hover:bg-rose-500/10"
+                    className="px-2 py-0.5 text-xs border border-rose-500/40 rounded text-rose-300 hover:bg-rose-500/10"
                   >
                     로그아웃
                   </button>
@@ -1277,7 +1287,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             <div className="flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border border-slate-800">
               <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">MINERALS (원)</span>
               <span className="text-lg font-bold text-emerald-400 font-mono flex items-center space-x-1">
-                <span>{minerals.toLocaleString()}<span className="text-slate-500 text-[10px] ml-1">원</span></span>
+                <span>{minerals.toLocaleString()}<span className="text-slate-500 text-xs ml-1">원</span></span>
               </span>
             </div>
 
@@ -1297,8 +1307,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           </div>
           {showScaCenter && (
             <section className="mb-4 p-4 border border-cyan-500/20 rounded-xl space-y-3">
-              <p className="text-[10px] font-mono text-cyan-300/80">다음 환생 시작 미네랄: <strong>{OMG.calcRebirthStartMinerals(scaUpgrades).toLocaleString()}원</strong> (상한 {OMG.REBIRTH_MINERAL_CAP.toLocaleString()}원) · 환생 미네랄 <strong>+10원 = {OMG.REBIRTH_MINERAL_SCA_PER_10} SCA</strong> 고정</p>
-              <p className="text-[10px] font-mono text-cyan-300/70">게임 배속 {gameSpeedFrames}프레임 (x{gameSpeedMult.toFixed(2)}) · GPU {OMG.GPU_GRADE_NAMES[gpuGrade]} ({gpuAttackFrames}f) · 다운로드 x{OMG.calcDownloadSpeedBonus(scaUpgrades).toFixed(1)}</p>
+              <p className="text-xs font-mono text-cyan-300/80">다음 환생 시작 미네랄: <strong>{OMG.calcRebirthStartMinerals(scaUpgrades).toLocaleString()}원</strong> (상한 {OMG.REBIRTH_MINERAL_CAP.toLocaleString()}원) · 환생 미네랄 <strong>+10원 = {OMG.REBIRTH_MINERAL_SCA_PER_10} SCA</strong> 고정</p>
+              <p className="text-xs font-mono text-cyan-300/70">게임 배속 {gameSpeedFrames}프레임 (x{gameSpeedMult.toFixed(2)}) · GPU {OMG.GPU_GRADE_NAMES[gpuGrade]} ({gpuAttackFrames}f) · 다운로드 x{OMG.calcDownloadSpeedBonus(scaUpgrades).toFixed(1)}</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {OMG.SCA_SHOP_ITEMS.map(item => {
                 const bought = scaUpgrades[item.id] || 0;
@@ -1306,7 +1316,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 const cost = OMG.getScaShopItemCost(item);
                 const affordable = scaCoins >= cost;
                 return (
-                  <button key={item.id} onClick={() => handlePurchaseScaItem(item)} disabled={soldOut || !affordable} className={`p-2 bg-slate-950 border rounded text-[10px] font-mono text-left ${soldOut || !affordable ? 'border-slate-900 opacity-40' : 'border-slate-800 hover:border-cyan-500/40'}`}>
+                  <button key={item.id} onClick={() => handlePurchaseScaItem(item)} disabled={soldOut || !affordable} className={`p-2 bg-slate-950 border rounded text-xs font-mono text-left ${soldOut || !affordable ? 'border-slate-900 opacity-40' : 'border-slate-800 hover:border-cyan-500/40'}`}>
                     <div>{OMG.getScaShopItemDisplayName(item, scaUpgrades)}</div>
                     <div className="text-cyan-400">{cost.toLocaleString()} SCA</div>
                     <div className="text-slate-500 mt-1">{bought}/{item.maxPurchases}</div>
@@ -1338,7 +1348,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             
             <section className="lg:col-span-5 bg-slate-900/40 p-6 rounded-xl border border-slate-800 flex flex-col space-y-6">
               <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-                <h2 className="text-md uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2">
+                <h2 className="text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2">
                   <span className="text-emerald-400 text-lg mr-1.5">🖥️</span>
                   <span>내 하드웨어 모니터</span>
                 </h2>
@@ -1375,56 +1385,56 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center">
                   <div>
-                    <p className="text-[10px] text-slate-500 font-mono">CPU PROCESSOR</p>
-                    <p className="text-sm font-semibold text-slate-200">{getCpuName(cpu.level)}</p>
-                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">Grade: +{cpu.level}강</p>
+                    <p className="text-xs text-slate-500 font-mono">CPU PROCESSOR</p>
+                    <p className="text-base font-semibold text-slate-200">{getCpuName(cpu.level)}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">Grade: +{cpu.level}강</p>
                   </div>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{cpu.ddrGeneration}</span>
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{cpu.ddrGeneration}</span>
                 </div>
 
                 <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center">
                   <div>
-                    <p className="text-[10px] text-slate-500 font-mono">GPU ENGINE</p>
-                    <p className="text-sm font-semibold text-slate-200">{getGpuName(gpu.level, gpu)}</p>
-                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">+{gpu.level}강 · {OMG.GPU_GRADE_NAMES[gpuGrade]} · 공격 {OMG.getGpuAttackPower(gpu, scaUpgrades)}</p>
+                    <p className="text-xs text-slate-500 font-mono">GPU ENGINE</p>
+                    <p className="text-base font-semibold text-slate-200">{getGpuName(gpu.level, gpu)}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">+{gpu.level}강 · {OMG.GPU_GRADE_NAMES[gpuGrade]} · 공격 {OMG.getGpuAttackPower(gpu, scaUpgrades)}</p>
                   </div>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">PCI-E</span>
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">PCI-E</span>
                 </div>
 
                 <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center">
                   <div>
-                    <p className="text-[10px] text-slate-500 font-mono">SYSTEM RAM (MEM)</p>
-                    <p className="text-sm font-semibold text-slate-200">{getRamName(ram.level, ram)}</p>
-                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">Grade: +{ram.level || 1}강 · 유효 {effectiveRamGb}GB ({ramSlots}슬롯×{ram.capacityGb}GB) · {ram.clockMhz}Mhz</p>
+                    <p className="text-xs text-slate-500 font-mono">SYSTEM RAM (MEM)</p>
+                    <p className="text-base font-semibold text-slate-200">{getRamName(ram.level, ram)}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">Grade: +{ram.level || 1}강 · 유효 {effectiveRamGb}GB ({ramSlots}슬롯×{ram.capacityGb}GB) · {ram.clockMhz}Mhz</p>
                   </div>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{ram.ddrGeneration}</span>
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{ram.ddrGeneration}</span>
                 </div>
 
                 <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center">
                   <div>
-                    <p className="text-[10px] text-slate-500 font-mono">COOLING BLADE</p>
-                    <p className="text-sm font-semibold text-slate-200">{getCoolerName(cooler.level, cooler)}</p>
-                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">{(cooler.coolerKind === 'water' ? '수랭' : '공랭')} · Cap: {cooler.coolingCapacity}W / +{cooler.level}강</p>
+                    <p className="text-xs text-slate-500 font-mono">COOLING BLADE</p>
+                    <p className="text-base font-semibold text-slate-200">{getCoolerName(cooler.level, cooler)}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{(cooler.coolerKind === 'water' ? '수랭' : '공랭')} · Cap: {cooler.coolingCapacity}W / +{cooler.level}강</p>
                   </div>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{cooler.coolerKind === 'water' ? '수랭' : '공랭'}</span>
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{cooler.coolerKind === 'water' ? '수랭' : '공랭'}</span>
                 </div>
 
                 <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center col-span-2">
                   <div>
-                    <p className="text-[10px] text-slate-500 font-mono">MOTHERBOARD</p>
-                    <p className="text-sm font-semibold text-slate-200">{motherboard.name || `${motherboard.socketManufacturer} Board`}</p>
-                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">{motherboard.socketManufacturer} · {motherboard.supportedDdrGeneration} · 실드 +{motherboard.shieldIncrease}</p>
+                    <p className="text-xs text-slate-500 font-mono">MOTHERBOARD</p>
+                    <p className="text-base font-semibold text-slate-200">{motherboard.name || `${motherboard.socketManufacturer} Board`}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{motherboard.socketManufacturer} · {motherboard.supportedDdrGeneration} · 실드 +{motherboard.shieldIncrease}</p>
                   </div>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">{motherboard.supportedDdrGeneration} SLOT</span>
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">{motherboard.supportedDdrGeneration} SLOT</span>
                 </div>
 
                 <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center col-span-2">
                   <div>
-                    <p className="text-[10px] text-slate-500 font-mono">STORAGE SYSTEM</p>
-                    <p className="text-sm font-semibold text-slate-200">{getStorageName(storage.level || 1, storage)}</p>
-                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">+{storage.level || 1}강 · {storage.capacityGb}GB · {(storage.storageKind === 'nvme' || storage.type === 'SSD') ? 'NVMe SSD' : 'HDD'} · 다운로드 x{specs.storageDownloadMult}</p>
+                    <p className="text-xs text-slate-500 font-mono">STORAGE SYSTEM</p>
+                    <p className="text-base font-semibold text-slate-200">{getStorageName(storage.level || 1, storage)}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">+{storage.level || 1}강 · {storage.capacityGb}GB · {(storage.storageKind === 'nvme' || storage.type === 'SSD') ? 'NVMe SSD' : 'HDD'} · 다운로드 x{specs.storageDownloadMult}</p>
                   </div>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{storage.type === 'SSD' ? 'SSD 4X FASTER' : 'HDD BASE'}</span>
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{storage.type === 'SSD' ? 'SSD 4X FASTER' : 'HDD BASE'}</span>
                 </div>
               </div>
 
@@ -1466,7 +1476,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     <span className="text-slate-500">방어력(쿨러반영):</span>
                     <span className="text-emerald-400 font-bold">{specs.unitDefense}</span>
                   </div>
-                  <div className="flex justify-between col-span-2 border-t border-slate-900 pt-2 text-[11px]">
+                  <div className="flex justify-between col-span-2 border-t border-slate-900 pt-2 text-sm">
                     <span className="text-slate-500">유닛당 초당 DPS 기여도:</span>
                     <span className="text-cyan-400 font-bold font-mono">
                       {Math.round((1 / specs.attackSpeedSec) * specs.unitDamage * specs.unitLimit).toLocaleString()} DPS/합산
@@ -1489,7 +1499,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             <section className="lg:col-span-7 flex flex-col space-y-6">
               
               <div className="bg-slate-900/40 p-6 rounded-xl border border-slate-800 flex flex-col space-y-4">
-                <h2 className="text-md uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
+                <h2 className="text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
                   <span className="text-cyan-400 text-lg mr-1.5">🛒</span>
                   <span>부품 조립 및 고도 강화 상점</span>
                 </h2>
@@ -1517,8 +1527,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
 
                     <div className="p-3 bg-slate-900/50 rounded border border-emerald-900/30 space-y-2 col-span-full">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[10px] font-bold text-emerald-300 font-mono">⚡ 램 슬롯 (장착 1개 = 슬롯 수만큼 동일 효과)</span>
-                        <span className="text-[9px] font-mono text-slate-400">현재 <strong className="text-emerald-400">{ramSlots}슬롯</strong> · 유효 용량 <strong className="text-emerald-400">{effectiveRamGb}GB</strong></span>
+                        <span className="text-xs font-bold text-emerald-300 font-mono">⚡ 램 슬롯 (장착 1개 = 슬롯 수만큼 동일 효과)</span>
+                        <span className="text-[11px] font-mono text-slate-400">현재 <strong className="text-emerald-400">{ramSlots}슬롯</strong> · 유효 용량 <strong className="text-emerald-400">{effectiveRamGb}GB</strong></span>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {OMG.RAM_SLOT_UPGRADES.map((opt) => {
@@ -1531,14 +1541,14 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                               type="button"
                               disabled={owned || !canBuy}
                               onClick={() => handlePurchaseRamSlots(opt.slots)}
-                              className={`px-3 py-2 rounded border text-[10px] font-mono font-bold transition ${owned ? 'bg-slate-950 border-slate-800 text-slate-600 cursor-default' : canBuy && affordable ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20' : 'bg-slate-950 border-slate-800 text-slate-500 cursor-not-allowed'}`}
+                              className={`px-3 py-2 rounded border text-xs font-mono font-bold transition ${owned ? 'bg-slate-950 border-slate-800 text-slate-600 cursor-default' : canBuy && affordable ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20' : 'bg-slate-950 border-slate-800 text-slate-500 cursor-not-allowed'}`}
                             >
                               {owned ? `✓ ${opt.slots}슬롯` : `${opt.slots}슬롯 · ${OMG.formatMineral(opt.cost)}`}
                             </button>
                           );
                         })}
                       </div>
-                      <p className="text-[8px] text-slate-500 font-mono">기본 1슬롯 무료 · 2슬롯 5,000원 · 4슬롯 500,000원 · 창고 RAM {OMG.MAX_RAM_INVENTORY}개는 예비 부품 보관(별도)</p>
+                      <p className="text-[10px] text-slate-500 font-mono">기본 1슬롯 무료 · 2슬롯 5,000원 · 4슬롯 500,000원 · 창고 RAM {OMG.MAX_RAM_INVENTORY}개는 예비 부품 보관(별도)</p>
                     </div>
 
                     {/* 부품 구매 — ◀▶로 구매할 강 선택 후 구매 (강화 전용 강은 미표시) */}
@@ -1547,25 +1557,25 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         { type: 'cpu', emoji: '🧠', label: 'CPU', variants: (
                           <div className="flex gap-1">
                             {['Intel', 'AMD'].map((m) => (
-                              <button key={m} type="button" onClick={() => setCpuBuyManufacturer(m)} className={`px-2 py-0.5 text-[9px] font-mono rounded border ${cpuBuyManufacturer === m ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{m}</button>
+                              <button key={m} type="button" onClick={() => setCpuBuyManufacturer(m)} className={`px-2 py-0.5 text-[11px] font-mono rounded border ${cpuBuyManufacturer === m ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{m}</button>
                             ))}
                           </div>
                         ) },
                         { type: 'gpu', emoji: '🎮', label: 'GPU', variants: null },
                         { type: 'ram', emoji: '⚡', label: 'RAM', variants: (
-                          <p className="text-[9px] font-mono text-slate-500">보관 {OMG.countRamInInventory(inventory)}/{OMG.MAX_RAM_INVENTORY}개</p>
+                          <p className="text-[11px] font-mono text-slate-500">보관 {OMG.countRamInInventory(inventory)}/{OMG.MAX_RAM_INVENTORY}개</p>
                         ) },
                         { type: 'cooler', emoji: '❄️', label: 'Cooler', variants: (
                           <div className="flex gap-1">
                             {[['air', '공랭'], ['water', '수랭']].map(([k, label]) => (
-                              <button key={k} type="button" onClick={() => setCoolerBuyKind(k)} className={`px-2 py-0.5 text-[9px] font-mono rounded border ${coolerBuyKind === k ? 'bg-rose-500/20 border-rose-500 text-rose-300' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{label}</button>
+                              <button key={k} type="button" onClick={() => setCoolerBuyKind(k)} className={`px-2 py-0.5 text-[11px] font-mono rounded border ${coolerBuyKind === k ? 'bg-rose-500/20 border-rose-500 text-rose-300' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{label}</button>
                             ))}
                           </div>
                         ) },
                         { type: 'storage', emoji: '💾', label: 'Storage', variants: (
                           <div className="flex gap-1">
                             {[['hdd', 'HDD'], ['nvme', 'NVMe']].map(([k, label]) => (
-                              <button key={k} type="button" onClick={() => setStorageBuyKind(k)} className={`px-2 py-0.5 text-[9px] font-mono rounded border ${storageBuyKind === k ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{label}</button>
+                              <button key={k} type="button" onClick={() => setStorageBuyKind(k)} className={`px-2 py-0.5 text-[11px] font-mono rounded border ${storageBuyKind === k ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{label}</button>
                             ))}
                           </div>
                         ) },
@@ -1583,18 +1593,18 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         return (
                           <div key={type} className="p-2.5 bg-slate-900/40 rounded border border-slate-800 space-y-2 flex flex-col">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-[10px] font-bold text-slate-200 font-mono shrink-0">{emoji} {label}</span>
+                              <span className="text-xs font-bold text-slate-200 font-mono shrink-0">{emoji} {label}</span>
                               {variants}
                             </div>
                             <div className="flex items-center gap-1">
                               <button type="button" onClick={() => adjustBuyLevel(type, -1, levels.length)} disabled={idx <= 0} className={`px-2.5 py-2 rounded border text-xs font-bold ${idx <= 0 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>◀</button>
                               <div className="flex-1 text-center px-1 py-1 bg-slate-950 rounded border border-slate-800 min-w-0">
-                                <div className="text-[11px] font-bold text-cyan-200 font-mono">+{level}강</div>
-                                <div className="text-[8px] text-slate-400 font-mono truncate" title={row.name}>{row.name}</div>
+                                <div className="text-sm font-bold text-cyan-200 font-mono">+{level}강</div>
+                                <div className="text-[10px] text-slate-400 font-mono truncate" title={row.name}>{row.name}</div>
                               </div>
                               <button type="button" onClick={() => adjustBuyLevel(type, 1, levels.length)} disabled={idx >= levels.length - 1} className={`px-2.5 py-2 rounded border text-xs font-bold ${idx >= levels.length - 1 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>▶</button>
                             </div>
-                            <button type="button" onClick={() => handleBuyComponentPack(type, level)} disabled={buyDisabled} className={`w-full py-1.5 rounded text-[10px] font-bold font-mono border transition mt-auto ${buyDisabled ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed opacity-60' : 'bg-cyan-600/20 border-cyan-500 text-cyan-200 hover:bg-cyan-500/30'}`}>
+                            <button type="button" onClick={() => handleBuyComponentPack(type, level)} disabled={buyDisabled} className={`w-full py-1.5 rounded text-xs font-bold font-mono border transition mt-auto ${buyDisabled ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed opacity-60' : 'bg-cyan-600/20 border-cyan-500 text-cyan-200 hover:bg-cyan-500/30'}`}>
                               {ramFull ? 'RAM 창고 가득' : `구매 ${OMG.formatMineral(row.costMinerals)}`}
                             </button>
                           </div>
@@ -1609,22 +1619,22 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         return (
                           <div className="p-2.5 bg-slate-900/40 rounded border border-slate-800 space-y-2 flex flex-col">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-[10px] font-bold text-slate-200 font-mono shrink-0">🔌 Motherboard</span>
+                              <span className="text-xs font-bold text-slate-200 font-mono shrink-0">🔌 Motherboard</span>
                               <div className="flex gap-1">
                                 {['Intel', 'AMD'].map((m) => (
-                                  <button key={m} type="button" onClick={() => { setMotherboardBuyManufacturer(m); setMotherboardBuyIndex(0); }} className={`px-2 py-0.5 text-[9px] font-mono rounded border ${motherboardBuyManufacturer === m ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{m}</button>
+                                  <button key={m} type="button" onClick={() => { setMotherboardBuyManufacturer(m); setMotherboardBuyIndex(0); }} className={`px-2 py-0.5 text-[11px] font-mono rounded border ${motherboardBuyManufacturer === m ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{m}</button>
                                 ))}
                               </div>
                             </div>
                             <div className="flex items-center gap-1">
                               <button type="button" onClick={() => adjustMotherboardBuyIndex(-1)} disabled={mbIdx <= 0} className={`px-2.5 py-2 rounded border text-xs font-bold ${mbIdx <= 0 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>◀</button>
                               <div className="flex-1 text-center px-1 py-1 bg-slate-950 rounded border border-slate-800 min-w-0">
-                                <div className="text-[11px] font-bold text-cyan-200 font-mono truncate" title={board.name}>{board.name}</div>
-                                <div className="text-[8px] text-slate-400 font-mono">{board.supportedDdrGeneration} · 실드+{board.shieldIncrease.toLocaleString()}</div>
+                                <div className="text-sm font-bold text-cyan-200 font-mono truncate" title={board.name}>{board.name}</div>
+                                <div className="text-[10px] text-slate-400 font-mono">{board.supportedDdrGeneration} · 실드+{board.shieldIncrease.toLocaleString()}</div>
                               </div>
                               <button type="button" onClick={() => adjustMotherboardBuyIndex(1)} disabled={mbIdx >= boards.length - 1} className={`px-2.5 py-2 rounded border text-xs font-bold ${mbIdx >= boards.length - 1 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>▶</button>
                             </div>
-                            <button type="button" onClick={() => board && handlePurchaseMotherboard(board)} disabled={!affordable || !board} className={`w-full py-1.5 rounded text-[10px] font-bold font-mono border transition mt-auto ${!affordable ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed opacity-60' : 'bg-cyan-600/20 border-cyan-500 text-cyan-200 hover:bg-cyan-500/30'}`}>
+                            <button type="button" onClick={() => board && handlePurchaseMotherboard(board)} disabled={!affordable || !board} className={`w-full py-1.5 rounded text-xs font-bold font-mono border transition mt-auto ${!affordable ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed opacity-60' : 'bg-cyan-600/20 border-cyan-500 text-cyan-200 hover:bg-cyan-500/30'}`}>
                               구매 {OMG.formatMineral(mbCost)}
                             </button>
                           </div>
@@ -1648,10 +1658,10 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         const buyLv = getAutoBuyLevel(row.type, goal, buyMeta);
                         return (
                           <div key={`${row.type}-${row.variantKey || 'default'}`} className="flex flex-col space-y-1">
-                            <button type="button" onClick={row.toggle} className={`py-1.5 text-[9px] font-bold font-mono rounded border transition flex items-center justify-center space-x-1 ${row.on ? row.activeCls : 'bg-slate-950 border-slate-800 text-slate-500'}`}>
+                            <button type="button" onClick={row.toggle} className={`py-1.5 text-[11px] font-bold font-mono rounded border transition flex items-center justify-center space-x-1 ${row.on ? row.activeCls : 'bg-slate-950 border-slate-800 text-slate-500'}`}>
                               <span>{row.emoji} {row.label} {row.on ? 'AUTO ON' : 'AUTO OFF'}</span>
                             </button>
-                            <div className="flex items-center justify-center gap-0.5 text-[8px] font-mono text-slate-500">
+                            <div className="flex items-center justify-center gap-0.5 text-[10px] font-mono text-slate-500">
                               <button type="button" onClick={() => adjustAutoTarget(row.type, -1, row.variantKey)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">−</button>
                               <span className="text-center leading-tight">+{buyLv != null ? buyLv : '—'}강 → {goal}강</span>
                               <button type="button" onClick={() => adjustAutoTarget(row.type, 1, row.variantKey)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">+</button>
@@ -1671,7 +1681,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       <span className="text-xs font-bold text-emerald-400 font-mono tracking-widest uppercase flex items-center space-x-1.5 font-bold">
                         <span>📦 내 보유 장비 창고 (Inventory Warehouse)</span>
                       </span>
-                      <span className="text-[10px] text-slate-500 font-mono">보관 {inventory.length}개 · RAM {OMG.countRamInInventory(inventory)}/{OMG.MAX_RAM_INVENTORY}</span>
+                      <span className="text-xs text-slate-500 font-mono">보관 {inventory.length}개 · RAM {OMG.countRamInInventory(inventory)}/{OMG.MAX_RAM_INVENTORY}</span>
                     </div>
 
                     {inventory.length === 0 ? (
@@ -1720,14 +1730,14 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                             <div key={p.id} className="p-3 bg-slate-900/60 rounded border border-slate-800 hover:border-slate-700 transition flex flex-col justify-between space-y-2">
                               <div>
                                 <div className="flex justify-between items-center mb-1">
-                                  <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-bold ${badgeStyle}`}>
+                                  <span className={`text-[11px] font-mono px-1.5 py-0.5 rounded font-bold ${badgeStyle}`}>
                                     {badgeText}
                                   </span>
-                                  <span className="text-[10px] font-mono text-slate-500">+{p.level}강</span>
+                                  <span className="text-xs font-mono text-slate-500">+{p.level}강</span>
                                 </div>
-                                <p className="text-[11px] font-bold text-slate-200 truncate">{partName}</p>
-                                <p className="text-[9px] text-slate-500 font-mono mt-0.5">{specDetail}</p>
-                                <p className="text-[9px] text-amber-500/80 font-mono mt-1">
+                                <p className="text-sm font-bold text-slate-200 truncate">{partName}</p>
+                                <p className="text-[11px] text-slate-500 font-mono mt-0.5">{specDetail}</p>
+                                <p className="text-[11px] text-amber-500/80 font-mono mt-1">
                                   [확률: {Math.round(prob * 100)}%] {!isMax && '⚠️실패 시 파괴'}
                                 </p>
                               </div>
@@ -1736,19 +1746,19 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                                 <button 
                                   onClick={() => handleInventoryUpgrade(p.id)}
                                   disabled={isUpgrading}
-                                  className="flex-1 py-1 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-[9px] font-bold font-mono transition disabled:opacity-50 text-center truncate"
+                                  className="flex-1 py-1 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-[11px] font-bold font-mono transition disabled:opacity-50 text-center truncate"
                                 >
                                   {isMax ? '최고강' : '강화하기'}
                                 </button>
                                 <button 
                                   onClick={() => handleEquipComponent(p.id)}
-                                  className="flex-1 py-1 bg-cyan-500/10 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 border border-cyan-500/30 rounded text-[9px] font-bold font-mono transition text-center truncate"
+                                  className="flex-1 py-1 bg-cyan-500/10 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 border border-cyan-500/30 rounded text-[11px] font-bold font-mono transition text-center truncate"
                                 >
                                   장착
                                 </button>
                                 <button 
                                   onClick={() => handleSellComponent(p.id)}
-                                  className="flex-1 py-1 bg-rose-500/10 hover:bg-rose-500 hover:text-slate-950 text-rose-400 border border-rose-500/30 rounded text-[9px] font-bold font-mono transition text-center truncate"
+                                  className="flex-1 py-1 bg-rose-500/10 hover:bg-rose-500 hover:text-slate-950 text-rose-400 border border-rose-500/30 rounded text-[11px] font-bold font-mono transition text-center truncate"
                                 >
                                   💰 {OMG.formatMineral(OMG.getShopSellPriceMinerals(p.type, p.level, p))}
                                 </button>
@@ -1767,14 +1777,14 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               {/* 하단 - 작업 사냥터 / 파티 사냥터 */}
               {/* ---------------------------------------------------------------- */}
               <div className="bg-slate-900/40 p-6 rounded-xl border border-slate-800 flex flex-col space-y-4">
-                <h2 className="text-md uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
+                <h2 className="text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
                   <span className="text-emerald-400 text-lg mr-1.5">💼</span>
                   <span>작업 사냥터</span>
                 </h2>
                 <p className="text-xs text-slate-400">작업(Work)과 게임 사냥(Gaming)은 <strong className="text-emerald-400">동시 진행</strong> · 작업 티어는 <strong className="text-amber-400">GPU·RAM·CPU(코어)</strong> 스펙 충족 필요</p>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="p-4 bg-slate-950/60 rounded border border-emerald-900/40 space-y-3">
-                    <span className="text-[10px] text-emerald-400 font-mono uppercase font-bold">💼 작업 (Work)</span>
+                    <span className="text-xs text-emerald-400 font-mono uppercase font-bold">💼 작업 (Work)</span>
                     <div className="flex flex-wrap gap-2">
                       {OMG.WORK_TASKS.map((task) => {
                         const selectable = OMG.canSelectWorkTask(workParts, task.taskIndex);
@@ -1788,10 +1798,10 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                             disabled={!selectable}
                             onClick={() => selectable && setWorkTaskIndex(task.taskIndex)}
                             title={selectable ? `${req} · RAM ${task.requiredRamGb}GB · 틱당 ${task.mineralBase}원` : reason}
-                            className={`text-[10px] px-2 py-1 rounded font-mono border ${active ? 'bg-emerald-600 border-emerald-500 text-white' : selectable ? 'bg-slate-900 border-slate-700 text-slate-300 hover:border-emerald-500/40' : 'bg-slate-950 border-slate-800 text-slate-600 opacity-50 cursor-not-allowed'}`}
+                            className={`text-xs px-2 py-1 rounded font-mono border ${active ? 'bg-emerald-600 border-emerald-500 text-white' : selectable ? 'bg-slate-900 border-slate-700 text-slate-300 hover:border-emerald-500/40' : 'bg-slate-950 border-slate-800 text-slate-600 opacity-50 cursor-not-allowed'}`}
                           >
                             {active ? '▶ ' : ''}{task.name}
-                            <span className="block text-[8px] opacity-80">{req}</span>
+                            <span className="block text-[10px] opacity-80">{req}</span>
                           </button>
                         );
                       })}
@@ -1802,8 +1812,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       <strong className="text-emerald-400 font-mono">{effectiveWorkUnits}기</strong>
                       <span className="text-slate-500">/ {maxWorkUnits}기</span>
                       <button type="button" disabled={workUnitMode === 'auto' || maxWorkUnits <= 0} onClick={() => setManualWorkUnits((n) => Math.min(maxWorkUnits, n + 1))} className="px-2 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-40">▶</button>
-                      <button type="button" onClick={() => setWorkUnitMode('auto')} className={`px-2 py-0.5 rounded border text-[10px] font-mono ${workUnitMode === 'auto' ? 'bg-amber-500/20 border-amber-500 text-amber-300' : 'border-slate-700 text-slate-400'}`}>자동 최적</button>
-                      <button type="button" onClick={() => { setWorkUnitMode('manual'); setManualWorkUnits(effectiveWorkUnits); }} className={`px-2 py-0.5 rounded border text-[10px] font-mono ${workUnitMode === 'manual' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300' : 'border-slate-700 text-slate-400'}`}>수동</button>
+                      <button type="button" onClick={() => setWorkUnitMode('auto')} className={`px-2 py-0.5 rounded border text-xs font-mono ${workUnitMode === 'auto' ? 'bg-amber-500/20 border-amber-500 text-amber-300' : 'border-slate-700 text-slate-400'}`}>자동 최적</button>
+                      <button type="button" onClick={() => { setWorkUnitMode('manual'); setManualWorkUnits(effectiveWorkUnits); }} className={`px-2 py-0.5 rounded border text-xs font-mono ${workUnitMode === 'manual' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300' : 'border-slate-700 text-slate-400'}`}>수동</button>
                     </div>
                     <p className="text-xs text-slate-400">
                       틱당 <strong className="text-emerald-400">{OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate, effectiveUnitLimit, effectiveWorkUnits).toLocaleString()}원</strong>
@@ -1811,7 +1821,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     </p>
                   </div>
                   <div className="p-4 bg-slate-950/60 rounded border border-cyan-900/40 space-y-3">
-                    <span className="text-[10px] text-cyan-400 font-mono uppercase font-bold">🎮 게임 사냥 (Gaming)</span>
+                    <span className="text-xs text-cyan-400 font-mono uppercase font-bold">🎮 게임 사냥 (Gaming)</span>
                     <p className="text-xs text-slate-300 font-bold">{activeGame ? activeGame.name : '다운로드된 게임 없음'}</p>
                     <p className="text-xs text-slate-400">
                       배치 <strong className="text-cyan-400">{specs.maxHuntingUnits}기</strong>
@@ -1820,11 +1830,11 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     </p>
                     {downloadTarget ? (
                       <>
-                        <div className="text-[10px] font-mono text-slate-400">다운로드: <strong>{downloadTarget.name}</strong> · +{downloadTarget.requiredGb}GB (여유 {specs.storageFreeGb}GB / 사용 {specs.storageUsedGb}GB / {storage.capacityGb}GB) · {OMG.formatMineral(downloadTarget.mineralCost || 0)}</div>
+                        <div className="text-xs font-mono text-slate-400">다운로드: <strong>{downloadTarget.name}</strong> · +{downloadTarget.requiredGb}GB (여유 {specs.storageFreeGb}GB / 사용 {specs.storageUsedGb}GB / {storage.capacityGb}GB) · {OMG.formatMineral(downloadTarget.mineralCost || 0)}</div>
                         <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
                           <div className="bg-cyan-500 h-full transition-all" style={{ width: `${downloadProgress}%` }} />
                         </div>
-                        <div className="flex justify-between items-center text-[10px] font-mono">
+                        <div className="flex justify-between items-center text-xs font-mono">
                           <span className="text-slate-500">{specs.downloadSpeedMb} MB/s</span>
                           {!isDownloading ? (
                             <button type="button" onClick={startDownload} disabled={!downloadValidation.ok} title={downloadValidation.reason}
@@ -1834,18 +1844,18 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                           ) : <span className="text-cyan-400 animate-pulse">다운로드 중…</span>}
                         </div>
                         {!downloadValidation.ok && !isDownloading && (
-                          <p className="text-[10px] text-rose-400">{downloadValidation.reason}</p>
+                          <p className="text-xs text-rose-400">{downloadValidation.reason}</p>
                         )}
                       </>
                     ) : (
-                      <p className="text-[10px] text-emerald-400 font-mono">모든 게임 다운로드 완료</p>
+                      <p className="text-xs text-emerald-400 font-mono">모든 게임 다운로드 완료</p>
                     )}
                   </div>
                 </div>
               </div>
 
               <div className="bg-slate-900/40 p-6 rounded-xl border border-purple-900/40 flex flex-col space-y-4">
-                <h2 className="text-md uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
+                <h2 className="text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
                   <span className="text-purple-400 text-lg mr-1.5">👥</span>
                   <span>파티 사냥터</span>
                 </h2>
@@ -1855,7 +1865,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 </div>
                 <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
                   {OMG.PARTY_HUNTING_TIERS.map((tier, idx) => (
-                    <button key={tier.name} onClick={() => { setPartyHuntingTier(idx); setIsPartyHunting(true); }} disabled={!isPartyHunting} className={`p-2 rounded border text-[9px] font-mono text-left disabled:opacity-40 ${partyHuntingTier === idx && isPartyHunting ? 'border-purple-500 bg-purple-950/30' : 'border-slate-800 bg-slate-950'}`}>{tier.name}<br/>+{tier.mineralPerTick}원 / +{tier.scaCoins}SCA</button>
+                    <button key={tier.name} onClick={() => { setPartyHuntingTier(idx); setIsPartyHunting(true); }} disabled={!isPartyHunting} className={`p-2 rounded border text-[11px] font-mono text-left disabled:opacity-40 ${partyHuntingTier === idx && isPartyHunting ? 'border-purple-500 bg-purple-950/30' : 'border-slate-800 bg-slate-950'}`}>{tier.name}<br/>+{tier.mineralPerTick}원 / +{tier.scaCoins}SCA</button>
                   ))}
                 </div>
                 {isPartyHunting && OMG.PARTY_HUNTING_TIERS[partyHuntingTier] && (
@@ -1865,13 +1875,13 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
 
               <div className="p-4 bg-slate-950/90 rounded border border-emerald-500/30 neon-border-emerald flex flex-col space-y-2.5">
                 <div className="flex justify-between items-center border-b border-emerald-950 pb-2">
-                  <span className="text-[10px] text-emerald-400 font-mono tracking-widest uppercase flex items-center space-x-1.5 font-bold">
+                  <span className="text-xs text-emerald-400 font-mono tracking-widest uppercase flex items-center space-x-1.5 font-bold">
                     <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
                     <span>수입 로그</span>
                   </span>
-                  <span className="text-[9px] text-emerald-600 font-mono">{isPartyHunting ? 'PARTY' : 'WORK'}</span>
+                  <span className="text-[11px] text-emerald-600 font-mono">{isPartyHunting ? 'PARTY' : 'WORK'}</span>
                 </div>
-                <div className="h-36 overflow-y-auto overscroll-contain font-mono text-[10px] text-emerald-400/90 space-y-1.5 select-text leading-relaxed">
+                <div className="h-36 overflow-y-auto overscroll-contain font-mono text-xs text-emerald-400/90 space-y-1.5 select-text leading-relaxed">
                   {combatLogs.map((log, idx) => (
                     <div key={idx} className="transition-all duration-300 hover:text-emerald-300">{log}</div>
                   ))}
@@ -1929,10 +1939,10 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                                 <span className="text-lg">👤</span>
                               </div>
                               <span className="text-xs font-bold text-slate-200 mt-2 truncate max-w-[120px]">{p.nickname} {isMe && '(나)'}</span>
-                              <span className="text-[9px] text-slate-500 font-mono">DPS: {p.dpsContribution.toLocaleString()}</span>
+                              <span className="text-[11px] text-slate-500 font-mono">DPS: {p.dpsContribution.toLocaleString()}</span>
                             </div>
 
-                            <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded ${p.isReady ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/20' : 'bg-rose-950/40 text-rose-400 border border-rose-500/20'}`}>
+                            <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded ${p.isReady ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/20' : 'bg-rose-950/40 text-rose-400 border border-rose-500/20'}`}>
                               {p.isReady ? '준비 완료' : '대기 중'}
                             </span>
                           </div>
@@ -1942,7 +1952,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       {Array.from({ length: 4 - raidState.players.length }).map((_, idx) => (
                         <div key={idx} className="p-4 bg-slate-950/20 border border-slate-900 border-dashed rounded-lg flex flex-col items-center justify-center text-center text-slate-700 min-h-[120px]">
                           <span className="text-lg text-slate-700">➕</span>
-                          <span className="text-[9px] font-mono mt-1">대기 중...</span>
+                          <span className="text-[11px] font-mono mt-1">대기 중...</span>
                         </div>
                       ))}
                     </div>
@@ -1962,9 +1972,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     <div className="lg:col-span-2 flex flex-col space-y-6">
                       
                       <div className="bg-slate-950/80 border border-cyan-500/30 p-6 rounded-xl text-center neon-border-cyan flex flex-col items-center justify-center relative overflow-hidden">
-                        <div className="absolute top-2 left-3 text-[9px] font-mono text-cyan-500/40 uppercase">LIVE COMPUTE COMBAT MONITOR</div>
+                        <div className="absolute top-2 left-3 text-[11px] font-mono text-cyan-500/40 uppercase">LIVE COMPUTE COMBAT MONITOR</div>
                         
-                        <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500">BOSS RAID STAGE</div>
+                        <div className="text-xs font-mono uppercase tracking-widest text-slate-500">BOSS RAID STAGE</div>
                         <div className="text-4xl font-extrabold text-cyan-300 font-mono tracking-wider mt-1.5">
                           FLOOR {raidState.currentFloor} <span className="text-lg text-slate-500">/ 100</span>
                         </div>
@@ -2000,7 +2010,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                           </div>
                         </div>
 
-                        <div className="flex justify-between items-center text-[10px] font-mono pt-1 text-slate-500">
+                        <div className="flex justify-between items-center text-xs font-mono pt-1 text-slate-500">
                           <span>남은 타임아웃 제한 시간</span>
                           <span className={`font-bold ${raidState.timeLeft <= 10 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`}>{raidState.timeLeft} 초</span>
                         </div>
@@ -2040,7 +2050,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                                     style={{ width: `${p.isDead ? 100 : share}%` }}
                                   ></div>
                                 </div>
-                                <div className="flex justify-between text-[9px] font-mono text-slate-500">
+                                <div className="flex justify-between text-[11px] font-mono text-slate-500">
                                   <span>{p.isDead ? 'DDR에러 유닛 파괴됨' : `지분: ${Math.round(share)}%`}</span>
                                   {p.currentHp !== undefined && (
                                     <span>HP: {p.currentHp} / {p.maxHp}</span>
@@ -2067,13 +2077,13 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                             <span className="text-slate-500">수령 가능 마일스톤:</span>
                             <span className="text-cyan-300 font-bold">10층 ~ 100층 (10층단위)</span>
                           </div>
-                          <div className="flex justify-between text-[11px] text-slate-400">
+                          <div className="flex justify-between text-sm text-slate-400">
                             <span>오늘 남은 보상 층수:</span>
                             <span className="text-emerald-400 font-bold">
                               {raidState.currentFloor <= 100 ? `${Math.ceil(raidState.currentFloor / 10) * 10}층 ~ 100층` : '모든 구간 수령 완료'}
                             </span>
                           </div>
-                          <p className="text-[9px] text-slate-500 mt-2 border-t border-slate-900 pt-2 leading-relaxed">
+                          <p className="text-[11px] text-slate-500 mt-2 border-t border-slate-900 pt-2 leading-relaxed">
                             * 보상은 하루에 단 한 번, 날짜가 바뀌면 수령 완료 최고 층수가 0으로 리셋되며 다시 처음부터 순차로 차분 획득 가능합니다.
                           </p>
                         </div>
@@ -2184,7 +2194,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
 
             <form onSubmit={submit} className="space-y-3">
               <div>
-                <label className="block text-[11px] text-slate-400 font-mono mb-1">닉네임</label>
+                <label className="block text-sm text-slate-400 font-mono mb-1">닉네임</label>
                 <input
                   type="text"
                   value={username}
@@ -2195,7 +2205,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 />
               </div>
               <div>
-                <label className="block text-[11px] text-slate-400 font-mono mb-1">비밀번호</label>
+                <label className="block text-sm text-slate-400 font-mono mb-1">비밀번호</label>
                 <input
                   type="password"
                   value={password}
