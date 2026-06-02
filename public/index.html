@@ -254,6 +254,9 @@
         }, ms);
       };
       const [isUpgrading, setIsUpgrading] = useState(false);
+      const gameStateRef = useRef({});
+      const wallClockRef = useRef({ lastMs: Date.now() });
+      const tickRemainderRef = useRef({ workHunt: 0, party: 0, auto: 0 });
       const [activeUpgradingPart, setActiveUpgradingPart] = useState(null);
       const [rebirthCount, setRebirthCount] = useState(() => {
         const saved = localStorage.getItem('sca_rebirthCount');
@@ -365,8 +368,14 @@
         const saved = localStorage.getItem('sca_unlockedGameIndex');
         return saved !== null ? parseInt(saved, 10) : -1;
       });
-      const [isDownloading, setIsDownloading] = useState(false);
+      const [isDownloading, setIsDownloading] = useState(() => {
+        return localStorage.getItem('sca_isDownloading') === 'true';
+      });
       const [downloadProgress, setDownloadProgress] = useState(0);
+      const [downloadStartedAt, setDownloadStartedAt] = useState(() => {
+        const saved = localStorage.getItem('sca_downloadStartedAt');
+        return saved ? parseInt(saved, 10) : null;
+      });
       const [downloadTarget, setDownloadTarget] = useState(() => {
         const saved = localStorage.getItem('sca_downloadTarget');
         if (saved !== null) return JSON.parse(saved);
@@ -647,44 +656,8 @@
         if (dtChanged) setDownloadTarget(dt);
       }, []);
 
-      useEffect(() => {
-        if (isPartyHunting) return;
-        const tickMs = OMG.calcIncomeEventIntervalMs(scaUpgrades, gpuAttackFrames);
-        const interval = setInterval(() => {
-          const earn = OMG.calcWorkIncomePerTick(
-            workParts,
-            workTaskIndex,
-            specs.penalties.mineralMultiplier,
-            rebirthIncomeMult,
-            incomeBonusRate,
-            effectiveUnitLimit,
-            effectiveWorkUnits
-          );
-          if (earn > 0) setMinerals((p) => p + earn);
-        }, tickMs);
-        return () => clearInterval(interval);
-      }, [specs, workParts, workTaskIndex, rebirthIncomeMult, incomeBonusRate, isPartyHunting, gameSpeedMult, gpuAttackFrames, scaUpgrades, effectiveUnitLimit, effectiveWorkUnits]);
 
-      useEffect(() => {
-        const tickMs = OMG.calcIncomeEventIntervalMs(scaUpgrades, gpuAttackFrames);
-        const interval = setInterval(() => {
-          if (isDownloading) return;
-          const earn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit, effectiveWorkUnits);
-          if (earn > 0) setMinerals((p) => p + earn);
-        }, tickMs);
-        return () => clearInterval(interval);
-      }, [workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, gameSpeedMult, gpuAttackFrames, scaUpgrades, isDownloading, effectiveUnitLimit, effectiveWorkUnits]);
-      useEffect(() => {
-        if (!isPartyHunting) return;
-        const tier = OMG.PARTY_HUNTING_TIERS[partyHuntingTier];
-        if (!tier) return;
-        const tickMs = OMG.calcGameSpeedTickMs(scaUpgrades, 3000);
-        const iv = setInterval(() => {
-          setMinerals(p => p + Math.round(tier.mineralPerTick * (1 + incomeBonusRate)));
-          setScaCoins(p => p + tier.scaCoins);
-        }, tickMs);
-        return () => clearInterval(iv);
-      }, [isPartyHunting, partyHuntingTier, incomeBonusRate, gameSpeedMult]);
+
 
       // ----------------------------------------------------------------------
       // 6.5. 게임 진행 상태 로컬 스토리지 실시간 자동 저장 (F5/새로고침 방지)
@@ -709,6 +682,9 @@
         localStorage.setItem('sca_manualWorkUnits', String(manualWorkUnits));
         localStorage.setItem('sca_unlockedGameIndex', String(unlockedGameIndex));
         localStorage.setItem('sca_downloadTarget', JSON.stringify(downloadTarget));
+        localStorage.setItem('sca_isDownloading', isDownloading ? 'true' : 'false');
+        if (downloadStartedAt) localStorage.setItem('sca_downloadStartedAt', String(downloadStartedAt));
+        else localStorage.removeItem('sca_downloadStartedAt');
         localStorage.setItem('sca_inventory', JSON.stringify(inventory));
         localStorage.setItem('sca_autoBuyCpuByMfr', JSON.stringify(autoBuyCpuByMfr));
         localStorage.setItem('sca_autoBuyGpu', autoBuyGpu.toString());
@@ -745,69 +721,6 @@
         }, 1500);
         return () => clearInterval(interval);
       }, [cpu.level, specs, workParts, workTaskIndex, unlockedGameIndex, activeGame, rebirthIncomeMult, incomeBonusRate, isPartyHunting, partyHuntingTier, effectiveUnitLimit, effectiveWorkUnits, isDownloading]);
-
-      // ----------------------------------------------------------------------
-      // 6.7. 지능형 자동 구매 및 자동 강화(Auto Buy & Upgrade) 통합 루프 엔진
-      // ----------------------------------------------------------------------
-      useEffect(() => {
-        const interval = setInterval(() => {
-          if (isUpgrading) return;
-
-          const jobs = [
-            { type: 'cpu', variantKey: 'Intel', active: autoBuyCpuByMfr.Intel, label: 'Intel CPU' },
-            { type: 'cpu', variantKey: 'AMD', active: autoBuyCpuByMfr.AMD, label: 'AMD CPU' },
-            { type: 'gpu', variantKey: null, active: autoBuyGpu, label: 'GPU' },
-            { type: 'ram', variantKey: null, active: autoBuyRam, label: 'RAM' },
-            { type: 'cooler', variantKey: 'air', active: autoBuyCoolerByKind.air, label: '공랭' },
-            { type: 'cooler', variantKey: 'water', active: autoBuyCoolerByKind.water, label: '수랭' },
-            { type: 'storage', variantKey: 'hdd', active: autoBuyStorageByKind.hdd, label: 'HDD' },
-            { type: 'storage', variantKey: 'nvme', active: autoBuyStorageByKind.nvme, label: 'NVMe' },
-          ];
-
-          for (const job of jobs) {
-            if (!job.active) continue;
-
-            const { type, variantKey, label } = job;
-            const buyMeta = variantKey != null ? buildBuyMetaForVariant(type, variantKey) : getComponentBuyMeta(type);
-            const goal = getVariantAutoTarget(type, variantKey);
-            const buyLevel = getAutoBuyLevel(type, goal, buyMeta);
-            const owned = inventory.filter((p) => p.type === type && partMatchesBuyMeta(p, type, buyMeta));
-            const maxOwnedLevel = owned.length ? Math.max(...owned.map((p) => p.level)) : 0;
-            const upgradeTarget = owned
-              .filter((p) => p.level < goal && p.level < OMG.getMaxLevel(type, p))
-              .sort((a, b) => b.level - a.level)[0];
-            const needsShopBuy = buyLevel != null && (owned.length === 0 || maxOwnedLevel < buyLevel);
-
-            if (buyLevel == null && owned.length === 0) {
-              setVariantAutoBuyOff(type, variantKey);
-              setCombatLogs(prev => [...prev.slice(-7), `⚠️ [SYSTEM] ${label} 직접 구매 가능한 강이 없어 AUTO를 중단합니다.`]);
-              break;
-            }
-
-            if (needsShopBuy) {
-const costM = OMG.getShopTierCostMinerals(type, buyLevel, buyMeta);
-              if (minerals >= costM) {
-                handleBuyComponentPack(type, buyLevel, buyMeta);
-                break;
-              }
-              setVariantAutoBuyOff(type, variantKey);
-              setCombatLogs(prev => [...prev.slice(-7), `⚠️ [SYSTEM] 미네랄 부족으로 ${label} +${buyLevel}강 자동 구매가 중단되었습니다.`]);
-              break;
-            }
-
-            if (upgradeTarget) {
-              handleInventoryUpgrade(upgradeTarget.id, { auto: true });
-              break;
-            }
-
-            setVariantAutoBuyOff(type, variantKey);
-            setCombatLogs(prev => [...prev.slice(-7), `🎉 [SYSTEM] ${label} 자동강화 목표 ${goal}강 달성.`]);
-            break;
-          }
-        }, OMG.calcAutoLoopIntervalMs(scaUpgrades));
-
-        return () => clearInterval(interval);
-      }, [autoBuyCpuByMfr, autoBuyGpu, autoBuyRam, autoBuyCoolerByKind, autoBuyStorageByKind, autoTargetLevels, isUpgrading, inventory, minerals, scaUpgrades]);
 
       // ----------------------------------------------------------------------
       // 7. V1.2.9 원작 강화 (미네랄 상점)
@@ -958,9 +871,17 @@ const buyMeta = buyMetaOverride || getComponentBuyMeta(type);
           alert(`미네랄 부족 (필요 ${OMG.formatMineral(costM)} · 보유 ${OMG.formatMineral(minerals)})`);
           return;
         }
-        setMinerals((prev) => prev - costM);
+        setMinerals((prev) => {
+          const n = prev - costM;
+          gameStateRef.current.minerals = n;
+          return n;
+        });
         const newPart = OMG.buildInventoryPart(type, level, buyMeta);
-        setInventory((prev) => [...prev, newPart]);
+        setInventory((prev) => {
+          const n = [...prev, newPart];
+          gameStateRef.current.inventory = n;
+          return n;
+        });
         const tierName = OMG.getPartName(type, level, newPart);
         setCombatLogs((prev) => [...prev.slice(-7), `구매 ${tierName} +${level}강`]);
       };
@@ -986,10 +907,18 @@ const buyMeta = buyMetaOverride || getComponentBuyMeta(type);
           const prob = OMG.getUpgradeProbability(partToUpgrade.type, currentLevel, partToUpgrade, probBonusRate);
           const result = Math.random() <= prob ? 'success' : 'exploded';
           if (result === 'success') {
-            setInventory((prev) => prev.map(p => p.id === itemId ? OMG.applyTierStats(p, currentLevel + 1) : p));
+            setInventory((prev) => {
+              const n = prev.map(p => p.id === itemId ? OMG.applyTierStats(p, currentLevel + 1) : p);
+              gameStateRef.current.inventory = n;
+              return n;
+            });
             if (!auto) setCombatLogs((prev) => [...prev.slice(-7), `${label} +${currentLevel + 1}강`]);
           } else {
-            setInventory((prev) => prev.filter(p => p.id !== itemId));
+            setInventory((prev) => {
+              const n = prev.filter(p => p.id !== itemId);
+              gameStateRef.current.inventory = n;
+              return n;
+            });
             pushToast(`${label} +${currentLevel}강 파괴`, 'exploded', 2200);
           }
         };
@@ -1011,6 +940,7 @@ const buyMeta = buyMetaOverride || getComponentBuyMeta(type);
       const handleRebirth = () => {
         if (gpu.level < 10) { alert('GPU 10강 필요'); return; }
         if (isDownloading) { alert('게임 다운로드 중에는 환생할 수 없습니다. (v1.0.6)'); return; }
+        // download state cleared on rebirth below via setIsDownloading(false)
         if (!confirm('환생 시 부품·미네랄이 초기화됩니다. SCA 코인/센터·환생 수치는 유지됩니다.')) return;
         const parts = { cpu, gpu, ram, cooler, storage };
         const outcome = OMG.calcRebirthOutcome(parts, rebirthStat);
@@ -1136,6 +1066,13 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       // ----------------------------------------------------------------------
       // 8. 상위 사냥터(게임) 다운로드 진행도 시뮬레이션
       // ----------------------------------------------------------------------
+      useEffect(() => {
+        if (isDownloading && !downloadStartedAt) {
+          setIsDownloading(false);
+          localStorage.setItem('sca_isDownloading', 'false');
+        }
+      }, []);
+
       const startDownload = () => {
         const check = OMG.validateDownloadStart(workParts, unlockedGameIndex, downloadTarget, isDownloading, minerals);
         if (!check.ok) {
@@ -1145,42 +1082,241 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         if (check.mineralCost > 0) {
           setMinerals((prev) => prev - check.mineralCost);
         }
+        const started = Date.now();
         setIsDownloading(true);
+        setDownloadStartedAt(started);
+        localStorage.setItem('sca_downloadStartedAt', String(started));
         setDownloadProgress(0);
       };
 
+      // ----------------------------------------------------------------------
+      // 6.4. 백그라운드·다른 탭 — wall-clock 게임 루프 (수입·다운로드·AUTO)
+      // ----------------------------------------------------------------------
       useEffect(() => {
-        if (!isDownloading) return;
+        gameStateRef.current = {
+          workParts,
+          workTaskIndex,
+          specs,
+          rebirthIncomeMult,
+          incomeBonusRate,
+          effectiveUnitLimit,
+          effectiveWorkUnits,
+          unlockedGameIndex,
+          isPartyHunting,
+          partyHuntingTier,
+          isDownloading,
+          downloadTarget,
+          downloadStartedAt,
+          scaUpgrades,
+          gpuAttackFrames,
+          minerals,
+          inventory,
+          isUpgrading,
+          autoBuyCpuByMfr,
+          autoBuyGpu,
+          autoBuyRam,
+          autoBuyCoolerByKind,
+          autoBuyStorageByKind,
+          autoTargetLevels,
+          cpuBuyManufacturer,
+          coolerBuyKind,
+          storageBuyKind,
+          probBonusRate,
+        };
+      });
 
-        const interval = setInterval(() => {
-          setDownloadProgress(prev => {
-            const currentSize = (prev / 100) * downloadTarget.sizeMb;
-            const nextSize = currentSize + (specs.downloadSpeedMb);
-            
-            if (nextSize >= downloadTarget.sizeMb) {
-              clearInterval(interval);
-              setIsDownloading(false);
-              setUnlockedGameIndex(downloadTarget.gameIndex);
-              const nextTarget = OMG.DOWNLOAD_TARGETS.find(t => t.gameIndex === downloadTarget.gameIndex + 1);
-              if (nextTarget) {
-                setDownloadTarget({
-                  name: nextTarget.name,
-                  sizeMb: nextTarget.sizeMb,
-                  requiredGb: nextTarget.requiredGb,
-                  mineralCost: nextTarget.mineralCost || 0,
-                  gameIndex: nextTarget.gameIndex,
-                });
-              } else {
-                setDownloadTarget(null);
-              }
-              return 100;
-            }
-            return (nextSize / downloadTarget.sizeMb) * 100;
+      const completeDownload = (target) => {
+        if (!target || target.gameIndex == null) return;
+        setIsDownloading(false);
+        setDownloadStartedAt(null);
+        localStorage.removeItem('sca_downloadStartedAt');
+        localStorage.setItem('sca_isDownloading', 'false');
+        setUnlockedGameIndex(target.gameIndex);
+        const nextTarget = OMG.DOWNLOAD_TARGETS.find((t) => t.gameIndex === target.gameIndex + 1);
+        if (nextTarget) {
+          setDownloadTarget({
+            name: nextTarget.name,
+            sizeMb: nextTarget.sizeMb,
+            requiredGb: nextTarget.requiredGb,
+            mineralCost: nextTarget.mineralCost || 0,
+            gameIndex: nextTarget.gameIndex,
           });
-        }, Math.max(20, Math.round(OMG.calcGameSpeedTickMs(scaUpgrades, 100))));
+        } else {
+          setDownloadTarget(null);
+        }
+        setDownloadProgress(100);
+      };
 
-        return () => clearInterval(interval);
-      }, [isDownloading, specs.downloadSpeedMb, downloadTarget, gameSpeedMult]);
+      const runOneAutoJob = () => {
+        const s = gameStateRef.current;
+        if (s.isUpgrading) return false;
+
+        const jobs = [
+          { type: 'cpu', variantKey: 'Intel', active: s.autoBuyCpuByMfr && s.autoBuyCpuByMfr.Intel, label: 'Intel CPU' },
+          { type: 'cpu', variantKey: 'AMD', active: s.autoBuyCpuByMfr && s.autoBuyCpuByMfr.AMD, label: 'AMD CPU' },
+          { type: 'gpu', variantKey: null, active: s.autoBuyGpu, label: 'GPU' },
+          { type: 'ram', variantKey: null, active: s.autoBuyRam, label: 'RAM' },
+          { type: 'cooler', variantKey: 'air', active: s.autoBuyCoolerByKind && s.autoBuyCoolerByKind.air, label: '공랭' },
+          { type: 'cooler', variantKey: 'water', active: s.autoBuyCoolerByKind && s.autoBuyCoolerByKind.water, label: '수랭' },
+          { type: 'storage', variantKey: 'hdd', active: s.autoBuyStorageByKind && s.autoBuyStorageByKind.hdd, label: 'HDD' },
+          { type: 'storage', variantKey: 'nvme', active: s.autoBuyStorageByKind && s.autoBuyStorageByKind.nvme, label: 'NVMe' },
+        ];
+
+        for (const job of jobs) {
+          if (!job.active) continue;
+          const { type, variantKey, label } = job;
+          const buyMeta = variantKey != null ? buildBuyMetaForVariant(type, variantKey) : {
+            manufacturer: type === 'cpu' ? s.cpuBuyManufacturer : undefined,
+            coolerKind: type === 'cooler' ? s.coolerBuyKind : undefined,
+            storageKind: type === 'storage' ? s.storageBuyKind : undefined,
+          };
+          const goal = (() => {
+            const v = s.autoTargetLevels[type];
+            if (variantKey != null && v && typeof v === 'object') return v[variantKey] || 1;
+            return typeof v === 'number' ? v : 1;
+          })();
+          const levels = OMG.getPurchasableLevels(type, buyMeta);
+          if (!levels.length) continue;
+          const target = goal || 1;
+          const below = levels.filter((lv) => lv < target);
+          const buyLevel = below.length ? Math.max(...below) : (levels.includes(target) ? target : Math.min(...levels));
+          const owned = (s.inventory || []).filter((p) => p.type === type && partMatchesBuyMeta(p, type, buyMeta));
+          const maxOwnedLevel = owned.length ? Math.max(...owned.map((p) => p.level)) : 0;
+          const upgradeTarget = owned
+            .filter((p) => p.level < goal && p.level < OMG.getMaxLevel(type, p))
+            .sort((a, b) => b.level - a.level)[0];
+          const needsShopBuy = buyLevel != null && (owned.length === 0 || maxOwnedLevel < buyLevel);
+
+          if (buyLevel == null && owned.length === 0) {
+            setVariantAutoBuyOff(type, variantKey);
+            setCombatLogs((prev) => [...prev.slice(-7), `⚠️ [SYSTEM] ${label} 직접 구매 가능한 강이 없어 AUTO를 중단합니다.`]);
+            return true;
+          }
+          if (needsShopBuy) {
+            const costM = OMG.getShopTierCostMinerals(type, buyLevel, buyMeta);
+            if ((s.minerals ?? 0) >= costM) {
+              handleBuyComponentPack(type, buyLevel, buyMeta);
+              return true;
+            }
+            setVariantAutoBuyOff(type, variantKey);
+            setCombatLogs((prev) => [...prev.slice(-7), `⚠️ [SYSTEM] 미네랄 부족으로 ${label} +${buyLevel}강 자동 구매가 중단되었습니다.`]);
+            return true;
+          }
+          if (upgradeTarget) {
+            handleInventoryUpgrade(upgradeTarget.id, { auto: true });
+            return true;
+          }
+          setVariantAutoBuyOff(type, variantKey);
+          setCombatLogs((prev) => [...prev.slice(-7), `🎉 [SYSTEM] ${label} 자동강화 목표 ${goal}강 달성.`]);
+          return true;
+        }
+        return false;
+      };
+
+      useEffect(() => {
+        const LOOP_MS = 200;
+        const MAX_INCOME_TICKS = 120000;
+        const MAX_AUTO_STEPS = document.hidden ? 80 : 12;
+
+        const tick = () => {
+          const now = Date.now();
+          let elapsed = now - wallClockRef.current.lastMs;
+          wallClockRef.current.lastMs = now;
+          if (elapsed < 0) elapsed = 0;
+          if (elapsed > 300000) elapsed = 300000;
+
+          const s = gameStateRef.current;
+          const rem = tickRemainderRef.current;
+
+          if (s.isPartyHunting && OMG.PARTY_HUNTING_TIERS[s.partyHuntingTier]) {
+            const tier = OMG.PARTY_HUNTING_TIERS[s.partyHuntingTier];
+            const partyTickMs = OMG.calcGameSpeedTickMs(s.scaUpgrades, 3000);
+            const partyTotal = rem.party + elapsed;
+            const partyConsumed = OMG.consumeElapsedTicks(partyTotal, partyTickMs, MAX_INCOME_TICKS);
+            rem.party = partyConsumed.remainderMs;
+            if (partyConsumed.ticks > 0) {
+              const m = Math.round(tier.mineralPerTick * (1 + (s.incomeBonusRate || 0))) * partyConsumed.ticks;
+              const c = tier.scaCoins * partyConsumed.ticks;
+              setMinerals((p) => {
+                const n = p + m;
+                gameStateRef.current.minerals = n;
+                return n;
+              });
+              setScaCoins((p) => p + c);
+            }
+          } else {
+            const incomeTickMs = OMG.calcIncomeEventIntervalMs(s.scaUpgrades, s.gpuAttackFrames);
+            const whTotal = rem.workHunt + elapsed;
+            const whConsumed = OMG.consumeElapsedTicks(whTotal, incomeTickMs, MAX_INCOME_TICKS);
+            rem.workHunt = whConsumed.remainderMs;
+            if (whConsumed.ticks > 0) {
+              const workEarn = OMG.calcWorkIncomePerTick(
+                s.workParts,
+                s.workTaskIndex,
+                s.specs.penalties.mineralMultiplier,
+                s.rebirthIncomeMult,
+                s.incomeBonusRate,
+                s.effectiveUnitLimit,
+                s.effectiveWorkUnits
+              );
+              let total = 0;
+              if (workEarn > 0) total += workEarn * whConsumed.ticks;
+              if (!s.isDownloading) {
+                const huntEarn = OMG.calcHuntIncomePerTick(
+                  s.workParts,
+                  s.workTaskIndex,
+                  s.unlockedGameIndex,
+                  s.incomeBonusRate,
+                  false,
+                  s.effectiveUnitLimit,
+                  s.effectiveWorkUnits
+                );
+                if (huntEarn > 0) total += huntEarn * whConsumed.ticks;
+              }
+              if (total > 0) {
+                setMinerals((p) => {
+                  const n = p + total;
+                  gameStateRef.current.minerals = n;
+                  return n;
+                });
+              }
+            }
+          }
+
+          if (s.isDownloading && s.downloadTarget && s.downloadStartedAt) {
+            const dlTickMs = Math.max(20, OMG.calcGameSpeedTickMs(s.scaUpgrades, 100));
+            const dlElapsed = now - s.downloadStartedAt;
+            const dlTicks = Math.floor(dlElapsed / dlTickMs);
+            const downloadedMb = dlTicks * (s.specs.downloadSpeedMb || 0);
+            const sizeMb = s.downloadTarget.sizeMb || 1;
+            if (downloadedMb >= sizeMb) {
+              completeDownload(s.downloadTarget);
+            } else {
+              setDownloadProgress((downloadedMb / sizeMb) * 100);
+            }
+          }
+
+          const autoTickMs = OMG.calcAutoLoopIntervalMs(s.scaUpgrades);
+          const autoTotal = rem.auto + elapsed;
+          const autoConsumed = OMG.consumeElapsedTicks(autoTotal, autoTickMs, MAX_INCOME_TICKS);
+          rem.auto = autoConsumed.remainderMs;
+          const autoSteps = Math.min(autoConsumed.ticks, MAX_AUTO_STEPS);
+          for (let i = 0; i < autoSteps; i++) {
+            if (!runOneAutoJob()) break;
+          }
+        };
+
+        wallClockRef.current.lastMs = Date.now();
+        const id = setInterval(tick, LOOP_MS);
+        const onWake = () => tick();
+        document.addEventListener('visibilitychange', onWake);
+        window.addEventListener('focus', onWake);
+        return () => {
+          clearInterval(id);
+          document.removeEventListener('visibilitychange', onWake);
+          window.removeEventListener('focus', onWake);
+        };
+      }, []);
 
       // ----------------------------------------------------------------------
       // 9. 실시간 웹소켓 100층 레이드 방 연결 핸들러

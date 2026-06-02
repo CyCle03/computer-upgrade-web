@@ -535,6 +535,16 @@
    * 자동 구매·강화 루프 주기(ms). SCA 배속이 높을수록 짧아짐.
    * 구버전 650ms+600ms ≈ 0.8회/초 → 배속3 기준 약 8~12회/초 목표.
    */
+
+  /** 백그라운드 탭: 경과 시간을 게임 틱 수로 변환 (remainderMs는 다음 누적용) */
+  function consumeElapsedTicks(elapsedMs, tickMs, maxTicks) {
+    const cap = maxTicks == null ? 120000 : maxTicks;
+    if (!tickMs || tickMs <= 0 || elapsedMs <= 0) return { ticks: 0, remainderMs: elapsedMs };
+    let ticks = Math.floor(elapsedMs / tickMs);
+    if (ticks > cap) ticks = cap;
+    return { ticks, remainderMs: elapsedMs - ticks * tickMs };
+  }
+
   function calcAutoLoopIntervalMs(scaUpgrades) {
     const mult = calcGameSpeedMultiplier(scaUpgrades);
     return Math.max(22, Math.round(90 / mult));
@@ -985,7 +995,7 @@ function getPartLevel(part) {
     calcRebirthStartMinerals, calcRebirthIncomeMultiplier,
     calcIncomeBonus, calcProbBonus,
     REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
-    calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeEventIntervalMs, calcAutoLoopIntervalMs, calcManualUpgradeDelayMs,
+    calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeEventIntervalMs, consumeElapsedTicks, calcAutoLoopIntervalMs, calcManualUpgradeDelayMs,
     REBIRTH_MINERAL_SCA_PER_10, getScaShopItemCost, getScaShopItemDisplayName, getGpuGradeLevel, canPurchaseGpuGradeUp, calcGpuGrade, calcGpuAttackFrames, calcGpuBenchmarkMultiplier,
     normalizeEquippedStorage, normalizeEquippedCooler, getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
     RAM_SLOT_UPGRADES, DEFAULT_RAM_SLOTS, getRamSlotCount, getRamEffectiveCapacityGb, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase,
