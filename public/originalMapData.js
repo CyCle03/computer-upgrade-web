@@ -673,16 +673,13 @@
     return 'DDR3';
   }
 
-  /** 게임 사냥 1기당 RAM(GB) — CPU 시트「성능」구간 */
+  /** 게임 사냥 1기당 RAM(GB) — CPU 성능 1 / 2 / 4GB 구간만 (고성능도 4GB 상한) */
   function getCpuHuntRamPerUnitGb(cpu) {
     const tier = getTier('cpu', cpu, (cpu && cpu.level) || 1);
     const perf = (tier && tier.perf) || 1;
-    if (perf <= 25) return 1;
-    if (perf <= 150) return 2;
-    if (perf <= 750) return 4;
-    if (perf <= 3000) return 8;
-    if (perf <= 12000) return 16;
-    return 32;
+    if (perf <= 75) return 1;
+    if (perf <= 750) return 2;
+    return 4;
   }
 
   /** 다운로드 완료 게임 requiredGb 합산 (gameIndex 1~unlocked) */
