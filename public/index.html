@@ -821,12 +821,26 @@
       const handlePurchaseScaItem = (item) => {
         const bought = scaUpgrades[item.id] || 0;
         if (bought >= item.maxPurchases) { alert('최대 구매 횟수 도달'); return; }
-        if (scaCoins < item.cost) { alert('SCA 코인 부족'); return; }
-        setScaCoins((prev) => prev - item.cost);
-        setScaUpgrades((prev) => ({ ...prev, [item.id]: bought + 1 }));
-        if (item.id === 'intelCpu11') {
-          setInventory((prev) => [...prev, OMG.createIntelCpu11InventoryItem()]);
-          setUpgradeMessage('📦 SCA Intel CPU 11강이 창고에 추가되었습니다.');
+        const cost = OMG.getScaShopItemCost(item);
+        if (scaCoins < cost) { alert(`SCA 코인 부족 (필요 ${cost.toLocaleString()})`); return; }
+        if (item.id === 'gpuGradeUp' && !OMG.canPurchaseGpuGradeUp(scaUpgrades)) {
+          alert('GPU 등급이 이미 하이엔드입니다.');
+          return;
+        }
+        setScaCoins((prev) => prev - cost);
+        setScaUpgrades((prev) => {
+          const next = { ...prev, [item.id]: bought + 1 };
+          if (item.id === 'gpuGradeUp') {
+            next.gpuGradeLevel = OMG.getGpuGradeLevel(prev) + 1;
+          }
+          return next;
+        });
+        if (item.id === 'gpuGradeUp') {
+          const g = OMG.getGpuGradeLevel(scaUpgrades) + 1;
+          setUpgradeMessage(`🎮 GPU 등급 → ${OMG.GPU_GRADE_NAMES[g]} (${OMG.GPU_GRADE_ATTACK_FRAMES[g]}f)`);
+          setUpgradeStatus('success');
+        } else if (item.mineralBonus) {
+          setUpgradeMessage(`환생 미네랄 +${item.mineralBonus} (다음 환생 시작 ${OMG.calcRebirthStartMinerals({ ...scaUpgrades, [item.id]: bought + 1 }).toLocaleString()}원)`);
           setUpgradeStatus('success');
         }
       };
@@ -1207,16 +1221,18 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           </div>
           {showScaCenter && (
             <section className="mb-4 p-4 border border-cyan-500/20 rounded-xl space-y-3">
-              <p className="text-[10px] font-mono text-cyan-300/80">다음 환생 시작 미네랄: <strong>{OMG.calcRebirthStartMinerals(scaUpgrades).toLocaleString()}원</strong> (SCA 상점 구매분 합산 · 상한 {OMG.REBIRTH_MINERAL_CAP.toLocaleString()}원)</p>
+              <p className="text-[10px] font-mono text-cyan-300/80">다음 환생 시작 미네랄: <strong>{OMG.calcRebirthStartMinerals(scaUpgrades).toLocaleString()}원</strong> (상한 {OMG.REBIRTH_MINERAL_CAP.toLocaleString()}원) · 환생 미네랄 <strong>+10원 = {OMG.REBIRTH_MINERAL_SCA_PER_10} SCA</strong> 고정</p>
               <p className="text-[10px] font-mono text-cyan-300/70">게임 배속 {gameSpeedFrames}프레임 (x{gameSpeedMult.toFixed(2)}) · GPU {OMG.GPU_GRADE_NAMES[gpuGrade]} ({gpuAttackFrames}f) · 다운로드 x{OMG.calcDownloadSpeedBonus(scaUpgrades).toFixed(1)}</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {OMG.SCA_SHOP_ITEMS.map(item => {
                 const bought = scaUpgrades[item.id] || 0;
-                const soldOut = bought >= item.maxPurchases;
+                const soldOut = bought >= item.maxPurchases || (item.id === 'gpuGradeUp' && !OMG.canPurchaseGpuGradeUp(scaUpgrades));
+                const cost = OMG.getScaShopItemCost(item);
+                const affordable = scaCoins >= cost;
                 return (
-                  <button key={item.id} onClick={() => handlePurchaseScaItem(item)} disabled={soldOut} className={`p-2 bg-slate-950 border rounded text-[10px] font-mono text-left ${soldOut ? 'border-slate-900 opacity-40' : 'border-slate-800 hover:border-cyan-500/40'}`}>
-                    <div>{item.name}</div>
-                    <div className="text-cyan-400">{item.cost} SCA</div>
+                  <button key={item.id} onClick={() => handlePurchaseScaItem(item)} disabled={soldOut || !affordable} className={`p-2 bg-slate-950 border rounded text-[10px] font-mono text-left ${soldOut || !affordable ? 'border-slate-900 opacity-40' : 'border-slate-800 hover:border-cyan-500/40'}`}>
+                    <div>{OMG.getScaShopItemDisplayName(item, scaUpgrades)}</div>
+                    <div className="text-cyan-400">{cost.toLocaleString()} SCA</div>
                     <div className="text-slate-500 mt-1">{bought}/{item.maxPurchases}</div>
                   </button>
                 );

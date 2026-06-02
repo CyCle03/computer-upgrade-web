@@ -176,18 +176,39 @@
   const GPU_GRADE_BENCHMARK_MULTIPLIERS = [1, 4, 10, 25];
   const DOWNLOAD_BASE_MB = 25;
 
+  /** 환생 미네랄 SCA 가격: +10원당 500 SCA 코인 고정 */
+  const REBIRTH_MINERAL_SCA_PER_10 = 500;
+
   const SCA_SHOP_ITEMS = [
-    { id: 'rebirthMineral500', name: '환생 시작 미네랄 +500', cost: 500, maxPurchases: 1 },
-    { id: 'rebirthMineralMax200', name: '환생 미네랄 최대 +200', cost: 800, maxPurchases: 5 },
-    { id: 'rebirthMineralMax2000', name: '환생 미네랄 최대 +2,000', cost: 5000, maxPurchases: 3 },
-    { id: 'rebirthMineralMax7500', name: '환생 미네랄 최대 +7,500', cost: 8000, maxPurchases: 2 },
+    { id: 'rebirthMineral500', name: '환생 시작 미네랄 +500', mineralBonus: 500, maxPurchases: 1 },
+    { id: 'rebirthMineralMax200', name: '환생 미네랄 +200', mineralBonus: 200, maxPurchases: 5 },
+    { id: 'rebirthMineralMax2000', name: '환생 미네랄 +2,000', mineralBonus: 2000, maxPurchases: 3 },
+    { id: 'rebirthMineralMax7500', name: '환생 미네랄 +7,500', mineralBonus: 7500, maxPurchases: 2 },
     { id: 'huntIncome1', name: '사냥터 수입 +1%', cost: 12000, maxPurchases: 10 },
     { id: 'gameSpeed1', name: '게임 배속 +1프레임', cost: 25000, maxPurchases: 12 },
     { id: 'upgradeProb01', name: '강화 확률 +0.1%', cost: 30000, maxPurchases: 10 },
     { id: 'downloadSpeed10', name: '다운로드 속도 +10%', cost: 35000, maxPurchases: 10 },
-    { id: 'gpuGradeUp', name: 'GPU 등급 증가 (하이엔드)', cost: 40000, maxPurchases: 1 },
-    { id: 'intelCpu11', name: 'Intel CPU 11강 (Core i5-11600K)', cost: 50000, maxPurchases: 1 },
+    { id: 'gpuGradeUp', name: 'GPU 등급 상승', cost: 40000, maxPurchases: 3 },
   ];
+
+  function getScaShopItemCost(item) {
+    if (item && item.mineralBonus) {
+      return Math.floor((item.mineralBonus / 10) * REBIRTH_MINERAL_SCA_PER_10);
+    }
+    return item && item.cost != null ? item.cost : 0;
+  }
+
+  function getScaShopItemDisplayName(item, scaUpgrades) {
+    if (!item) return '';
+    if (item.id === 'gpuGradeUp') {
+      const cur = getGpuGradeLevel(scaUpgrades);
+      if (cur >= GPU_GRADE_NAMES.length - 1) return 'GPU 등급 (하이엔드 달성)';
+      const from = GPU_GRADE_NAMES[cur];
+      const to = GPU_GRADE_NAMES[cur + 1];
+      return `GPU 등급: ${from} → ${to}`;
+    }
+    return item.name;
+  }
 
   /** gameIndex N 해금용 — mineralCost(원) + 저장공간 */
   const DOWNLOAD_TARGETS = [
@@ -460,11 +481,12 @@
 
   function calcRebirthStartMinerals(scaUpgrades) {
     const u = scaUpgrades || {};
-    const total =
-      (u.rebirthMineral500 || 0) * 500 +
-      (u.rebirthMineralMax200 || 0) * 200 +
-      (u.rebirthMineralMax2000 || 0) * 2000 +
-      (u.rebirthMineralMax7500 || 0) * 7500;
+    let total = 0;
+    SCA_SHOP_ITEMS.forEach((item) => {
+      if (item.mineralBonus) {
+        total += (u[item.id] || 0) * item.mineralBonus;
+      }
+    });
     return Math.min(REBIRTH_MINERAL_CAP, total);
   }
 
@@ -514,8 +536,23 @@
     return GPU_GRADE_BENCHMARK_MULTIPLIERS[calcGpuGrade(scaUpgrades)] || 1;
   }
 
+  function getGpuGradeLevel(scaUpgrades) {
+    const u = scaUpgrades || {};
+    if (typeof u.gpuGradeLevel === 'number') {
+      return Math.max(0, Math.min(GPU_GRADE_NAMES.length - 1, u.gpuGradeLevel));
+    }
+    if (u.gpuGradeUp) {
+      return Math.min(GPU_GRADE_NAMES.length - 1, typeof u.gpuGradeUp === 'number' ? u.gpuGradeUp : GPU_GRADE_NAMES.length - 1);
+    }
+    return 0;
+  }
+
   function calcGpuGrade(scaUpgrades) {
-    return scaUpgrades.gpuGradeUp ? GPU_GRADE_ATTACK_FRAMES.length - 1 : 0;
+    return getGpuGradeLevel(scaUpgrades);
+  }
+
+  function canPurchaseGpuGradeUp(scaUpgrades) {
+    return getGpuGradeLevel(scaUpgrades) < GPU_GRADE_NAMES.length - 1;
   }
 
   function calcGpuAttackFrames(scaUpgrades) {
@@ -636,8 +673,7 @@
     if (!tier) return 'GPU Lv.' + level;
     const grade = scaUpgrades != null ? calcGpuGrade(scaUpgrades) : 0;
     const model = getGpuModelName(tier, grade);
-    const gen = tier.generation || tier.name;
-    return model ? gen + ' · ' + model : gen;
+    return model || tier.generation || tier.name || ('GPU Lv.' + level);
   }
 
   function getGpuAttackPower(gpu, scaUpgrades) {
@@ -937,7 +973,7 @@ function getPartLevel(part) {
     calcIncomeBonus, calcProbBonus,
     REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
     calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeEventIntervalMs,
-    calcGpuGrade, calcGpuAttackFrames, calcGpuBenchmarkMultiplier,
+    REBIRTH_MINERAL_SCA_PER_10, getScaShopItemCost, getScaShopItemDisplayName, getGpuGradeLevel, canPurchaseGpuGradeUp, calcGpuGrade, calcGpuAttackFrames, calcGpuBenchmarkMultiplier,
     normalizeEquippedStorage, normalizeEquippedCooler, getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
     MAX_RAM_INVENTORY, RAM_SLOT_UPGRADES, DEFAULT_RAM_SLOTS, getRamSlotCount, getRamEffectiveCapacityGb, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase,
     SHOP_PURCHASABLE_LEVELS, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, getPurchasableLevels, getPurchasableMaxLevel, isPurchasableLevel, countRamInInventory, canPurchaseRam, buildInventoryPart,
