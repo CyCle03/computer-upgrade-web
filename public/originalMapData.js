@@ -821,7 +821,7 @@
 
   /** 다운로드 완료 게임 requiredGb 합산 (gameIndex 1~unlocked) */
   function calcStorageUsedGb(unlockedGameIndex) {
-    const unlocked = unlockedGameIndex ?? 0;
+    const unlocked = getEffectiveUnlockedGameIndex(unlockedGameIndex);
     if (unlocked <= 0) return 0;
     return DOWNLOAD_TARGETS.reduce((sum, t) => {
       if (t.gameIndex != null && t.gameIndex <= unlocked) {
@@ -907,6 +907,13 @@ function getPartLevel(part) {
     return GAME_HUNTING.find((g) => g.gameIndex === gameIndex) || null;
   }
 
+  /** 대항해시대(0)는 기본 해금. 저장값 -1·null은 0으로 보정 */
+  function getEffectiveUnlockedGameIndex(unlockedGameIndex) {
+    const n = unlockedGameIndex == null ? 0 : Number(unlockedGameIndex);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.min(GAME_HUNTING.length - 1, Math.floor(n));
+  }
+
   function getDownloadTargetMeta(downloadTarget) {
     if (!downloadTarget || downloadTarget.gameIndex == null) return null;
     return DOWNLOAD_TARGETS.find((t) => t.gameIndex === downloadTarget.gameIndex) || downloadTarget;
@@ -966,9 +973,7 @@ function getPartLevel(part) {
   }
 
   function normalizeGameProgress(unlockedGameIndex, downloadTarget) {
-    let unlocked = unlockedGameIndex ?? 0;
-    if (unlocked < 0) unlocked = 0;
-    unlocked = Math.min(GAME_HUNTING.length - 1, unlocked);
+    let unlocked = getEffectiveUnlockedGameIndex(unlockedGameIndex);
     let nextTarget = null;
     if (downloadTarget && downloadTarget.gameIndex != null) {
       const found = DOWNLOAD_TARGETS.find((t) => t.gameIndex === downloadTarget.gameIndex);
@@ -991,7 +996,7 @@ function getPartLevel(part) {
     if (!meta || meta.gameIndex == null) {
       return { ok: false, reason: '다운로드할 게임이 없습니다.' };
     }
-    const unlocked = unlockedGameIndex ?? 0;
+    const unlocked = getEffectiveUnlockedGameIndex(unlockedGameIndex);
     if (unlocked !== meta.gameIndex - 1) {
       return { ok: false, reason: '이전 게임을 다운로드한 뒤에만 다음 게임을 받을 수 있습니다.' };
     }
@@ -1014,7 +1019,7 @@ function getPartLevel(part) {
   function calcHuntIncomePerTick(parts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, maxUnitsOverride, workUnitsOverride) {
     if (isDownloading) return 0;
     const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride);
-    const game = getGameHunt(unlockedGameIndex);
+    const game = getGameHunt(getEffectiveUnlockedGameIndex(unlockedGameIndex));
     if (!game || alloc.activeHuntingUnits <= 0) return 0;
     const bonus = 1 + (incomeBonusRate || 0);
     return Math.round(game.mineralPerUnit * alloc.activeHuntingUnits * bonus);
@@ -1081,7 +1086,7 @@ function getPartLevel(part) {
     costToMinerals, formatMineral, formatManwon, getPurchaseCostMinerals,
     getRamCapacityGb, getRamEffectiveCapacityGb, getRamSlotCount, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase, getStorageCapacityGb, getGpuRamPerUnit, getGpuDisplayName, getGpuModelName, getGpuAttackPower, calcRamAttackFrames, getRamTierRow, getRamStandardTable, getRamMaxLevel, getRamPerfPerUnit, applyRamOverclock, getGpuTierAttack, getCpuRequiredDdrGeneration, getCpuHuntRamPerUnitGb,
     calcStorageUsedGb, getStorageFreeGb,
-    getWorkTask, getGameHunt, getDownloadTargetMeta,
+    getWorkTask, getGameHunt, getEffectiveUnlockedGameIndex, getDownloadTargetMeta,
     getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
     calcHuntIncomePerTick, calcWorkIncomePerTick, calcOptimalWorkUnits, toDownloadTargetSnapshot,
