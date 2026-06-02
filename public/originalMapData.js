@@ -670,10 +670,10 @@
 
   function getGpuDisplayName(level, part, scaUpgrades) {
     const tier = getTier('gpu', part, level);
-    if (!tier) return 'GPU Lv.' + level;
+    if (!tier) return 'GPU +' + level + '강';
     const grade = scaUpgrades != null ? calcGpuGrade(scaUpgrades) : 0;
     const model = getGpuModelName(tier, grade);
-    return model || tier.generation || tier.name || ('GPU Lv.' + level);
+    return model || ('GPU +' + level + '강');
   }
 
   function getGpuAttackPower(gpu, scaUpgrades) {
