@@ -62,21 +62,84 @@
   /** 시트「성능 증가량」엔트리 대비 배율 (x2, x5, x12) */
   const GPU_GRADE_PERF_MULT = [1, 2, 5, 12];
 
+  /** RAM — 시트 공속(프레임)·성능(1개)·오버클럭 분기. variant: standard | overclock */
   const RAM = [
-    { level: 1, name: 'DDR3-1333 (1GB)', cost: 5, prob: 0.3, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' },
-    { level: 2, name: 'DDR3-1333 (2GB)', cost: 0, prob: 0.3, clockMhz: 1333, capacityGb: 2, ddrGeneration: 'DDR3' },
-    { level: 3, name: 'DDR3-1600 (2GB)', cost: 0, prob: 0.25, clockMhz: 1600, capacityGb: 2, ddrGeneration: 'DDR3' },
-    { level: 4, name: 'DDR3-1600 (4GB)', cost: 0, prob: 0.25, clockMhz: 1600, capacityGb: 4, ddrGeneration: 'DDR3' },
-    { level: 5, name: 'DDR4-2400 (4GB)', cost: 1000, prob: 0.2, clockMhz: 2400, capacityGb: 4, ddrGeneration: 'DDR4' },
-    { level: 6, name: 'DDR4-2400 (8GB)', cost: 0, prob: 0.2, clockMhz: 2400, capacityGb: 8, ddrGeneration: 'DDR4' },
-    { level: 7, name: 'DDR4-2666 (8GB)', cost: 0, prob: 0.15, clockMhz: 2666, capacityGb: 8, ddrGeneration: 'DDR4' },
-    { level: 8, name: 'DDR4-3200 (8GB)', cost: 0, prob: 0.1, clockMhz: 3200, capacityGb: 8, ddrGeneration: 'DDR4' },
-    { level: 9, name: 'DDR4-3200 (16GB)', cost: 0, prob: 0.1, clockMhz: 3200, capacityGb: 16, ddrGeneration: 'DDR4' },
-    { level: 10, name: 'DDR5-4800 (8GB)', cost: 20000000, prob: 0.05, clockMhz: 4800, capacityGb: 8, ddrGeneration: 'DDR5' },
-    { level: 11, name: 'DDR5-4800 (16GB)', cost: 0, prob: 0.05, clockMhz: 4800, capacityGb: 16, ddrGeneration: 'DDR5' },
-    { level: 12, name: 'DDR5-5600 (16GB)', cost: 0, prob: 0.05, clockMhz: 5600, capacityGb: 16, ddrGeneration: 'DDR5' },
-    { level: 13, name: 'DDR5-5600 (32GB)', cost: 0, prob: 0, clockMhz: 5600, capacityGb: 32, ddrGeneration: 'DDR5' },
+    { level: 1, variant: 'standard', name: 'DDR3-1333 (1GB)', cost: 5, prob: 0.3, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3', attackSpeed: 48, perfPerUnit: 10 },
+    { level: 2, variant: 'standard', name: 'DDR3-1333 (2GB)', cost: 0, prob: 0.3, clockMhz: 1333, capacityGb: 2, ddrGeneration: 'DDR3', attackSpeed: 48, perfPerUnit: 10 },
+    { level: 3, variant: 'standard', name: 'DDR3-1600 (2GB)', cost: 0, prob: 0.25, clockMhz: 1600, capacityGb: 2, ddrGeneration: 'DDR3', attackSpeed: 44, perfPerUnit: 50 },
+    { level: 4, variant: 'standard', name: 'DDR3-1600 (4GB)', cost: 0, prob: 0.25, clockMhz: 1600, capacityGb: 4, ddrGeneration: 'DDR3', attackSpeed: 44, perfPerUnit: 50 },
+    { level: 5, variant: 'standard', name: 'DDR4-2400 (4GB)', cost: 1000, prob: 0.2, clockMhz: 2400, capacityGb: 4, ddrGeneration: 'DDR4', attackSpeed: 36, perfPerUnit: 200 },
+    { level: 6, variant: 'standard', name: 'DDR4-2400 (8GB)', cost: 0, prob: 0.2, clockMhz: 2400, capacityGb: 8, ddrGeneration: 'DDR4', attackSpeed: 36, perfPerUnit: 200 },
+    { level: 7, variant: 'standard', name: 'DDR4-2666 (8GB)', cost: 0, prob: 0.15, clockMhz: 2666, capacityGb: 8, ddrGeneration: 'DDR4', attackSpeed: 32, perfPerUnit: 300 },
+    { level: 8, variant: 'standard', name: 'DDR4-3200 (8GB)', cost: 0, prob: 0.1, clockMhz: 3200, capacityGb: 8, ddrGeneration: 'DDR4', attackSpeed: 28, perfPerUnit: 500 },
+    { level: 9, variant: 'standard', name: 'DDR4-3200 (16GB)', cost: 0, prob: 0.1, clockMhz: 3200, capacityGb: 16, ddrGeneration: 'DDR4', attackSpeed: 28, perfPerUnit: 500 },
+    { level: 9, variant: 'overclock', name: 'DDR4 OC-4000 (16GB)', cost: 0, prob: 0, clockMhz: 4000, capacityGb: 16, ddrGeneration: 'DDR4', attackSpeed: 24, perfPerUnit: 800 },
+    { level: 10, variant: 'standard', name: 'DDR5-4800 (8GB)', cost: 20000000, prob: 0.05, clockMhz: 4800, capacityGb: 8, ddrGeneration: 'DDR5', attackSpeed: 20, perfPerUnit: 1500 },
+    { level: 11, variant: 'standard', name: 'DDR5-4800 (16GB)', cost: 0, prob: 0.05, clockMhz: 4800, capacityGb: 16, ddrGeneration: 'DDR5', attackSpeed: 20, perfPerUnit: 1500 },
+    { level: 12, variant: 'standard', name: 'DDR5-5600 (16GB)', cost: 0, prob: 0.05, clockMhz: 5600, capacityGb: 16, ddrGeneration: 'DDR5', attackSpeed: 16, perfPerUnit: 2200 },
+    { level: 13, variant: 'standard', name: 'DDR5-5600 (32GB)', cost: 0, prob: 0, clockMhz: 5600, capacityGb: 32, ddrGeneration: 'DDR5', attackSpeed: 16, perfPerUnit: 2200 },
+    { level: 13, variant: 'overclock', ocStep: 1, name: 'DDR5 OC-6400 (32GB)', cost: 0, prob: 0, clockMhz: 6400, capacityGb: 32, ddrGeneration: 'DDR5', attackSpeed: 12, perfPerUnit: 3000 },
+    { level: 13, variant: 'overclock', ocStep: 2, name: 'DDR5 OC-7200 (32GB)', cost: 0, prob: 0, clockMhz: 7200, capacityGb: 32, ddrGeneration: 'DDR5', attackSpeed: 10, perfPerUnit: 4000 },
+    { level: 13, variant: 'overclock', ocStep: 3, name: 'DDR5 OC-8000 (32GB)', cost: 0, prob: 0, clockMhz: 8000, capacityGb: 32, ddrGeneration: 'DDR5', attackSpeed: 8, perfPerUnit: 5000 },
   ];
+
+  function getRamStandardTable() {
+    return RAM.filter((row) => (row.variant || 'standard') === 'standard');
+  }
+
+  function getRamTierRow(part, level) {
+    const lv = level != null ? level : ((part && part.level) || 1);
+    const variant = (part && part.ramVariant) || 'standard';
+    if (variant === 'overclock') {
+      const ocRows = RAM.filter((row) => row.level === lv && row.variant === 'overclock');
+      if (lv === 13 && ocRows.length) {
+        const mhz = part && part.clockMhz;
+        if (mhz) {
+          const byClock = ocRows.find((row) => row.clockMhz === mhz);
+          if (byClock) return byClock;
+        }
+        const step = part && part.ramOcStep;
+        if (step) {
+          const byStep = ocRows.find((row) => row.ocStep === step);
+          if (byStep) return byStep;
+        }
+        return ocRows[0];
+      }
+      if (ocRows.length) return ocRows[0];
+    }
+    return RAM.find((row) => row.level === lv && (row.variant || 'standard') === 'standard')
+      || RAM.find((row) => row.level === lv)
+      || RAM[RAM.length - 1];
+  }
+
+  function getRamMaxLevel() {
+    return getRamStandardTable().reduce((max, row) => Math.max(max, row.level), 1);
+  }
+
+  function getRamPerfPerUnit(ram) {
+    const tier = getRamTierRow(ram, (ram && ram.level) || 1);
+    return tier && tier.perfPerUnit != null ? tier.perfPerUnit : 10;
+  }
+
+  function applyRamOverclock(part, ocStep) {
+    if (!part || part.type !== 'ram') return part;
+    const lv = part.level;
+    if (lv !== 9 && lv !== 13) return part;
+    const ocRows = RAM.filter((row) => row.level === lv && row.variant === 'overclock');
+    if (!ocRows.length) return part;
+    let tier = ocRows[0];
+    if (lv === 13 && ocStep != null) {
+      tier = ocRows.find((row) => row.ocStep === ocStep) || ocRows[ocRows.length - 1];
+    }
+    return Object.assign({}, part, {
+      ramVariant: 'overclock',
+      ramOcStep: tier.ocStep || 1,
+      clockMhz: tier.clockMhz,
+      capacityGb: tier.capacityGb,
+      ddrGeneration: tier.ddrGeneration,
+    });
+  }
+
 
   const COOLER_AIR = [
     { level: 1, name: '인텔 기본 번들 (초코파이)', cost: 500, prob: 0.3, coolingCapacity: 500 },
@@ -330,6 +393,7 @@
       }
     } else if (type === 'ram') {
       const t = getTier('ram', meta, level);
+      newPart.ramVariant = 'standard';
       newPart.clockMhz = t.clockMhz;
       newPart.capacityGb = t.capacityGb;
       newPart.ddrGeneration = t.ddrGeneration;
@@ -348,15 +412,19 @@
   function getPartTable(type, part) {
     if (type === 'cpu') return part && part.manufacturer === 'AMD' ? AMD_CPU : INTEL_CPU;
     if (type === 'gpu') return GPU;
-    if (type === 'ram') return RAM;
+    if (type === 'ram') return getRamStandardTable();
     if (type === 'cooler') return part && part.coolerKind === 'water' ? COOLER_WATER : COOLER_AIR;
     if (type === 'storage') return part && part.storageKind === 'nvme' ? NVME : HDD;
     return [];
   }
 
-  function getMaxLevel(type, part) { return getPartTable(type, part).length; }
+  function getMaxLevel(type, part) {
+    if (type === 'ram') return getRamMaxLevel();
+    return getPartTable(type, part).length;
+  }
 
   function getTier(type, part, level) {
+    if (type === 'ram') return getRamTierRow(part, level);
     const table = getPartTable(type, part);
     return table.find((row) => row.level === level) || table[table.length - 1];
   }
@@ -387,6 +455,8 @@
       upgraded.generation = tier.generation || tier.name;
       upgraded.name = getGpuModelName(tier, 0);
     } else if (part.type === 'ram') {
+      upgraded.ramVariant = 'standard';
+      upgraded.ramOcStep = undefined;
       upgraded.clockMhz = tier.clockMhz;
       upgraded.capacityGb = tier.capacityGb;
       upgraded.ddrGeneration = tier.ddrGeneration;
@@ -522,11 +592,11 @@
   }
 
   /**
-   * 작업·사냥 수입 이벤트 간격(ms) — 원작: 킬/타격 = GPU 공속(프레임) + SCA 배속.
-   * 24fps 기준 공격 주기 / gameSpeedMult. (고정 1초 틱보다 원작에 가깝게)
+   * 작업·사냥 수입 이벤트 간격(ms) — 장착 RAM 공속(프레임) + SCA 배속.
+   * 24fps 기준 공격 주기 / gameSpeedMult.
    */
-  function calcIncomeEventIntervalMs(scaUpgrades, gpuAttackFrames) {
-    const frames = Math.max(1, gpuAttackFrames || GPU_GRADE_ATTACK_FRAMES[0]);
+  function calcIncomeEventIntervalMs(scaUpgrades, ramAttackFrames) {
+    const frames = Math.max(1, ramAttackFrames || calcRamAttackFrames(null));
     const secPerEvent = frames / 24 / calcGameSpeedMultiplier(scaUpgrades);
     return Math.max(50, Math.round(secPerEvent * 1000));
   }
@@ -576,6 +646,14 @@
 
   function canPurchaseGpuGradeUp(scaUpgrades) {
     return getGpuGradeLevel(scaUpgrades) < GPU_GRADE_NAMES.length - 1;
+  }
+
+
+  /** 장착 RAM 시트「공속」컬럼(프레임) — 수입·전투 주기 */
+  function calcRamAttackFrames(ram) {
+    const tier = getRamTierRow(ram, (ram && ram.level) || 1);
+    const frames = tier && tier.attackSpeed;
+    return Math.max(1, frames != null ? frames : 48);
   }
 
   function calcGpuAttackFrames(scaUpgrades) {
@@ -1001,7 +1079,7 @@ function getPartLevel(part) {
     RAM_SLOT_UPGRADES, DEFAULT_RAM_SLOTS, getRamSlotCount, getRamEffectiveCapacityGb, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase,
     SHOP_PURCHASABLE_LEVELS, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, getPurchasableLevels, getPurchasableMaxLevel, isPurchasableLevel, countRamInInventory, canPurchaseRam, buildInventoryPart,
     costToMinerals, formatMineral, formatManwon, getPurchaseCostMinerals,
-    getRamCapacityGb, getRamEffectiveCapacityGb, getRamSlotCount, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase, getStorageCapacityGb, getGpuRamPerUnit, getGpuDisplayName, getGpuModelName, getGpuAttackPower, getGpuTierAttack, getCpuRequiredDdrGeneration, getCpuHuntRamPerUnitGb,
+    getRamCapacityGb, getRamEffectiveCapacityGb, getRamSlotCount, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase, getStorageCapacityGb, getGpuRamPerUnit, getGpuDisplayName, getGpuModelName, getGpuAttackPower, calcRamAttackFrames, getRamTierRow, getRamStandardTable, getRamMaxLevel, getRamPerfPerUnit, applyRamOverclock, getGpuTierAttack, getCpuRequiredDdrGeneration, getCpuHuntRamPerUnitGb,
     calcStorageUsedGb, getStorageFreeGb,
     getWorkTask, getGameHunt, getDownloadTargetMeta,
     getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
