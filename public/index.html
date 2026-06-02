@@ -862,32 +862,37 @@
         pushToast(`램 슬롯 ${check.newSlots}개`, 'success', 2500);
       };
 
-      const handleBuyComponentPack = (type, level = 1, buyMetaOverride) => {
-const buyMeta = buyMetaOverride || getComponentBuyMeta(type);
+      const handleBuyComponentPack = (type, level = 1, buyMetaOverride, options) => {
+        const auto = options && options.auto;
+        const buyMeta = buyMetaOverride || getComponentBuyMeta(type);
         if (!OMG.isPurchasableLevel(type, level, buyMeta)) {
-          const buyable = OMG.getPurchasableLevels(type, buyMeta);
-          const list = buyable.length ? buyable.map((lv) => `+${lv}강`).join(', ') : '없음';
-          alert(`${type.toUpperCase()} +${level}강은 상점에서 직접 구매할 수 없습니다. 구매 가능: ${list}. 그 외 강은 강화로 올려야 합니다.`);
+          if (!auto) {
+            const buyable = OMG.getPurchasableLevels(type, buyMeta);
+            const list = buyable.length ? buyable.map((lv) => `+${lv}강`).join(', ') : '없음';
+            alert(`${type.toUpperCase()} +${level}강은 상점에서 직접 구매할 수 없습니다. 구매 가능: ${list}. 그 외 강은 강화로 올려야 합니다.`);
+          }
           return;
         }
         const costM = OMG.getShopTierCostMinerals(type, level, buyMeta);
-        if (minerals < costM) {
-          alert(`미네랄 부족 (필요 ${OMG.formatMineral(costM)} · 보유 ${OMG.formatMineral(minerals)})`);
+        const curMinerals = auto ? (gameStateRef.current.minerals ?? minerals) : minerals;
+        if (curMinerals < costM) {
+          if (!auto) {
+            alert(`미네랄 부족 (필요 ${OMG.formatMineral(costM)} · 보유 ${OMG.formatMineral(curMinerals)})`);
+          }
           return;
         }
-        setMinerals((prev) => {
-          const n = prev - costM;
-          gameStateRef.current.minerals = n;
-          return n;
-        });
         const newPart = OMG.buildInventoryPart(type, level, buyMeta);
-        setInventory((prev) => {
-          const n = [...prev, newPart];
-          gameStateRef.current.inventory = n;
-          return n;
-        });
+        const curInv = auto ? (gameStateRef.current.inventory || []) : inventory;
+        const nextMinerals = curMinerals - costM;
+        const nextInv = [...curInv, newPart];
+        gameStateRef.current.minerals = nextMinerals;
+        gameStateRef.current.inventory = nextInv;
+        setMinerals(nextMinerals);
+        setInventory(nextInv);
         const tierName = OMG.getPartName(type, level, newPart);
-        setCombatLogs((prev) => [...prev.slice(-7), `구매 ${tierName} +${level}강`]);
+        if (!auto) {
+          setCombatLogs((prev) => [...prev.slice(-7), `구매 ${tierName} +${level}강`]);
+        }
       };
 
       const handleSellComponent = (itemId) => {
@@ -902,28 +907,28 @@ const buyMeta = buyMetaOverride || getComponentBuyMeta(type);
       const handleInventoryUpgrade = (itemId, options) => {
         const auto = options && options.auto;
         if (!auto && isUpgrading) return;
-        const partToUpgrade = inventory.find(p => p.id === itemId);
+        const inv = auto ? (gameStateRef.current.inventory || []) : inventory;
+        const partToUpgrade = inv.find((p) => p.id === itemId);
         if (!partToUpgrade) return;
         const currentLevel = partToUpgrade.level;
         const label = partToUpgrade.type.toUpperCase();
 
         const applyUpgrade = () => {
-          const prob = OMG.getUpgradeProbability(partToUpgrade.type, currentLevel, partToUpgrade, probBonusRate);
+          const bonus = auto ? (gameStateRef.current.probBonusRate ?? probBonusRate) : probBonusRate;
+          const prob = OMG.getUpgradeProbability(partToUpgrade.type, currentLevel, partToUpgrade, bonus);
           const result = Math.random() <= prob ? 'success' : 'exploded';
           if (result === 'success') {
-            setInventory((prev) => {
-              const n = prev.map(p => p.id === itemId ? OMG.applyTierStats(p, currentLevel + 1) : p);
-              gameStateRef.current.inventory = n;
-              return n;
-            });
+            const baseInv = gameStateRef.current.inventory || inv;
+            const n = baseInv.map((p) => (p.id === itemId ? OMG.applyTierStats(p, currentLevel + 1) : p));
+            gameStateRef.current.inventory = n;
+            setInventory(n);
             if (!auto) setCombatLogs((prev) => [...prev.slice(-7), `${label} +${currentLevel + 1}강`]);
           } else {
-            setInventory((prev) => {
-              const n = prev.filter(p => p.id !== itemId);
-              gameStateRef.current.inventory = n;
-              return n;
-            });
-            pushToast(`${label} +${currentLevel}강 파괴`, 'exploded', 2200);
+            const baseInv = gameStateRef.current.inventory || inv;
+            const n = baseInv.filter((p) => p.id !== itemId);
+            gameStateRef.current.inventory = n;
+            setInventory(n);
+            if (!auto) pushToast(`${label} +${currentLevel}강 파괴`, 'exploded', 2200);
           }
         };
 
@@ -1187,8 +1192,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           const levels = OMG.getPurchasableLevels(type, buyMeta);
           if (!levels.length) continue;
           const target = goal || 1;
-          const below = levels.filter((lv) => lv < target);
-          const buyLevel = below.length ? Math.max(...below) : (levels.includes(target) ? target : Math.min(...levels));
+          const buyLevel = getAutoBuyLevel(type, target, buyMeta);
           const owned = (s.inventory || []).filter((p) => p.type === type && partMatchesBuyMeta(p, type, buyMeta));
           const maxOwnedLevel = owned.length ? Math.max(...owned.map((p) => p.level)) : 0;
           const upgradeTarget = owned
@@ -1204,7 +1208,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           if (needsShopBuy) {
             const costM = OMG.getShopTierCostMinerals(type, buyLevel, buyMeta);
             if ((s.minerals ?? 0) >= costM) {
-              handleBuyComponentPack(type, buyLevel, buyMeta);
+              handleBuyComponentPack(type, buyLevel, buyMeta, { auto: true });
               return true;
             }
             setVariantAutoBuyOff(type, variantKey);
