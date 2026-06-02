@@ -179,7 +179,7 @@ SCA 코인  ──▶  SCA 센터(영구 성장)  ──▶  환생해도 유지
 | 11~13강 | … | - | - | ✗ |
 
 - **램 슬롯 (웹 · 시트):** 기본 **1슬롯** → **2슬롯** 5,000원 → **4슬롯** 500,000원 (`RAM_SLOT_UPGRADES`)
-- **장착 효과:** 창고 RAM은 최대 **4개** 보관 가능하나, **장착은 1개**만. 장착 1개 용량 × **슬롯 수** = 실효 RAM (`getRamEffectiveCapacityGb`)
+- **장착 효과:** **장착은 RAM 1개**만. 장착 1개 용량 × **슬롯 수** = 실효 RAM (`getRamEffectiveCapacityGb`)
 - **CPU DDR (웹):** Intel 6강+ DDR4 · 12강+ DDR5 · AMD 1강+ DDR4 · 6강+ DDR5 (`getCpuRequiredDdrGeneration`)
 
 ### 3.5 드라이브
@@ -269,7 +269,7 @@ SCA 코인  ──▶  SCA 센터(영구 성장)  ──▶  환생해도 유지
 | **CPU / 메인보드** | **Intel · AMD** 탭 분리 |
 | **쿨러 / 드라이브** | 공랭·수랭 / HDD·NVMe 탭 |
 | **메인보드** | ◀▶ 14종 · **DDR3/DDR4/DDR5** · 실드 · 가격 |
-| **RAM** | 창고 **최대 4개** · 판매 **50%** · **슬롯 2/4** 별도 구매 (§3.4) |
+| **RAM** | 판매 **50%** · **슬롯 2/4** 별도 구매 (§3.4) |
 | **AUTO** | **목표 N강 미만** 중 직접구매 가능한 **최고 강** 구매 → 목표까지 강화 (`getAutoBuyLevel`) |
 | **Storage** | HDD/NVMe **부품 상점만** — ~~STORAGE ENGINE EXCHANGE~~ 패널 **제거** |
 

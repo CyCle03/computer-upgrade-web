@@ -221,7 +221,6 @@
     { name: '배틀그라운드', sizeMb: 200000, requiredGb: 500, mineralCost: 5000000, gameIndex: 7 },
   ];
 
-  const MAX_RAM_INVENTORY = 4;
   /** 램 슬롯 구매 (시트) — 장착 1개 = 슬롯 수만큼 동일 램 효과 */
   const RAM_SLOT_UPGRADES = [
     { slots: 2, cost: 5000 },
@@ -310,8 +309,8 @@
     return (inventory || []).filter((p) => p.type === 'ram').length;
   }
 
-  function canPurchaseRam(inventory) {
-    return countRamInInventory(inventory) < MAX_RAM_INVENTORY;
+  function canPurchaseRam() {
+    return true;
   }
 
   function buildInventoryPart(type, level, partMeta) {
@@ -989,7 +988,7 @@ function getPartLevel(part) {
     calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeEventIntervalMs, calcAutoLoopIntervalMs, calcManualUpgradeDelayMs,
     REBIRTH_MINERAL_SCA_PER_10, getScaShopItemCost, getScaShopItemDisplayName, getGpuGradeLevel, canPurchaseGpuGradeUp, calcGpuGrade, calcGpuAttackFrames, calcGpuBenchmarkMultiplier,
     normalizeEquippedStorage, normalizeEquippedCooler, getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
-    MAX_RAM_INVENTORY, RAM_SLOT_UPGRADES, DEFAULT_RAM_SLOTS, getRamSlotCount, getRamEffectiveCapacityGb, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase,
+    RAM_SLOT_UPGRADES, DEFAULT_RAM_SLOTS, getRamSlotCount, getRamEffectiveCapacityGb, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase,
     SHOP_PURCHASABLE_LEVELS, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, getPurchasableLevels, getPurchasableMaxLevel, isPurchasableLevel, countRamInInventory, canPurchaseRam, buildInventoryPart,
     costToMinerals, formatMineral, formatManwon, getPurchaseCostMinerals,
     getRamCapacityGb, getRamEffectiveCapacityGb, getRamSlotCount, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase, getStorageCapacityGb, getGpuRamPerUnit, getGpuDisplayName, getGpuModelName, getGpuAttackPower, getGpuTierAttack, getCpuRequiredDdrGeneration, getCpuHuntRamPerUnitGb,
