@@ -262,13 +262,18 @@
         const saved = localStorage.getItem('sca_ram');
         return saved !== null ? JSON.parse(saved) : { level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' };
       });
+      const [ramSlots, setRamSlots] = useState(() => {
+        const saved = localStorage.getItem('sca_ramSlots');
+        const n = saved !== null ? parseInt(saved, 10) : 1;
+        return OMG.getRamSlotCount(n);
+      });
       const [cooler, setCooler] = useState(() => {
         const saved = localStorage.getItem('sca_cooler');
         return saved !== null ? JSON.parse(saved) : { level: 1, coolingCapacity: 500, coolerKind: 'air' };
       });
       const [motherboard, setMotherboard] = useState(() => {
         const saved = localStorage.getItem('sca_motherboard');
-        return saved !== null ? JSON.parse(saved) : { socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 0 };
+        return saved !== null ? JSON.parse(saved) : { name: '인텔 P55', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 0 };
       });
       const [storage, setStorage] = useState(() => {
         const saved = localStorage.getItem('sca_storage');
@@ -397,7 +402,8 @@
       const gpuGrade = useMemo(() => OMG.calcGpuGrade(scaUpgrades), [scaUpgrades]);
       const gpuAttackFrames = useMemo(() => OMG.calcGpuAttackFrames(scaUpgrades), [scaUpgrades]);
 
-      const workParts = useMemo(() => ({ cpu, gpu, ram, cooler, storage, motherboard }), [cpu, gpu, ram, cooler, storage, motherboard]);
+      const effectiveRamGb = useMemo(() => OMG.getRamEffectiveCapacityGb(ram, ramSlots), [ram, ramSlots]);
+      const workParts = useMemo(() => ({ cpu, gpu, ram, cooler, storage, motherboard, ramSlots }), [cpu, gpu, ram, cooler, storage, motherboard, ramSlots]);
       const effectiveUnitLimit = useMemo(() => {
         let limit = OMG.getCpuCores(cpu);
         if (cpu.manufacturer !== motherboard.socketManufacturer) {
@@ -425,7 +431,7 @@
       );
 
       const getCpuName = (level, m) => OMG.getPartName('cpu', level, { type: 'cpu', manufacturer: m || cpu.manufacturer });
-      const getGpuName = (level) => OMG.getPartName('gpu', level, { type: 'gpu' });
+      const getGpuName = (level) => OMG.getGpuDisplayName(level, { type: 'gpu' }, scaUpgrades);
       const getRamName = (level, part) => OMG.getPartName('ram', level, part || ram);
       const getCoolerName = (level, part) => OMG.getPartName('cooler', level, part || cooler);
       const getStorageName = (level, part) => OMG.getPartName('storage', level, part || storage);
@@ -453,11 +459,11 @@
           unitLimit = Math.max(1, Math.floor(unitLimit * 0.5));
         }
 
-        // E. RAM 분배: 작업 점유 후 남은 RAM으로 사냥 유닛 (GPU 1기당 RAM × CPU 코어)
+        // E. RAM 분배: 작업 점유 후 잔여 RAM ÷ CPU 등급별 사냥 RAM·기 (코어 상한)
         const _workUnitsForSpecs = workUnitMode === 'auto'
           ? OMG.calcOptimalWorkUnits(workParts, workTaskIndex, unlockedGameIndex, effectiveUnitLimit, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading)
           : Math.min(Math.max(0, manualWorkUnits), workSpecStatus.activeWorkUnits || 0);
-        const ramAllocation = OMG.calcRamAllocation(workParts, workTaskIndex, effectiveUnitLimit, _workUnitsForSpecs);
+        const ramAllocation = OMG.calcRamAllocation(workParts, workTaskIndex, effectiveUnitLimit, _workUnitsForSpecs, scaUpgrades);
         const maxHuntingUnits = ramAllocation.activeHuntingUnits;
 
         // F. 유닛 체력 및 메인보드 고정 실드
@@ -468,7 +474,7 @@
         const attackSpeedSec = Math.max(0.1, Math.round((gpuAttackFrames / 24) * 100) / 100);
 
         // H. 데미지 (GPU 기하급수 및 CPU 소환수 등급 결합 시너지 성장)
-        const unitDamage = Math.round(10 * Math.pow(1.5, gpu.level - 1) * getSummonUnit(cpu.level).dpsFactor);
+        const unitDamage = Math.round(OMG.getGpuAttackPower(gpu, scaUpgrades) * getSummonUnit(cpu.level).dpsFactor);
 
         // I. 방어력
         let unitDefense = cooler.level * 3;
@@ -493,7 +499,10 @@
           ramAllocation,
           workRamUsed: ramAllocation.workRamUsed,
           huntRamFree: ramAllocation.huntRamFree,
-          gpuRamPerUnit: ramAllocation.ramPerUnit,
+          gpuRamPerUnit: OMG.getGpuRamPerUnit(gpu, scaUpgrades),
+          cpuHuntRamPerUnit: ramAllocation.huntRamPerUnit,
+          storageUsedGb: OMG.calcStorageUsedGb(unlockedGameIndex),
+          storageFreeGb: OMG.getStorageFreeGb(storage, unlockedGameIndex),
           gpuGrade,
           gpuAttackFrames,
           gameSpeedFrames,
@@ -544,6 +553,12 @@
         }
       }, []);
 
+
+      useEffect(() => {
+        setCooler((c) => OMG.normalizeEquippedCooler(c));
+        setStorage((s) => OMG.normalizeEquippedStorage(s));
+      }, []);
+
       useEffect(() => {
         // 레거시 저장값 마이그레이션: HDD 1강인데 250GB로 저장된 경우(이전 기본값) 60GB로 보정
         if ((storage.storageKind || 'hdd') === 'hdd' && (storage.level || 1) === 1 && storage.type === 'HDD' && storage.capacityGb === 250) {
@@ -568,7 +583,7 @@
           }
         }
         setWorkTaskIndex(0);
-      }, [workParts, workTaskIndex, cpu.level, gpu.level, ram.level, ram.capacityGb, motherboard.shieldIncrease]);
+      }, [workParts, workTaskIndex, cpu.level, gpu.level, ram.level, ram.capacityGb, ramSlots, motherboard.shieldIncrease]);
 
       useEffect(() => {
         const normalized = OMG.normalizeGameProgress(unlockedGameIndex, downloadTarget);
@@ -631,6 +646,7 @@
         localStorage.setItem('sca_cpu', JSON.stringify(cpu));
         localStorage.setItem('sca_gpu', JSON.stringify(gpu));
         localStorage.setItem('sca_ram', JSON.stringify(ram));
+        localStorage.setItem('sca_ramSlots', String(ramSlots));
         localStorage.setItem('sca_cooler', JSON.stringify(cooler));
         localStorage.setItem('sca_motherboard', JSON.stringify(motherboard));
         localStorage.setItem('sca_storage', JSON.stringify(storage));
@@ -815,6 +831,20 @@
         }
       };
 
+
+      const handlePurchaseRamSlots = (targetSlots) => {
+        const check = OMG.validateRamSlotPurchase(ramSlots, targetSlots, minerals);
+        if (!check.ok) {
+          alert(check.reason);
+          return;
+        }
+        setMinerals((prev) => prev - check.cost);
+        setRamSlots(check.newSlots);
+        setUpgradeMessage(`📦 램 슬롯 ${check.newSlots}개 — 장착 1개당 동일 램 ${check.newSlots}배 용량 (-${OMG.formatMineral(check.cost)})`);
+        setUpgradeStatus('success');
+        setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 3000);
+      };
+
       const handleBuyComponentPack = (type, level = 1) => {
         if (type === 'ram' && !OMG.canPurchaseRam(inventory)) {
           alert(`RAM은 최대 ${OMG.MAX_RAM_INVENTORY}개까지 창고에 보관할 수 있습니다.`);
@@ -835,7 +865,6 @@
         setMinerals((prev) => prev - costM);
         const newPart = OMG.buildInventoryPart(type, level, {
           manufacturer: cpuBuyManufacturer,
-          ddrGeneration: motherboard.supportedDdrGeneration || 'DDR3',
           coolerKind: coolerBuyKind,
           storageKind: storageBuyKind,
         });
@@ -896,8 +925,9 @@
 setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setGpu({ level: 1 });
         setRam({ level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' });
+        setRamSlots(1);
         setCooler({ level: 1, coolingCapacity: 500, coolerKind: 'air' });
-        setMotherboard({ socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 0 });
+        setMotherboard({ name: '인텔 P55', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 0 });
         setStorage({ type: 'HDD', capacityGb: 60, level: 1, storageKind: 'hdd' });
         setInventory([
           { id: 'inv-cpu-1', type: 'cpu', level: 1, manufacturer: 'Intel', ddrGeneration: 'DDR3' },
@@ -922,7 +952,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         const mbCost = OMG.costToMinerals(board.cost);
         if (minerals < mbCost) { alert(`미네랄 부족 (필요 ${OMG.formatMineral(mbCost)})`); return; }
         setMinerals((prev) => prev - mbCost);
-        setMotherboard({ socketManufacturer: board.socketManufacturer, supportedDdrGeneration: board.supportedDdrGeneration, shieldIncrease: board.shieldIncrease });
+        setMotherboard({ name: board.name, socketManufacturer: board.socketManufacturer, supportedDdrGeneration: board.supportedDdrGeneration, shieldIncrease: board.shieldIncrease });
       };
 
             // 2. 보관 장비 스왑 장착 핸들러
@@ -938,7 +968,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           setCpu({
             manufacturer: partToEquip.manufacturer,
             level: partToEquip.level,
-            ddrGeneration: partToEquip.ddrGeneration
+            ddrGeneration: OMG.getCpuRequiredDdrGeneration(partToEquip),
           });
           // 인벤토리 목록에서 장착된 것 빼고 기존 장착 부품 반입
           setInventory(prev => prev.filter(p => p.id !== itemId).concat({
@@ -974,29 +1004,33 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           }));
         } else if (type === 'cooler') {
           const currentEquipped = { ...cooler };
-          setCooler({
+          setCooler(OMG.normalizeEquippedCooler({
             level: partToEquip.level,
-            coolingCapacity: partToEquip.coolingCapacity
-          });
+            coolingCapacity: partToEquip.coolingCapacity,
+            coolerKind: partToEquip.coolerKind || 'air',
+          }));
           setInventory(prev => prev.filter(p => p.id !== itemId).concat({
             id: `inv-cooler-${Math.random().toString(36).substring(2, 7)}`,
             type: 'cooler',
             level: currentEquipped.level,
-            coolingCapacity: currentEquipped.coolingCapacity
+            coolingCapacity: currentEquipped.coolingCapacity,
+            coolerKind: currentEquipped.coolerKind || 'air',
           }));
         } else if (type === 'storage') {
           const currentEquipped = { ...storage };
-          setStorage({
-            type: partToEquip.storageType, // 장착 스키마는 'type'으로 HDD/SSD 보유
+          setStorage(OMG.normalizeEquippedStorage({
+            type: partToEquip.storageType,
             capacityGb: partToEquip.capacityGb,
-            level: partToEquip.level
-          });
+            level: partToEquip.level,
+            storageKind: partToEquip.storageKind,
+          }));
           setInventory(prev => prev.filter(p => p.id !== itemId).concat({
             id: `inv-storage-${Math.random().toString(36).substring(2, 7)}`,
             type: 'storage',
             level: currentEquipped.level,
-            storageType: currentEquipped.type, // 복귀 시 장착 스키마 'type'을 storageType에 매치
-            capacityGb: currentEquipped.capacityGb
+            storageType: currentEquipped.type,
+            storageKind: currentEquipped.storageKind || (currentEquipped.type === 'SSD' ? 'nvme' : 'hdd'),
+            capacityGb: currentEquipped.capacityGb,
           }));
         }
 
@@ -1266,7 +1300,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <div>
                     <p className="text-[10px] text-slate-500 font-mono">GPU ENGINE</p>
                     <p className="text-sm font-semibold text-slate-200">{getGpuName(gpu.level)}</p>
-                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">Grade: +{gpu.level}강</p>
+                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">+{gpu.level}강 · {OMG.GPU_GRADE_NAMES[gpuGrade]} · 공격 {OMG.getGpuAttackPower(gpu, scaUpgrades)}</p>
                   </div>
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">PCI-E</span>
                 </div>
@@ -1275,7 +1309,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <div>
                     <p className="text-[10px] text-slate-500 font-mono">SYSTEM RAM (MEM)</p>
                     <p className="text-sm font-semibold text-slate-200">{getRamName(ram.level, ram)}</p>
-                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">Grade: +{ram.level || 1}강 · Cap: {ram.capacityGb}GB / Clock: {ram.clockMhz}Mhz</p>
+                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">Grade: +{ram.level || 1}강 · 유효 {effectiveRamGb}GB ({ramSlots}슬롯×{ram.capacityGb}GB) · {ram.clockMhz}Mhz</p>
                   </div>
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{ram.ddrGeneration}</span>
                 </div>
@@ -1283,16 +1317,17 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center">
                   <div>
                     <p className="text-[10px] text-slate-500 font-mono">COOLING BLADE</p>
-                    <p className="text-sm font-semibold text-slate-200">{getCoolerName(cooler.level)}</p>
-                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">Cap: {cooler.coolingCapacity}W / Grade: +{cooler.level}강</p>
+                    <p className="text-sm font-semibold text-slate-200">{getCoolerName(cooler.level, cooler)}</p>
+                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">{(cooler.coolerKind === 'water' ? '수랭' : '공랭')} · Cap: {cooler.coolingCapacity}W / +{cooler.level}강</p>
                   </div>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">LIQUID</span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{cooler.coolerKind === 'water' ? '수랭' : '공랭'}</span>
                 </div>
 
                 <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center col-span-2">
                   <div>
-                    <p className="text-[10px] text-slate-500 font-mono">MOTHERBOARD (NOT UPGRADABLE)</p>
-                    <p className="text-sm font-semibold text-slate-200">Z-Series {motherboard.socketManufacturer} Socket Board</p>
+                    <p className="text-[10px] text-slate-500 font-mono">MOTHERBOARD</p>
+                    <p className="text-sm font-semibold text-slate-200">{motherboard.name || `${motherboard.socketManufacturer} Board`}</p>
+                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">{motherboard.socketManufacturer} · {motherboard.supportedDdrGeneration} · 실드 +{motherboard.shieldIncrease}</p>
                   </div>
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">{motherboard.supportedDdrGeneration} SLOT</span>
                 </div>
@@ -1301,7 +1336,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <div>
                     <p className="text-[10px] text-slate-500 font-mono">STORAGE SYSTEM</p>
                     <p className="text-sm font-semibold text-slate-200">{getStorageName(storage.level || 1, storage)}</p>
-                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">Grade: +{storage.level || 1}강 · Cap: {storage.capacityGb}GB {storage.type}</p>
+                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">+{storage.level || 1}강 · {storage.capacityGb}GB · {(storage.storageKind === 'nvme' || storage.type === 'SSD') ? 'NVMe SSD' : 'HDD'} · 다운로드 x{specs.storageDownloadMult}</p>
                   </div>
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{storage.type === 'SSD' ? 'SSD 4X FASTER' : 'HDD BASE'}</span>
                 </div>
@@ -1381,7 +1416,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       <div>
                         <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 부품 상점 — 부품별 구매 가능 강 (미네랄)</span>
                         <p className="text-xs text-slate-400">
-                          스프레드시트 구매가 = 미네랄(원) 1:1 (C = N×천만). Intel CPU 1·4·7·10·11강, AMD 1·3강, GPU 1·3·5·7강, RAM 1·5·10강, 쿨러·드라이브 1강, 메인보드(DDR·소켓 표시) 직접 구매. ◀▶로 강 선택 · AUTO는 목표 미만 구매 가능 최고 강 구매 후 목표까지 강화. RAM 창고 최대 4개 · 판매 50% 환급.
+                          스프레드시트 구매가 = 미네랄(원) 1:1 (C = N×천만). Intel CPU 1·4·7·10·11강, AMD 1·3강, GPU 1·3·5·7강, RAM 1·5·10강, 쿨러·드라이브 1강, 메인보드(DDR·소켓 표시) 직접 구매. ◀▶로 강 선택 · AUTO는 목표 미만 구매 가능 최고 강 구매 후 목표까지 강화. 램 슬롯 2·4 구매 · 창고 RAM 최대 4개 · 판매 50% 환급.
                         </p>
                       </div>
                       {gpu.level >= 10 && (
@@ -1393,7 +1428,33 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         </button>
                       )}
                     </div>
-                    
+
+                    <div className="p-3 bg-slate-900/50 rounded border border-emerald-900/30 space-y-2 col-span-full">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold text-emerald-300 font-mono">⚡ 램 슬롯 (장착 1개 = 슬롯 수만큼 동일 효과)</span>
+                        <span className="text-[9px] font-mono text-slate-400">현재 <strong className="text-emerald-400">{ramSlots}슬롯</strong> · 유효 용량 <strong className="text-emerald-400">{effectiveRamGb}GB</strong></span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {OMG.RAM_SLOT_UPGRADES.map((opt) => {
+                          const owned = ramSlots >= opt.slots;
+                          const canBuy = OMG.canPurchaseRamSlotUpgrade(ramSlots, opt.slots);
+                          const affordable = minerals >= opt.cost;
+                          return (
+                            <button
+                              key={opt.slots}
+                              type="button"
+                              disabled={owned || !canBuy}
+                              onClick={() => handlePurchaseRamSlots(opt.slots)}
+                              className={`px-3 py-2 rounded border text-[10px] font-mono font-bold transition ${owned ? 'bg-slate-950 border-slate-800 text-slate-600 cursor-default' : canBuy && affordable ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20' : 'bg-slate-950 border-slate-800 text-slate-500 cursor-not-allowed'}`}
+                            >
+                              {owned ? `✓ ${opt.slots}슬롯` : `${opt.slots}슬롯 · ${OMG.formatMineral(opt.cost)}`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[8px] text-slate-500 font-mono">기본 1슬롯 무료 · 2슬롯 5,000원 · 4슬롯 500,000원 · 창고 RAM {OMG.MAX_RAM_INVENTORY}개는 예비 부품 보관(별도)</p>
+                    </div>
+
                     {/* 부품 구매 — ◀▶로 구매할 강 선택 후 구매 (강화 전용 강은 미표시) */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-2.5 border-t border-slate-900">
                       {[
@@ -1693,12 +1754,12 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     <p className="text-xs text-slate-300 font-bold">{activeGame ? activeGame.name : '다운로드된 게임 없음'}</p>
                     <p className="text-xs text-slate-400">
                       배치 <strong className="text-cyan-400">{specs.maxHuntingUnits}기</strong>
-                      (RAM {specs.huntRamFree}GB / GPU {specs.gpuRamPerUnit}GB·기 · CPU {specs.ramAllocation.maxByCpu}코어)
+                      (RAM 잔여 {specs.huntRamFree}GB / CPU {specs.cpuHuntRamPerUnit}GB·기 · 코어 {specs.ramAllocation.maxByCpu} · GPU참고 {specs.gpuRamPerUnit}GB·기)
                       · 틱당 <strong className="text-cyan-400">{OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit, effectiveWorkUnits).toLocaleString()}원</strong>
                     </p>
                     {downloadTarget ? (
                       <>
-                        <div className="text-[10px] font-mono text-slate-400">다운로드: <strong>{downloadTarget.name}</strong> · 저장 {downloadTarget.requiredGb}GB · {OMG.formatMineral(downloadTarget.mineralCost || 0)}</div>
+                        <div className="text-[10px] font-mono text-slate-400">다운로드: <strong>{downloadTarget.name}</strong> · +{downloadTarget.requiredGb}GB (여유 {specs.storageFreeGb}GB / 사용 {specs.storageUsedGb}GB / {storage.capacityGb}GB) · {OMG.formatMineral(downloadTarget.mineralCost || 0)}</div>
                         <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
                           <div className="bg-cyan-500 h-full transition-all" style={{ width: `${downloadProgress}%` }} />
                         </div>
