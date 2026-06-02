@@ -532,6 +532,20 @@
     return Math.max(50, Math.round(secPerEvent * 1000));
   }
 
+  /**
+   * 자동 구매·강화 루프 주기(ms). SCA 배속이 높을수록 짧아짐.
+   * 구버전 650ms+600ms ≈ 0.8회/초 → 배속3 기준 약 8~12회/초 목표.
+   */
+  function calcAutoLoopIntervalMs(scaUpgrades) {
+    const mult = calcGameSpeedMultiplier(scaUpgrades);
+    return Math.max(22, Math.round(90 / mult));
+  }
+
+  /** 수동 강화 버튼 연출용 지연(ms) */
+  function calcManualUpgradeDelayMs() {
+    return 100;
+  }
+
   function calcGpuBenchmarkMultiplier(scaUpgrades) {
     return GPU_GRADE_BENCHMARK_MULTIPLIERS[calcGpuGrade(scaUpgrades)] || 1;
   }
@@ -972,7 +986,7 @@ function getPartLevel(part) {
     calcRebirthStartMinerals, calcRebirthIncomeMultiplier,
     calcIncomeBonus, calcProbBonus,
     REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
-    calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeEventIntervalMs,
+    calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeEventIntervalMs, calcAutoLoopIntervalMs, calcManualUpgradeDelayMs,
     REBIRTH_MINERAL_SCA_PER_10, getScaShopItemCost, getScaShopItemDisplayName, getGpuGradeLevel, canPurchaseGpuGradeUp, calcGpuGrade, calcGpuAttackFrames, calcGpuBenchmarkMultiplier,
     normalizeEquippedStorage, normalizeEquippedCooler, getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
     MAX_RAM_INVENTORY, RAM_SLOT_UPGRADES, DEFAULT_RAM_SLOTS, getRamSlotCount, getRamEffectiveCapacityGb, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase,

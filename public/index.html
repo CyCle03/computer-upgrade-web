@@ -791,7 +791,7 @@
             }
 
             if (upgradeTarget) {
-              handleInventoryUpgrade(upgradeTarget.id);
+              handleInventoryUpgrade(upgradeTarget.id, { auto: true });
               break;
             }
 
@@ -799,10 +799,10 @@
             setCombatLogs(prev => [...prev.slice(-7), `🎉 [SYSTEM] ${label} 자동강화 목표 ${goal}강 달성.`]);
             break;
           }
-        }, 650);
+        }, OMG.calcAutoLoopIntervalMs(scaUpgrades));
 
         return () => clearInterval(interval);
-      }, [autoBuyCpuByMfr, autoBuyGpu, autoBuyRam, autoBuyCoolerByKind, autoBuyStorageByKind, autoTargetLevels, isUpgrading, inventory, minerals]);
+      }, [autoBuyCpuByMfr, autoBuyGpu, autoBuyRam, autoBuyCoolerByKind, autoBuyStorageByKind, autoTargetLevels, isUpgrading, inventory, minerals, scaUpgrades]);
 
       // ----------------------------------------------------------------------
       // 7. V1.2.9 원작 강화 (미네랄 상점)
@@ -973,27 +973,38 @@
         setCombatLogs((prev) => [...prev.slice(-7), `판매 +${OMG.formatMineral(sellM)}`]);
       };
 
-      const handleInventoryUpgrade = (itemId) => {
-        if (isUpgrading) return;
+      const handleInventoryUpgrade = (itemId, options) => {
+        const auto = options && options.auto;
+        if (!auto && isUpgrading) return;
         const partToUpgrade = inventory.find(p => p.id === itemId);
         if (!partToUpgrade) return;
         const currentLevel = partToUpgrade.level;
-        setIsUpgrading(true);
-        setActiveUpgradingPart(partToUpgrade.type);
-        setTimeout(() => {
+        const label = partToUpgrade.type.toUpperCase();
+
+        const applyUpgrade = () => {
           const prob = OMG.getUpgradeProbability(partToUpgrade.type, currentLevel, partToUpgrade, probBonusRate);
           const result = Math.random() <= prob ? 'success' : 'exploded';
-          setIsUpgrading(false);
-          setActiveUpgradingPart(null);
-          const label = partToUpgrade.type.toUpperCase();
           if (result === 'success') {
             setInventory((prev) => prev.map(p => p.id === itemId ? OMG.applyTierStats(p, currentLevel + 1) : p));
-            setCombatLogs((prev) => [...prev.slice(-7), `${label} +${currentLevel + 1}강`]);
+            if (!auto) setCombatLogs((prev) => [...prev.slice(-7), `${label} +${currentLevel + 1}강`]);
           } else {
             setInventory((prev) => prev.filter(p => p.id !== itemId));
             pushToast(`${label} +${currentLevel}강 파괴`, 'exploded', 2200);
           }
-        }, 600);
+        };
+
+        if (auto) {
+          applyUpgrade();
+          return;
+        }
+
+        setIsUpgrading(true);
+        setActiveUpgradingPart(partToUpgrade.type);
+        setTimeout(() => {
+          applyUpgrade();
+          setIsUpgrading(false);
+          setActiveUpgradingPart(null);
+        }, OMG.calcManualUpgradeDelayMs());
       };
 
       const handleRebirth = () => {
