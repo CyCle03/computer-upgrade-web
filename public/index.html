@@ -453,7 +453,7 @@
           unitLimit = Math.max(1, Math.floor(unitLimit * 0.5));
         }
 
-        // E. RAM 분배: 작업 점유 후 남은 RAM으로 사냥 유닛 (GPU 1기당 RAM × CPU 코어)
+        // E. RAM 분배: 작업 점유 후 잔여 RAM ÷ CPU 등급별 사냥 RAM·기 (코어 상한)
         const _workUnitsForSpecs = workUnitMode === 'auto'
           ? OMG.calcOptimalWorkUnits(workParts, workTaskIndex, unlockedGameIndex, effectiveUnitLimit, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading)
           : Math.min(Math.max(0, manualWorkUnits), workSpecStatus.activeWorkUnits || 0);
@@ -493,7 +493,10 @@
           ramAllocation,
           workRamUsed: ramAllocation.workRamUsed,
           huntRamFree: ramAllocation.huntRamFree,
-          gpuRamPerUnit: ramAllocation.ramPerUnit,
+          gpuRamPerUnit: ramAllocation.gpuRamPerUnit,
+          cpuHuntRamPerUnit: ramAllocation.huntRamPerUnit,
+          storageUsedGb: OMG.calcStorageUsedGb(unlockedGameIndex),
+          storageFreeGb: OMG.getStorageFreeGb(storage, unlockedGameIndex),
           gpuGrade,
           gpuAttackFrames,
           gameSpeedFrames,
@@ -835,7 +838,6 @@
         setMinerals((prev) => prev - costM);
         const newPart = OMG.buildInventoryPart(type, level, {
           manufacturer: cpuBuyManufacturer,
-          ddrGeneration: motherboard.supportedDdrGeneration || 'DDR3',
           coolerKind: coolerBuyKind,
           storageKind: storageBuyKind,
         });
@@ -938,7 +940,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           setCpu({
             manufacturer: partToEquip.manufacturer,
             level: partToEquip.level,
-            ddrGeneration: partToEquip.ddrGeneration
+            ddrGeneration: OMG.getCpuRequiredDdrGeneration(partToEquip),
           });
           // 인벤토리 목록에서 장착된 것 빼고 기존 장착 부품 반입
           setInventory(prev => prev.filter(p => p.id !== itemId).concat({
@@ -1693,12 +1695,12 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     <p className="text-xs text-slate-300 font-bold">{activeGame ? activeGame.name : '다운로드된 게임 없음'}</p>
                     <p className="text-xs text-slate-400">
                       배치 <strong className="text-cyan-400">{specs.maxHuntingUnits}기</strong>
-                      (RAM {specs.huntRamFree}GB / GPU {specs.gpuRamPerUnit}GB·기 · CPU {specs.ramAllocation.maxByCpu}코어)
+                      (RAM 잔여 {specs.huntRamFree}GB / CPU {specs.cpuHuntRamPerUnit}GB·기 · 코어 {specs.ramAllocation.maxByCpu} · GPU참고 {specs.gpuRamPerUnit}GB·기)
                       · 틱당 <strong className="text-cyan-400">{OMG.calcHuntIncomePerTick(workParts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, effectiveUnitLimit, effectiveWorkUnits).toLocaleString()}원</strong>
                     </p>
                     {downloadTarget ? (
                       <>
-                        <div className="text-[10px] font-mono text-slate-400">다운로드: <strong>{downloadTarget.name}</strong> · 저장 {downloadTarget.requiredGb}GB · {OMG.formatMineral(downloadTarget.mineralCost || 0)}</div>
+                        <div className="text-[10px] font-mono text-slate-400">다운로드: <strong>{downloadTarget.name}</strong> · +{downloadTarget.requiredGb}GB (여유 {specs.storageFreeGb}GB / 사용 {specs.storageUsedGb}GB / {storage.capacityGb}GB) · {OMG.formatMineral(downloadTarget.mineralCost || 0)}</div>
                         <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
                           <div className="bg-cyan-500 h-full transition-all" style={{ width: `${downloadProgress}%` }} />
                         </div>

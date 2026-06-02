@@ -293,7 +293,7 @@
     if (type === 'cpu') {
       const t = getTier('cpu', meta, level);
       newPart.manufacturer = meta.manufacturer || 'Intel';
-      newPart.ddrGeneration = meta.ddrGeneration || 'DDR3';
+      newPart.ddrGeneration = getCpuRequiredDdrGeneration(newPart);
       if (t && t.name) newPart.name = t.name;
     } else if (type === 'gpu') {
       const t = getTier('gpu', meta, level);
@@ -350,7 +350,9 @@
     const tier = getTier(part.type, part, nextLevel);
     if (!tier) return part;
     const upgraded = Object.assign({}, part, { level: nextLevel });
-    if (part.type === 'ram') {
+    if (part.type === 'cpu') {
+      upgraded.ddrGeneration = getCpuRequiredDdrGeneration(upgraded);
+    } else if (part.type === 'ram') {
       upgraded.clockMhz = tier.clockMhz;
       upgraded.capacityGb = tier.capacityGb;
       upgraded.ddrGeneration = tier.ddrGeneration;
@@ -555,6 +557,47 @@
     return GPU_RAM_PER_UNIT_GB[lv - 1];
   }
 
+  /** Intel: 6강+ DDR4, 12강+ DDR5 · AMD: 1강+ DDR4, 6강+ DDR5 (시트 비고) */
+  function getCpuRequiredDdrGeneration(cpu) {
+    const level = Math.max(1, (cpu && cpu.level) || 1);
+    const manufacturer = (cpu && cpu.manufacturer) || 'Intel';
+    if (manufacturer === 'AMD') {
+      return level >= 6 ? 'DDR5' : 'DDR4';
+    }
+    if (level >= 12) return 'DDR5';
+    if (level >= 6) return 'DDR4';
+    return 'DDR3';
+  }
+
+  /** 게임 사냥 1기당 RAM(GB) — CPU 시트「성능」구간 */
+  function getCpuHuntRamPerUnitGb(cpu) {
+    const tier = getTier('cpu', cpu, (cpu && cpu.level) || 1);
+    const perf = (tier && tier.perf) || 1;
+    if (perf <= 25) return 1;
+    if (perf <= 150) return 2;
+    if (perf <= 750) return 4;
+    if (perf <= 3000) return 8;
+    if (perf <= 12000) return 16;
+    return 32;
+  }
+
+  /** 다운로드 완료 게임 requiredGb 합산 (gameIndex 1~unlocked) */
+  function calcStorageUsedGb(unlockedGameIndex) {
+    const unlocked = unlockedGameIndex ?? 0;
+    if (unlocked <= 0) return 0;
+    return DOWNLOAD_TARGETS.reduce((sum, t) => {
+      if (t.gameIndex != null && t.gameIndex <= unlocked) {
+        return sum + (t.requiredGb || 0);
+      }
+      return sum;
+    }, 0);
+  }
+
+  function getStorageFreeGb(storage, unlockedGameIndex) {
+    const cap = getStorageCapacityGb(storage);
+    return Math.max(0, cap - calcStorageUsedGb(unlockedGameIndex));
+  }
+
 function getPartLevel(part) {
     return Math.max(1, (part && part.level) || 1);
   }
@@ -644,16 +687,17 @@ function getPartLevel(part) {
       ? activeWorkUnits * (work.ramPerUnitGb || 1)
       : (work.requiredRamGb || 0);
     const huntRamFree = Math.max(0, totalRam - workRamUsed);
-    // 게임 사냥 유닛 = CPU 코어 수. 작업 점유 후 잔여 RAM이 있으면 코어 수만큼 배치, 잔여 RAM이 0이면 0기.
-    // GPU당 RAM(GPU_RAM_PER_UNIT_GB)은 가이드 센터 안내용 참고값으로만 노출하고 배치 게이트로 쓰지 않는다.
-    const ramPerUnit = getGpuRamPerUnit(parts && parts.gpu);
-    const maxByRam = huntRamFree > 0 ? maxByCpu : 0;
+    const huntRamPerUnit = getCpuHuntRamPerUnitGb(parts && parts.cpu);
+    const gpuRamPerUnit = getGpuRamPerUnit(parts && parts.gpu);
+    const maxByRam = huntRamPerUnit > 0 ? Math.floor(huntRamFree / huntRamPerUnit) : 0;
     const activeHuntingUnits = Math.max(0, Math.min(maxByRam, maxByCpu));
     return {
       totalRam,
       workRamUsed,
       huntRamFree,
-      ramPerUnit,
+      huntRamPerUnit,
+      ramPerUnit: huntRamPerUnit,
+      gpuRamPerUnit,
       maxByRam,
       maxByCpu,
       activeHuntingUnits,
@@ -711,14 +755,19 @@ function getPartLevel(part) {
       return { ok: false, reason: '이전 게임을 다운로드한 뒤에만 다음 게임을 받을 수 있습니다.' };
     }
     const storageGb = getStorageCapacityGb(parts && parts.storage);
-    if (storageGb < meta.requiredGb) {
-      return { ok: false, reason: `저장장치 용량 부족 (필요 ${meta.requiredGb}GB / 현재 ${storageGb}GB)` };
+    const usedGb = calcStorageUsedGb(unlocked);
+    const freeGb = getStorageFreeGb(parts && parts.storage, unlocked);
+    if (freeGb < meta.requiredGb) {
+      return {
+        ok: false,
+        reason: `저장장치 여유 부족 (이번 게임 ${meta.requiredGb}GB 필요 · 여유 ${freeGb}GB / 사용 ${usedGb}GB / 전체 ${storageGb}GB)`,
+      };
     }
     const cost = meta.mineralCost || 0;
     if ((minerals ?? 0) < cost) {
       return { ok: false, reason: `게임 다운로드에 필요한 자금이 부족합니다. (필요 ${formatMineral(cost)})` };
     }
-    return { ok: true, reason: '', mineralCost: cost };
+    return { ok: true, reason: '', mineralCost: cost, storageUsedGb: usedGb, storageFreeGb: freeGb, storageCapacityGb: storageGb };
   }
 
   function calcHuntIncomePerTick(parts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, maxUnitsOverride, workUnitsOverride) {
@@ -788,7 +837,9 @@ function getPartLevel(part) {
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
     MAX_RAM_INVENTORY, SHOP_PURCHASABLE_LEVELS, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, getPurchasableLevels, getPurchasableMaxLevel, isPurchasableLevel, countRamInInventory, canPurchaseRam, buildInventoryPart,
     costToMinerals, formatMineral, formatManwon, getPurchaseCostMinerals,
-    getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getWorkTask, getGameHunt, getDownloadTargetMeta,
+    getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getCpuRequiredDdrGeneration, getCpuHuntRamPerUnitGb,
+    calcStorageUsedGb, getStorageFreeGb,
+    getWorkTask, getGameHunt, getDownloadTargetMeta,
     getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
     calcHuntIncomePerTick, calcWorkIncomePerTick, calcOptimalWorkUnits, toDownloadTargetSnapshot,
