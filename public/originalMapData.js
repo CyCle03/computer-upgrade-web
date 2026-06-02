@@ -372,9 +372,11 @@
       upgraded.ddrGeneration = tier.ddrGeneration;
     } else if (part.type === 'cooler') {
       upgraded.coolingCapacity = tier.coolingCapacity;
+      upgraded.coolerKind = part.coolerKind || upgraded.coolerKind || 'air';
     } else if (part.type === 'storage') {
       upgraded.capacityGb = tier.capacityGb;
       upgraded.storageType = tier.storageType;
+      upgraded.storageKind = part.storageKind || (tier.storageType === 'SSD' ? 'nvme' : 'hdd');
     }
     return upgraded;
   }
@@ -518,6 +520,20 @@
 
   function calcGpuAttackFrames(scaUpgrades) {
     return GPU_GRADE_ATTACK_FRAMES[calcGpuGrade(scaUpgrades)];
+  }
+
+
+  function normalizeEquippedStorage(storage) {
+    if (!storage) return { type: 'HDD', capacityGb: 60, level: 1, storageKind: 'hdd' };
+    const legacyType = storage.type || storage.storageType;
+    const storageKind = storage.storageKind || (legacyType === 'SSD' ? 'nvme' : 'hdd');
+    const type = legacyType || (storageKind === 'nvme' ? 'SSD' : 'HDD');
+    return Object.assign({}, storage, { storageKind, type });
+  }
+
+  function normalizeEquippedCooler(cooler) {
+    if (!cooler) return { level: 1, coolingCapacity: 500, coolerKind: 'air' };
+    return Object.assign({}, cooler, { coolerKind: cooler.coolerKind || 'air' });
   }
 
   function getStorageDownloadMultiplier(storage) {
@@ -925,7 +941,7 @@ function getPartLevel(part) {
     REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
     calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeEventIntervalMs,
     calcGpuGrade, calcGpuAttackFrames, calcGpuBenchmarkMultiplier,
-    getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
+    normalizeEquippedStorage, normalizeEquippedCooler, getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
     MAX_RAM_INVENTORY, RAM_SLOT_UPGRADES, DEFAULT_RAM_SLOTS, getRamSlotCount, getRamEffectiveCapacityGb, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase,
     SHOP_PURCHASABLE_LEVELS, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, getPurchasableLevels, getPurchasableMaxLevel, isPurchasableLevel, countRamInInventory, canPurchaseRam, buildInventoryPart,
     costToMinerals, formatMineral, formatManwon, getPurchaseCostMinerals,
