@@ -228,9 +228,21 @@
       const [autoBuyCoolerByKind, setAutoBuyCoolerByKind] = useState(() => loadVariantAutoBuy('sca_autoBuyCoolerByKind', ['air', 'water'], 'sca_autoBuyCooler'));
       const [autoBuyStorageByKind, setAutoBuyStorageByKind] = useState(() => loadVariantAutoBuy('sca_autoBuyStorageByKind', ['hdd', 'nvme'], 'sca_autoBuyStorage'));
 
-      // 확률 강화 피드백 전용 상태
-      const [upgradeStatus, setUpgradeStatus] = useState(null); // 'success', 'fail_keep', 'fail_drop', 'exploded', 'upgrading'
+      // 확률 강화 피드백 — 고정 토스트(레이아웃 밀림·깜빡임 없음)
+      const [upgradeStatus, setUpgradeStatus] = useState(null);
       const [upgradeMessage, setUpgradeMessage] = useState('');
+      const toastTimerRef = useRef(null);
+      const pushToast = (message, kind = 'info', ms = 2200) => {
+        if (!message) return;
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        setUpgradeMessage(message);
+        setUpgradeStatus(kind);
+        toastTimerRef.current = setTimeout(() => {
+          setUpgradeStatus(null);
+          setUpgradeMessage('');
+          toastTimerRef.current = null;
+        }, ms);
+      };
       const [isUpgrading, setIsUpgrading] = useState(false);
       const [activeUpgradingPart, setActiveUpgradingPart] = useState(null);
       const [rebirthCount, setRebirthCount] = useState(() => {
@@ -910,11 +922,9 @@
         });
         if (item.id === 'gpuGradeUp') {
           const g = OMG.getGpuGradeLevel(scaUpgrades) + 1;
-          setUpgradeMessage(`🎮 GPU 등급 → ${OMG.GPU_GRADE_NAMES[g]} (${OMG.GPU_GRADE_ATTACK_FRAMES[g]}f)`);
-          setUpgradeStatus('success');
+          pushToast(`GPU 등급 → ${OMG.GPU_GRADE_NAMES[g]}`, 'success', 2500);
         } else if (item.mineralBonus) {
-          setUpgradeMessage(`환생 미네랄 +${item.mineralBonus} (다음 환생 시작 ${OMG.calcRebirthStartMinerals({ ...scaUpgrades, [item.id]: bought + 1 }).toLocaleString()}원)`);
-          setUpgradeStatus('success');
+          pushToast(`환생 미네랄 +${item.mineralBonus}`, 'success', 2500);
         }
       };
 
@@ -927,9 +937,7 @@
         }
         setMinerals((prev) => prev - check.cost);
         setRamSlots(check.newSlots);
-        setUpgradeMessage(`📦 램 슬롯 ${check.newSlots}개 — 장착 1개당 동일 램 ${check.newSlots}배 용량 (-${OMG.formatMineral(check.cost)})`);
-        setUpgradeStatus('success');
-        setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 3000);
+        pushToast(`램 슬롯 ${check.newSlots}개`, 'success', 2500);
       };
 
       const handleBuyComponentPack = (type, level = 1, buyMetaOverride) => {
@@ -953,9 +961,7 @@
         const newPart = OMG.buildInventoryPart(type, level, buyMeta);
         setInventory((prev) => [...prev, newPart]);
         const tierName = OMG.getPartName(type, level, newPart);
-        setUpgradeStatus('success');
-        setUpgradeMessage(`📦 [구매] ${tierName} (+${level}강, -${OMG.formatMineral(costM)})`);
-        setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 2500);
+        setCombatLogs((prev) => [...prev.slice(-7), `구매 ${tierName} +${level}강`]);
       };
 
       const handleSellComponent = (itemId) => {
@@ -964,9 +970,7 @@
         const sellM = OMG.getShopSellPriceMinerals(part.type, part.level, part);
         setMinerals((prev) => prev + sellM);
         setInventory((prev) => prev.filter(p => p.id !== itemId));
-        setUpgradeMessage(`💰 [판매] +${OMG.formatMineral(sellM)} (${OMG.getPartName(part.type, part.level, part)})`);
-        setUpgradeStatus('success');
-        setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 2500);
+        setCombatLogs((prev) => [...prev.slice(-7), `판매 +${OMG.formatMineral(sellM)}`]);
       };
 
       const handleInventoryUpgrade = (itemId) => {
@@ -976,21 +980,19 @@
         const currentLevel = partToUpgrade.level;
         setIsUpgrading(true);
         setActiveUpgradingPart(partToUpgrade.type);
-        setUpgradeStatus('upgrading');
-        setUpgradeMessage(`강화 중... ${partToUpgrade.type.toUpperCase()} +${currentLevel}강`);
         setTimeout(() => {
           const prob = OMG.getUpgradeProbability(partToUpgrade.type, currentLevel, partToUpgrade, probBonusRate);
           const result = Math.random() <= prob ? 'success' : 'exploded';
           setIsUpgrading(false);
-          setUpgradeStatus(result);
+          setActiveUpgradingPart(null);
+          const label = partToUpgrade.type.toUpperCase();
           if (result === 'success') {
             setInventory((prev) => prev.map(p => p.id === itemId ? OMG.applyTierStats(p, currentLevel + 1) : p));
-            setUpgradeMessage(`🎉 강화 성공! +${currentLevel + 1}강`);
+            setCombatLogs((prev) => [...prev.slice(-7), `${label} +${currentLevel + 1}강`]);
           } else {
             setInventory((prev) => prev.filter(p => p.id !== itemId));
-            setUpgradeMessage('💥 [강화 실패] 장비가 폭파되었습니다!');
+            pushToast(`${label} +${currentLevel}강 파괴`, 'exploded', 2200);
           }
-          setTimeout(() => { setUpgradeStatus(null); setUpgradeMessage(''); }, 3500);
         }, 600);
       };
 
@@ -1027,8 +1029,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setDownloadProgress(0);
         setIsPartyHunting(false);
         setAutoTargetLevels(defaultAutoTargets);
-        setUpgradeMessage(`✨ 환생 +${outcome.statGain.toLocaleString()} (보정 전 ${outcome.baseStat.toLocaleString()} → 보정 후 ${outcome.correctedStat.toLocaleString()}) · SCA +${outcome.scaReward.toLocaleString()}C · 시작 미네랄 ${startMinerals.toLocaleString()}원`);
-        setUpgradeStatus('success');
+        pushToast(`환생 완료 · SCA +${outcome.scaReward.toLocaleString()}`, 'success', 3500);
       };
 
       const handlePurchaseMotherboard = (board) => {
@@ -1117,12 +1118,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           }));
         }
 
-        setUpgradeStatus('success');
-        setUpgradeMessage(`🔄 [장비 교체 장착] ${type.toUpperCase()} +${partToEquip.level}강 장비가 장착 완료되었습니다.`);
-        setTimeout(() => {
-          setUpgradeStatus(null);
-          setUpgradeMessage('');
-        }, 3000);
+        setCombatLogs((prev) => [...prev.slice(-7), `장착 ${type.toUpperCase()} +${partToEquip.level}강`]);
       };
 
       // ----------------------------------------------------------------------
@@ -1310,23 +1306,17 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             </section>
           )}
 
-          {/* ================================================================== */}
-          {/* 강화 플래시 스크린 */}
-          {/* ================================================================== */}
-          {upgradeStatus && (
-            <div className={`mb-6 p-4 rounded-xl border transition-all duration-300 font-mono text-center ${
-              upgradeStatus === 'upgrading' ? 'bg-blue-950/30 border-blue-500/50 text-blue-400 neon-border-cyan animate-pulse' :
-              upgradeStatus === 'success' ? 'bg-emerald-950/30 border-emerald-500/50 text-emerald-400 neon-border-emerald' :
-              upgradeStatus === 'fail_keep' ? 'bg-amber-950/30 border-amber-500/50 text-amber-400' :
-              upgradeStatus === 'fail_drop' ? 'bg-yellow-950/30 border-yellow-500/50 text-yellow-400 animate-bounce' :
-              'bg-rose-950/40 border-rose-500/80 text-rose-400 neon-border-rose animate-ping'
-            }`}>
-              <div className="flex items-center justify-center space-x-2">
-                {upgradeStatus === 'upgrading' && <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-ping"></span>}
-                {upgradeStatus === 'success' && <span className="text-emerald-400 text-lg mr-1">✅</span>}
-                {upgradeStatus === 'exploded' && <span className="text-rose-500 text-xl animate-bounce">💥</span>}
-                <span className="text-sm font-bold uppercase tracking-wider">{upgradeMessage}</span>
-              </div>
+          {upgradeMessage && (
+            <div
+              role="status"
+              aria-live="polite"
+              className={`fixed bottom-4 right-4 z-50 max-w-sm px-3 py-2 rounded-md border text-xs font-mono shadow-md pointer-events-none ${
+                upgradeStatus === 'success' ? 'bg-slate-900/95 border-emerald-800/50 text-emerald-300' :
+                upgradeStatus === 'exploded' ? 'bg-slate-900/95 border-rose-800/50 text-rose-300' :
+                'bg-slate-900/95 border-slate-700/80 text-slate-300'
+              }`}
+            >
+              {upgradeMessage}
             </div>
           )}
 
@@ -1865,12 +1855,12 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               <div className="p-4 bg-slate-950/90 rounded border border-emerald-500/30 neon-border-emerald flex flex-col space-y-2.5">
                 <div className="flex justify-between items-center border-b border-emerald-950 pb-2">
                   <span className="text-[10px] text-emerald-400 font-mono tracking-widest uppercase flex items-center space-x-1.5 font-bold">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
                     <span>수입 로그</span>
                   </span>
                   <span className="text-[9px] text-emerald-600 font-mono">{isPartyHunting ? 'PARTY' : 'WORK'}</span>
                 </div>
-                <div className="h-36 overflow-y-auto font-mono text-[10px] text-emerald-400/90 space-y-1.5 select-text leading-relaxed">
+                <div className="h-36 overflow-y-auto overscroll-contain font-mono text-[10px] text-emerald-400/90 space-y-1.5 select-text leading-relaxed">
                   {combatLogs.map((log, idx) => (
                     <div key={idx} className="transition-all duration-300 hover:text-emerald-300">{log}</div>
                   ))}
