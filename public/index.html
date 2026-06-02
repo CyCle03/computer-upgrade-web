@@ -425,7 +425,7 @@
       );
 
       const getCpuName = (level, m) => OMG.getPartName('cpu', level, { type: 'cpu', manufacturer: m || cpu.manufacturer });
-      const getGpuName = (level) => OMG.getPartName('gpu', level, { type: 'gpu' });
+      const getGpuName = (level) => OMG.getGpuDisplayName(level, { type: 'gpu' }, scaUpgrades);
       const getRamName = (level, part) => OMG.getPartName('ram', level, part || ram);
       const getCoolerName = (level, part) => OMG.getPartName('cooler', level, part || cooler);
       const getStorageName = (level, part) => OMG.getPartName('storage', level, part || storage);
@@ -457,7 +457,7 @@
         const _workUnitsForSpecs = workUnitMode === 'auto'
           ? OMG.calcOptimalWorkUnits(workParts, workTaskIndex, unlockedGameIndex, effectiveUnitLimit, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading)
           : Math.min(Math.max(0, manualWorkUnits), workSpecStatus.activeWorkUnits || 0);
-        const ramAllocation = OMG.calcRamAllocation(workParts, workTaskIndex, effectiveUnitLimit, _workUnitsForSpecs);
+        const ramAllocation = OMG.calcRamAllocation(workParts, workTaskIndex, effectiveUnitLimit, _workUnitsForSpecs, scaUpgrades);
         const maxHuntingUnits = ramAllocation.activeHuntingUnits;
 
         // F. 유닛 체력 및 메인보드 고정 실드
@@ -468,7 +468,7 @@
         const attackSpeedSec = Math.max(0.1, Math.round((gpuAttackFrames / 24) * 100) / 100);
 
         // H. 데미지 (GPU 기하급수 및 CPU 소환수 등급 결합 시너지 성장)
-        const unitDamage = Math.round(10 * Math.pow(1.5, gpu.level - 1) * getSummonUnit(cpu.level).dpsFactor);
+        const unitDamage = Math.round(OMG.getGpuAttackPower(gpu, scaUpgrades) * getSummonUnit(cpu.level).dpsFactor);
 
         // I. 방어력
         let unitDefense = cooler.level * 3;
@@ -493,7 +493,7 @@
           ramAllocation,
           workRamUsed: ramAllocation.workRamUsed,
           huntRamFree: ramAllocation.huntRamFree,
-          gpuRamPerUnit: ramAllocation.gpuRamPerUnit,
+          gpuRamPerUnit: OMG.getGpuRamPerUnit(gpu, scaUpgrades),
           cpuHuntRamPerUnit: ramAllocation.huntRamPerUnit,
           storageUsedGb: OMG.calcStorageUsedGb(unlockedGameIndex),
           storageFreeGb: OMG.getStorageFreeGb(storage, unlockedGameIndex),
@@ -1268,7 +1268,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <div>
                     <p className="text-[10px] text-slate-500 font-mono">GPU ENGINE</p>
                     <p className="text-sm font-semibold text-slate-200">{getGpuName(gpu.level)}</p>
-                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">Grade: +{gpu.level}강</p>
+                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">+{gpu.level}강 · {OMG.GPU_GRADE_NAMES[gpuGrade]} · 공격 {OMG.getGpuAttackPower(gpu, scaUpgrades)}</p>
                   </div>
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">PCI-E</span>
                 </div>

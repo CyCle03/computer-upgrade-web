@@ -45,21 +45,22 @@
     { level: 6, name: 'Ryzen™ 5 7600X', cost: 0, prob: 0, cores: 16, perf: 18000, cooling: 1100 },
   ];
 
+  /** GPU (gid=0) — generation·등급별 공격력·모델명·성능(엔트리) */
   const GPU = [
-    { level: 1, name: 'GeForce 200', cost: 10, prob: 0.2 },
-    { level: 2, name: 'GeForce 400', cost: 0, prob: 0.15 },
-    { level: 3, name: 'GeForce 500', cost: 400, prob: 0.1 },
-    { level: 4, name: 'GeForce 600', cost: 0, prob: 0.1 },
-    { level: 5, name: 'GeForce 700', cost: 50000, prob: 0.05 },
-    { level: 6, name: 'GeForce 900', cost: 0, prob: 0.05 },
-    { level: 7, name: 'GeForce 10', cost: 20000000, prob: 0.05 },
-    { level: 8, name: 'GeForce 20', cost: 0, prob: 0.05 },
-    { level: 9, name: 'GeForce 30', cost: 0, prob: 0.02 },
-    { level: 10, name: 'GeForce 40', cost: 0, prob: 0 },
+    { level: 1, generation: 'GeForce 200', name: 'GeForce 200', cost: 10, prob: 0.2, attackEntry: 2, attackMainstream: 7, attackPerformance: 16, attackHighend: 26, perfEntry: 20, modelEntry: 'GT 240', modelMainstream: 'GTS 250', modelPerformance: 'GTX 260', modelHighend: 'GTX 280' },
+    { level: 2, generation: 'GeForce 400', name: 'GeForce 400', cost: 0, prob: 0.15, attackEntry: 5, attackMainstream: 18, attackPerformance: 42, attackHighend: 65, perfEntry: 40, modelEntry: 'GT 430', modelMainstream: 'GTS 450', modelPerformance: 'GTX 460', modelHighend: 'GTX 480' },
+    { level: 3, generation: 'GeForce 500', name: 'GeForce 500', cost: 400, prob: 0.1, attackEntry: 20, attackMainstream: 72, attackPerformance: 168, attackHighend: 262, perfEntry: 80, modelEntry: 'GTX 550Ti', modelMainstream: 'GTX 560', modelPerformance: 'GTX 570', modelHighend: 'GTX 580' },
+    { level: 4, generation: 'GeForce 600', name: 'GeForce 600', cost: 0, prob: 0.1, attackEntry: 50, attackMainstream: 180, attackPerformance: 420, attackHighend: 655, perfEntry: 150, modelEntry: 'GT 640', modelMainstream: 'GTX 660', modelPerformance: 'GTX 670', modelHighend: 'GTX 680' },
+    { level: 5, generation: 'GeForce 700', name: 'GeForce 700', cost: 50000, prob: 0.05, attackEntry: 100, attackMainstream: 360, attackPerformance: 840, attackHighend: 1310, perfEntry: 250, modelEntry: 'GT 740', modelMainstream: 'GTX 760', modelPerformance: 'GTX 770', modelHighend: 'GTX 780' },
+    { level: 6, generation: 'GeForce 900', name: 'GeForce 900', cost: 0, prob: 0.05, attackEntry: 200, attackMainstream: 720, attackPerformance: 1680, attackHighend: 2620, perfEntry: 500, modelEntry: 'GTX 950', modelMainstream: 'GTX 960', modelPerformance: 'GTX 970', modelHighend: 'GTX 980' },
+    { level: 7, generation: 'GeForce 10', name: 'GeForce 10', cost: 20000000, prob: 0.05, attackEntry: 450, attackMainstream: 1620, attackPerformance: 3780, attackHighend: 5895, perfEntry: 800, modelEntry: 'GTX 1050', modelMainstream: 'GTX 1060', modelPerformance: 'GTX 1070 Ti', modelHighend: 'GTX 1080 Ti' },
+    { level: 8, generation: 'GeForce 20', name: 'GeForce 20', cost: 0, prob: 0.05, attackEntry: 1000, attackMainstream: 3600, attackPerformance: 8400, attackHighend: 13100, perfEntry: 1500, modelEntry: 'RTX 2050', modelMainstream: 'RTX 2060 SUPER', modelPerformance: 'RTX 2070 SUPER', modelHighend: 'RTX 2080 Ti' },
+    { level: 9, generation: 'GeForce 30', name: 'GeForce 30', cost: 0, prob: 0.02, attackEntry: 2500, attackMainstream: 9000, attackPerformance: 21000, attackHighend: 32750, perfEntry: 3000, modelEntry: 'RTX 3050', modelMainstream: 'RTX 3060 Ti', modelPerformance: 'RTX 3070 Ti', modelHighend: 'RTX 3090 Ti' },
+    { level: 10, generation: 'GeForce 40', name: 'GeForce 40', cost: 0, prob: 0, attackEntry: 5000, attackMainstream: 18000, attackPerformance: 42000, attackHighend: 65535, perfEntry: 4500, modelEntry: 'RTX 4050', modelMainstream: 'RTX 4060 Ti', modelPerformance: 'RTX 4070 Ti', modelHighend: 'RTX 4090' },
   ];
 
-  /** GPU 등급별 참고 RAM(GB/유닛) — 가이드 센터 */
-  const GPU_RAM_PER_UNIT_GB = [1, 2, 2, 4, 4, 8, 8, 16, 16, 32];
+  /** 시트「성능 증가량」엔트리 대비 배율 (x2, x5, x12) */
+  const GPU_GRADE_PERF_MULT = [1, 2, 5, 12];
 
   const RAM = [
     { level: 1, name: 'DDR3-1333 (1GB)', cost: 5, prob: 0.3, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' },
@@ -297,7 +298,10 @@
       if (t && t.name) newPart.name = t.name;
     } else if (type === 'gpu') {
       const t = getTier('gpu', meta, level);
-      if (t && t.name) newPart.name = t.name;
+      if (t) {
+        newPart.generation = t.generation || t.name;
+        newPart.name = getGpuModelName(t, 0);
+      }
     } else if (type === 'ram') {
       const t = getTier('ram', meta, level);
       newPart.clockMhz = t.clockMhz;
@@ -341,7 +345,8 @@
     return tier ? Math.min(1, tier.prob + (bonusProb || 0)) : 0;
   }
 
-  function getPartName(type, level, part) {
+  function getPartName(type, level, part, scaUpgrades) {
+    if (type === 'gpu') return getGpuDisplayName(level, part, scaUpgrades);
     const tier = getTier(type, part, level);
     return tier ? tier.name : type.toUpperCase() + ' Lv.' + level;
   }
@@ -352,6 +357,9 @@
     const upgraded = Object.assign({}, part, { level: nextLevel });
     if (part.type === 'cpu') {
       upgraded.ddrGeneration = getCpuRequiredDdrGeneration(upgraded);
+    } else if (part.type === 'gpu') {
+      upgraded.generation = tier.generation || tier.name;
+      upgraded.name = getGpuModelName(tier, 0);
     } else if (part.type === 'ram') {
       upgraded.clockMhz = tier.clockMhz;
       upgraded.capacityGb = tier.capacityGb;
@@ -552,9 +560,50 @@
     return (storage && storage.capacityGb) || 60;
   }
 
-  function getGpuRamPerUnit(gpu) {
-    const lv = Math.max(1, Math.min(GPU_RAM_PER_UNIT_GB.length, (gpu && gpu.level) || 1));
-    return GPU_RAM_PER_UNIT_GB[lv - 1];
+
+  const GPU_ATTACK_KEYS = ['attackEntry', 'attackMainstream', 'attackPerformance', 'attackHighend'];
+  const GPU_MODEL_KEYS = ['modelEntry', 'modelMainstream', 'modelPerformance', 'modelHighend'];
+
+  function getGpuTierAttack(tier, gradeIndex) {
+    if (!tier) return 1;
+    const idx = Math.max(0, Math.min(GPU_ATTACK_KEYS.length - 1, gradeIndex || 0));
+    return tier[GPU_ATTACK_KEYS[idx]] != null ? tier[GPU_ATTACK_KEYS[idx]] : tier.attackEntry || 1;
+  }
+
+  function getGpuModelName(tier, gradeIndex) {
+    if (!tier) return '';
+    const idx = Math.max(0, Math.min(GPU_MODEL_KEYS.length - 1, gradeIndex || 0));
+    return tier[GPU_MODEL_KEYS[idx]] || tier.modelEntry || tier.generation || tier.name || '';
+  }
+
+  function getGpuDisplayName(level, part, scaUpgrades) {
+    const tier = getTier('gpu', part, level);
+    if (!tier) return 'GPU Lv.' + level;
+    const grade = scaUpgrades != null ? calcGpuGrade(scaUpgrades) : 0;
+    const model = getGpuModelName(tier, grade);
+    const gen = tier.generation || tier.name;
+    return model ? gen + ' · ' + model : gen;
+  }
+
+  function getGpuAttackPower(gpu, scaUpgrades) {
+    const tier = getTier('gpu', gpu, (gpu && gpu.level) || 1);
+    return getGpuTierAttack(tier, calcGpuGrade(scaUpgrades || {}));
+  }
+
+  function perfToGuideRamGb(perf) {
+    if (perf <= 25) return 1;
+    if (perf <= 150) return 2;
+    if (perf <= 750) return 4;
+    if (perf <= 3000) return 8;
+    if (perf <= 12000) return 16;
+    return 32;
+  }
+
+  function getGpuRamPerUnit(gpu, scaUpgrades) {
+    const tier = getTier('gpu', gpu, (gpu && gpu.level) || 1);
+    const perf = (tier && tier.perfEntry) || 20;
+    const mult = GPU_GRADE_PERF_MULT[calcGpuGrade(scaUpgrades || {})] || 1;
+    return perfToGuideRamGb(perf * mult);
   }
 
   /** Intel: 6강+ DDR4, 12강+ DDR5 · AMD: 1강+ DDR4, 6강+ DDR5 (시트 비고) */
@@ -674,7 +723,7 @@ function getPartLevel(part) {
   }
 
   /** RAM: 작업 점유 후 남은 용량으로 사냥 유닛 수 계산 (작업·게임 동시) */
-  function calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride) {
+  function calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride, scaUpgrades) {
     const totalRam = getRamCapacityGb(parts && parts.ram);
     const maxByCpu = maxUnitsOverride != null ? maxUnitsOverride : getCpuCores(parts && parts.cpu);
     const workSpec = evaluateWorkTaskSpec(parts, workTaskIndex);
@@ -688,7 +737,7 @@ function getPartLevel(part) {
       : (work.requiredRamGb || 0);
     const huntRamFree = Math.max(0, totalRam - workRamUsed);
     const huntRamPerUnit = getCpuHuntRamPerUnitGb(parts && parts.cpu);
-    const gpuRamPerUnit = getGpuRamPerUnit(parts && parts.gpu);
+    const gpuRamPerUnit = getGpuRamPerUnit(parts && parts.gpu, scaUpgrades);
     const maxByRam = huntRamPerUnit > 0 ? Math.floor(huntRamFree / huntRamPerUnit) : 0;
     const activeHuntingUnits = Math.max(0, Math.min(maxByRam, maxByCpu));
     return {
@@ -825,7 +874,7 @@ function getPartLevel(part) {
     GAME_SPEED_BASE, GAME_SPEED_MAX, GAME_SPEED_FRAME_REF,
     GPU_GRADE_NAMES, GPU_GRADE_ATTACK_FRAMES, GPU_GRADE_BENCHMARK_MULTIPLIERS, DOWNLOAD_BASE_MB,
     INTEL_CPU, AMD_CPU, GPU, RAM, COOLER_AIR, COOLER_WATER, HDD, NVME,
-    MOTHERBOARDS, WORK_TASKS, GAME_HUNTING, WORK_HUNTING_GROUNDS, PARTY_HUNTING_TIERS, SCA_SHOP_ITEMS, DOWNLOAD_TARGETS, GPU_RAM_PER_UNIT_GB,
+    MOTHERBOARDS, WORK_TASKS, GAME_HUNTING, WORK_HUNTING_GROUNDS, PARTY_HUNTING_TIERS, SCA_SHOP_ITEMS, DOWNLOAD_TARGETS, GPU_GRADE_PERF_MULT,
     getPartTable, getMaxLevel, getTier, getUpgradeCost, getUpgradeProbability, getPartName,
     applyTierStats, getCpuCoolingRequired, getCpuCores, convertMineralsToCoins,
     calcRebirthPerformanceScore, calcRebirthStatGain, calcRebirthScaReward,
@@ -837,7 +886,7 @@ function getPartLevel(part) {
     getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
     MAX_RAM_INVENTORY, SHOP_PURCHASABLE_LEVELS, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, getPurchasableLevels, getPurchasableMaxLevel, isPurchasableLevel, countRamInInventory, canPurchaseRam, buildInventoryPart,
     costToMinerals, formatMineral, formatManwon, getPurchaseCostMinerals,
-    getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getCpuRequiredDdrGeneration, getCpuHuntRamPerUnitGb,
+    getRamCapacityGb, getStorageCapacityGb, getGpuRamPerUnit, getGpuDisplayName, getGpuModelName, getGpuAttackPower, getGpuTierAttack, getCpuRequiredDdrGeneration, getCpuHuntRamPerUnitGb,
     calcStorageUsedGb, getStorageFreeGb,
     getWorkTask, getGameHunt, getDownloadTargetMeta,
     getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
