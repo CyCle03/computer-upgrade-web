@@ -853,6 +853,13 @@
       const handlePurchaseScaItem = (item) => {
         const bought = scaUpgrades[item.id] || 0;
         if (bought >= item.maxPurchases) { alert('최대 구매 횟수 도달'); return; }
+        if (item.mineralBonus) {
+          const currentTotal = OMG.calcRebirthStartMinerals(scaUpgrades);
+          if (currentTotal >= OMG.REBIRTH_MINERAL_CAP) {
+            alert(`시작 미네랄이 이미 최대 상한선(${OMG.REBIRTH_MINERAL_CAP.toLocaleString()}원)에 도달했습니다.`);
+            return;
+          }
+        }
         const cost = OMG.getScaShopItemCost(item);
         if (scaCoins < cost) { alert(`SCA 코인 부족 (필요 ${cost.toLocaleString()})`); return; }
         if (item.id === 'gpuGradeUp' && !OMG.canPurchaseGpuGradeUp(scaUpgrades)) {
