@@ -36,6 +36,7 @@ export class RaidRoomState {
   public totalDps: number = 0;
 
   private timerInterval: NodeJS.Timeout | null = null;
+  private resetTimeout: NodeJS.Timeout | null = null;
   private onBroadcast: (state: any) => void;
   private onMilestoneCleared: MilestoneClearCallback;
 
@@ -191,6 +192,7 @@ export class RaidRoomState {
       this.status = 'lost';
       this.stopTimer();
       this.onBroadcast(this.getSummaryState('시간 제한이 초과되어 레이드에 패배하였습니다.'));
+      this.scheduleReset();
       return;
     }
 
@@ -245,6 +247,7 @@ export class RaidRoomState {
           this.status = 'won';
           this.stopTimer();
           this.onBroadcast(this.getSummaryState('축하합니다! 100층 보스 레이드 등반에 최종 성공하셨습니다.'));
+          this.scheduleReset();
           return;
         } else {
           // 다음 층 자동 진입 및 새로운 보스 HP 충전
@@ -271,10 +274,45 @@ export class RaidRoomState {
   }
 
   /**
+   * 레이드 종료 후 대기 상태로의 자동 리셋 예약
+   */
+  private scheduleReset() {
+    if (this.resetTimeout) {
+      clearTimeout(this.resetTimeout);
+    }
+    this.resetTimeout = setTimeout(() => {
+      this.resetToWaiting();
+    }, 7000); // 7초 후 대기실 복귀
+  }
+
+  /**
+   * 대기실(waiting) 상태 및 1층으로 복귀
+   */
+  private resetToWaiting() {
+    this.status = 'waiting';
+    this.currentFloor = 1;
+    this.timeLeft = 30;
+    this.bossMaxHp = 0;
+    this.bossCurrentHp = 0;
+    for (const player of this.players.values()) {
+      player.isReady = false;
+      player.isDead = false;
+      player.currentHp = player.specs.unitHp;
+      player.dpsContribution = this.calculatePlayerDps(player);
+    }
+    this.recalculateTotalDps();
+    this.onBroadcast(this.getSummaryState('이전 레이드가 종료되어 대기실 상태로 복귀했습니다.'));
+  }
+
+  /**
    * 레이드 강제 파괴/종료
    */
   public destroy() {
     this.stopTimer();
+    if (this.resetTimeout) {
+      clearTimeout(this.resetTimeout);
+      this.resetTimeout = null;
+    }
     this.players.clear();
   }
 
