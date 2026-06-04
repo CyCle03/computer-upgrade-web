@@ -48,7 +48,7 @@ export class RaidRoomState {
   /**
    * 플레이어 추가
    */
-  public addPlayer(socketId: string, userId: string, nickname: string, parts: ComputerParts) {
+  public addPlayer(socketId: string, userId: string, nickname: string, parts: ComputerParts, scaUpgrades?: any) {
     if (this.players.size >= 4) {
       throw new Error('방이 꽉 찼습니다. (최대 4인)');
     }
@@ -57,7 +57,7 @@ export class RaidRoomState {
     }
 
     // 하드웨어 사양 사전 계산
-    const specs = HardwareSimulator.calculateComputerSpecs(parts);
+    const specs = HardwareSimulator.calculateComputerSpecs(parts, scaUpgrades);
 
     const newPlayer: RaidPlayer = {
       socketId,
