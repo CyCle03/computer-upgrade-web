@@ -42,12 +42,14 @@ Render.com에 호스팅되어 있으며, 웹 대시보드·실시간 레이드·
 .
 ├── public/
 │   ├── index.html          # 웹 복원판 대시보드 (React SPA)
+│   ├── js/gameSync.js      # 로그인·진행도 동기화 헬퍼
 │   └── originalMapData.js  # V1.2.9 부품·상점·작업·사냥 데이터
 ├── docs/
 │   ├── original-map-v1.2.9.md
 │   └── spreadsheet-prices-v1.2.9.md
 ├── src/
 │   ├── server.ts           # Express HTTP 서버 진입점
+│   ├── corsConfig.ts       # CORS / Socket.io 오리진 설정
 │   ├── socketServer.ts     # Socket.io 레이드 방 관리
 │   ├── raidSimulator.ts    # 100층 레이드 전투 시뮬레이터
 │   ├── rewardService.ts    # 일일 마일스톤 보상 검증·지급
@@ -95,6 +97,7 @@ cp .env.example .env
 | `DB_POOL_MAX` | `20` | 커넥션 풀 최대 크기 |
 | `DB_SSL` | `false` | 클라우드 DB SSL 사용 여부 |
 | `USE_RPC` | `false` | `true`: PL/pgSQL RPC 사용 / `false`: Node.js 트랜잭션 사용 |
+| `ALLOWED_ORIGINS` | (환경별 기본값) | CORS·Socket.io 허용 오리진 (쉼표 구분). development 미설정 시 전체 허용, production 미설정 시 Render URL만 허용 |
 
 ### 3. 데이터베이스 초기화
 
@@ -143,6 +146,7 @@ GET /health
 
 ```
 POST /api/raid/claim
+Authorization: Bearer <token>
 Content-Type: application/json
 ```
 
@@ -150,14 +154,12 @@ Content-Type: application/json
 
 | 필드 | 타입 | 설명 |
 |------|------|------|
-| `userId` | `string` | 유저 UUID |
 | `currentFloor` | `number` | 달성 층수 (10~100, 10의 배수) |
 
 **요청 예시**
 
 ```json
 {
-  "userId": "550e8400-e29b-41d4-a716-446655440000",
   "currentFloor": 30
 }
 ```
@@ -185,7 +187,7 @@ Content-Type: application/json
 
 | 이벤트 (클라이언트 → 서버) | 설명 |
 |---------------------------|------|
-| `joinRoom` | 레이드 방 입장 (`roomId`, `userId`, `nickname`, `parts`) |
+| `joinRoom` | 레이드 방 입장 (`roomId`, `parts`). 연결 시 `auth: { token }` 필수 |
 | `readyStatus` | 준비 상태 토글 (`isReady`) |
 
 | 이벤트 (서버 → 클라이언트) | 설명 |
@@ -212,14 +214,13 @@ Content-Type: application/json
 DB 연결이 필요한 테스트는 `.env` 설정 후 실행합니다.
 
 ```bash
-# 보상 로직 및 Race Condition 검증
-npx ts-node src/testReward.ts
+# CI·로컬 공용 (hardware 항상, reward는 DB 설정 시)
+npm test
 
-# 하드웨어 스펙 연산 검증 (DB 불필요)
-npx ts-node src/testHardware.ts
-
-# Socket.io 레이드 시뮬레이션 (DB 필요)
-npx ts-node src/testRaid.ts
+# 개별 실행
+npm run test:hardware   # DB 불필요
+npm run test:reward     # DB 필요
+npm run test:raid       # DB 필요
 ```
 
 ## 데이터베이스 스키마

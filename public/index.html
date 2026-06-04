@@ -15,6 +15,7 @@
   <!-- Socket.io Client -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="/originalMapData.js"></script>
+  <script src="/js/gameSync.js"></script>
   <style>
     /* 가독성: 기본 글자 크기 소폭 상향 (Tailwind rem + 소형 px 클래스) */
     html {
@@ -48,156 +49,8 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
     const OMG = window.OriginalMapGame;
-
-    // ======================================================================
-    // 로그인 · 진행도 서버 동기화 헬퍼
-    // 게임 진행도는 'sca_*' 키로 localStorage에 저장되며, 로그인 계정에 한해
-    // 서버(PostgreSQL)와 동기화된다.
-    // ======================================================================
-    const AUTH_TOKEN_KEY = 'sca_authToken';
-    // 서버에 동기화하지 않을 키 (토큰 등 민감/런타임 값)
-    const SYNC_EXCLUDE = new Set([AUTH_TOKEN_KEY]);
-
-    const GameSync = {
-      getToken() {
-        return localStorage.getItem(AUTH_TOKEN_KEY);
-      },
-      setAuth(token, userId, nickname) {
-        localStorage.setItem(AUTH_TOKEN_KEY, token);
-        if (userId) localStorage.setItem('sca_myId', userId);
-        if (nickname) localStorage.setItem('sca_nickname', nickname);
-      },
-      clearAuth() {
-        localStorage.removeItem(AUTH_TOKEN_KEY);
-      },
-      // 로컬 게임 진행도 전체 삭제 (계정 전환 시 데이터 혼선 방지)
-      clearLocalGameState() {
-        const keys = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith('sca_')) keys.push(key);
-        }
-        keys.forEach((k) => localStorage.removeItem(k));
-      },
-      // localStorage의 'sca_*' 키를 모아 서버 저장용 객체로 변환
-      collectState() {
-        const state = {};
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith('sca_') && !SYNC_EXCLUDE.has(key)) {
-            const v = localStorage.getItem(key);
-            if (v !== null) state[key] = v;
-          }
-        }
-        return state;
-      },
-      // 서버에서 받은 진행도를 localStorage로 복원
-      restoreState(state) {
-        if (!state || typeof state !== 'object') return;
-        Object.keys(state).forEach((key) => {
-          if (key.startsWith('sca_') && !SYNC_EXCLUDE.has(key) && typeof state[key] === 'string') {
-            localStorage.setItem(key, state[key]);
-          }
-        });
-      },
-      async _authRequest(path, username, password) {
-        const res = await fetch(path, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.success) {
-          throw new Error(data.message || '요청을 처리할 수 없습니다.');
-        }
-        return data; // { token, userId, nickname }
-      },
-      register(username, password) {
-        return this._authRequest('/api/auth/register', username, password);
-      },
-      login(username, password) {
-        return this._authRequest('/api/auth/login', username, password);
-      },
-      async loadFromServer() {
-        const token = this.getToken();
-        if (!token) throw new Error('NO_TOKEN');
-        const res = await fetch('/api/state', {
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (res.status === 401) throw new Error('UNAUTHORIZED');
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.success) throw new Error(data.message || '진행도를 불러오지 못했습니다.');
-        return data.state || {};
-      },
-      async saveToServer() {
-        const token = this.getToken();
-        if (!token) return false;
-        try {
-          const res = await fetch('/api/state', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ state: this.collectState() }),
-          });
-          return res.ok;
-        } catch (e) {
-          return false;
-        }
-      },
-      async logout() {
-        const token = this.getToken();
-        if (token) {
-          try {
-            await fetch('/api/auth/logout', {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${token}` },
-            });
-          } catch (e) { /* 네트워크 실패해도 로컬 정리는 진행 */ }
-        }
-      },
-    };
-
-    // 진행도 서버 저장 디바운서 (잦은 상태 변경을 묶어 전송)
-    // 주의: 수입 틱으로 minerals가 ~1.5초마다 변하므로 단순 디바운스는 계속 리셋되어
-    // 영원히 저장되지 않을 수 있다. 따라서 마지막 저장 후 MAX_WAIT를 넘기면 강제 저장한다.
-    const SYNC_DEBOUNCE_MS = 1500;
-    const SYNC_MAX_WAIT_MS = 5000;
-    let __scaSyncTimer = null;
-    let __scaLastSync = 0;
-    function scheduleServerSync() {
-      if (!GameSync.getToken()) return;
-      const now = Date.now();
-      if (now - __scaLastSync >= SYNC_MAX_WAIT_MS) {
-        if (__scaSyncTimer) { clearTimeout(__scaSyncTimer); __scaSyncTimer = null; }
-        __scaLastSync = now;
-        GameSync.saveToServer();
-        return;
-      }
-      if (__scaSyncTimer) clearTimeout(__scaSyncTimer);
-      __scaSyncTimer = setTimeout(() => {
-        __scaSyncTimer = null;
-        __scaLastSync = Date.now();
-        GameSync.saveToServer();
-      }, SYNC_DEBOUNCE_MS);
-    }
-
-    // 탭 종료/숨김 시 마지막 진행도를 keepalive 요청으로 즉시 전송 (디바운스 유실 방지)
-    function flushServerSync() {
-      const token = GameSync.getToken();
-      if (!token) return;
-      try {
-        fetch('/api/state', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ state: GameSync.collectState() }),
-          keepalive: true,
-        });
-        __scaLastSync = Date.now();
-      } catch (e) { /* best-effort */ }
-    }
-    window.addEventListener('pagehide', flushServerSync);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') flushServerSync();
-    });
+    const GameSync = window.GameSync;
+    const scheduleServerSync = window.scheduleServerSync;
 
     function App({ onLogout }) {
       // ----------------------------------------------------------------------
@@ -1372,6 +1225,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setIsRaidOpen(true);
 
         const socketCon = io({
+          auth: GameSync.getSocketAuth(),
           reconnection: false
         });
 
@@ -1379,10 +1233,12 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           console.log('[Socket] Connected to server.');
           socketCon.emit('joinRoom', {
             roomId: 'carry-room-100',
-            userId: myId,
-            nickname: nickname,
             parts: { cpu, gpu, ram, cooler, motherboard, storage }
           });
+        });
+
+        socketCon.on('connect_error', (err) => {
+          setErrorMessage(err.message || '레이드 서버 연결에 실패했습니다. 로그인 상태를 확인해 주세요.');
         });
 
         socketCon.on('room_state', (state) => {

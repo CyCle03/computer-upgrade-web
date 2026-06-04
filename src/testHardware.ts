@@ -170,7 +170,9 @@ function runHardwareTests() {
     console.error('[HardwareTest] 경고: 일부 하드웨어 사양 검증에 실패했습니다.');
   }
   console.log('==================================================');
+
+  return passedAll;
 }
 
-// 스크립트 실행
-runHardwareTests();
+const passed = runHardwareTests();
+process.exit(passed ? 0 : 1);

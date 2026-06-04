@@ -1,10 +1,27 @@
 import { createServer } from 'http';
-import { io as clientIo } from 'socket.io-client';
+import { io as clientIo, Socket } from 'socket.io-client';
 import { setupSocketServer } from './socketServer';
+import { AuthService } from './authService';
 import { ComputerParts } from './types';
+import { pool } from './db';
 
 // 테스트 전용 HTTP 포트
 const TEST_PORT = 4500;
+const TEST_PASSWORD = 'raidtest-pass';
+
+async function createTestPlayer(label: string) {
+  const nickname = `raid_${label}_${Math.random().toString(36).slice(2, 8)}`;
+  const session = await AuthService.register(nickname, TEST_PASSWORD);
+  return session;
+}
+
+function connectClient(serverUrl: string, token: string): Promise<Socket> {
+  return new Promise((resolve, reject) => {
+    const client = clientIo(serverUrl, { auth: { token } });
+    client.on('connect', () => resolve(client));
+    client.on('connect_error', (err) => reject(err));
+  });
+}
 
 /**
  * 실시간 100층 레이드 및 Socket.io 방 동기화 Carry(버스) 시뮬레이션
@@ -74,21 +91,27 @@ async function runRaidSimulation() {
     storage: { type: 'SSD', capacityGb: 250 },
   };
 
-  // 3. 소켓 클라이언트 4개 다발성 커넥션 형성 및 방 입장
-  console.log('\n[RaidTest] 가상 클라이언트 4명 소켓 연결 및 joinRoom 전송...');
-  
-  const client1 = clientIo(serverUrl);
-  const client2 = clientIo(serverUrl);
-  const client3 = clientIo(serverUrl);
-  const client4 = clientIo(serverUrl);
+  // 3. 테스트 계정 4명 생성 후 인증 소켓 연결
+  console.log('\n[RaidTest] 테스트 계정 생성 및 소켓 연결...');
+
+  const [p1, p2, p3, p4] = await Promise.all([
+    createTestPlayer('intel'),
+    createTestPlayer('amd'),
+    createTestPlayer('socket'),
+    createTestPlayer('ddr'),
+  ]);
+
+  const client1 = await connectClient(serverUrl, p1.token);
+  const client2 = await connectClient(serverUrl, p2.token);
+  const client3 = await connectClient(serverUrl, p3.token);
+  const client4 = await connectClient(serverUrl, p4.token);
 
   const roomId = 'carry-room-100';
 
-  // 클라이언트들 조인
-  client1.emit('joinRoom', { roomId, userId: 'u-carry-01', nickname: '기사님인텔', parts: carryIntelParts });
-  client2.emit('joinRoom', { roomId, userId: 'u-carry-02', nickname: '기사님암드', parts: carryAmdParts });
-  client3.emit('joinRoom', { roomId, userId: 'u-newbie-03', nickname: '소켓미스뉴비', parts: socketMismatchedNewbie });
-  client4.emit('joinRoom', { roomId, userId: 'u-newbie-04', nickname: 'DDR혼용헬뉴비', parts: ddrChaosNewbie });
+  client1.emit('joinRoom', { roomId, parts: carryIntelParts });
+  client2.emit('joinRoom', { roomId, parts: carryAmdParts });
+  client3.emit('joinRoom', { roomId, parts: socketMismatchedNewbie });
+  client4.emit('joinRoom', { roomId, parts: ddrChaosNewbie });
 
   // 4. 실시간 상태 브로드캐스트 이벤트('room_state') 관측 및 로깅
   let battleTickCount = 0;
@@ -108,9 +131,9 @@ async function runRaidSimulation() {
         console.log(`  * [${p.nickname}] HP: ${p.currentHp}/${p.maxHp} | 상태: ${p.isDead ? '사망' : '생존'} | DPS 기여: ${p.dpsContribution}`);
         
         // 뉴비 2의 HP Decay로 인한 실시간 사망 시점 캡처
-        if (p.nickname === 'DDR혼용헬뉴비' && p.isDead && newbie2DiedTick === -1) {
+        if (p.nickname === p4.nickname && p.isDead && newbie2DiedTick === -1) {
           newbie2DiedTick = battleTickCount;
-          console.log(`  >>> [EVENT DETECTED] 'DDR혼용헬뉴비'가 HP Decay 페널티로 사망하였습니다. DPS 기여도 0 수렴 완료.`);
+          console.log(`  >>> [EVENT DETECTED] '${p4.nickname}'가 HP Decay 페널티로 사망하였습니다. DPS 기여도 0 수렴 완료.`);
         }
       });
     }
@@ -119,13 +142,13 @@ async function runRaidSimulation() {
   // 개별 마일스톤 돌파 보상 수신 이벤트 구독
   client1.on('milestone_reward_claimed', (data) => {
     console.log(`\n==================================================`);
-    console.log(`[REWARD RECEIVED] 기사님인텔: ${data.clearedFloor}층 돌파 보상 마일스톤 지급 성공.`);
+    console.log(`[REWARD RECEIVED] ${p1.nickname}: ${data.clearedFloor}층 돌파 보상 마일스톤 지급 성공.`);
     console.log(`==================================================`);
   });
 
   client4.on('milestone_reward_claimed', (data) => {
     console.log(`\n==================================================`);
-    console.log(`[REWARD RECEIVED] DDR혼용헬뉴비: ${data.clearedFloor}층 돌파 보상 마일스톤 지급 성공.`);
+    console.log(`[REWARD RECEIVED] ${p4.nickname}: ${data.clearedFloor}층 돌파 보상 마일스톤 지급 성공.`);
     console.log(`==================================================`);
   });
 
@@ -190,6 +213,11 @@ async function runRaidSimulation() {
   client3.disconnect();
   client4.disconnect();
 
+  await pool.query(
+    'DELETE FROM users WHERE id = ANY($1::uuid[])',
+    [[p1.userId, p2.userId, p3.userId, p4.userId]]
+  );
+
   await new Promise<void>((resolve) => {
     server.close(() => {
       console.log('[RaidTest] 서버 정상 닫힘. 테스트 프로세스 리소스 해제 완료.');
@@ -204,7 +232,15 @@ async function runRaidSimulation() {
     console.error('[RaidTest] 경고: 일부 멀티플레이어 레이드 동기화 기능 검증에 실패했습니다.');
   }
   console.log('==================================================');
+
+  return passed;
 }
 
-// 스크립트 실행
-runRaidSimulation();
+runRaidSimulation()
+  .then((passed) => {
+    pool.end().finally(() => process.exit(passed ? 0 : 1));
+  })
+  .catch((err) => {
+    console.error('[RaidTest] Fatal error:', err);
+    pool.end().finally(() => process.exit(1));
+  });

@@ -37,9 +37,9 @@ export interface DailyRaidProgress {
 
 /**
  * 일일 마일스톤 보상 검증 API 요청 DTO
+ * userId는 Bearer 토큰에서 서버가 추출한다.
  */
 export interface ClaimRewardRequest {
-  userId: string;
   currentFloor: number; // 클라이언트가 달성했다고 주장하는 층수 (10의 배수)
 }
 

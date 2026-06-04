@@ -10,10 +10,12 @@ import { v4 as uuidv4 } from 'uuid';
  * 2. 중복 수령 및 층수 역행 요청 차단 검증
  * 3. [핵심] 5개 비동기 요청 동시 발송 시의 Race Condition 방지 검증 (SELECT ... FOR UPDATE 락 검증)
  */
-async function runTests() {
+async function runTests(): Promise<boolean> {
   console.log('==================================================');
   console.log('[Test] ' + new Date().toISOString() + ' - 통합 검증 스크립트 시작');
   console.log('==================================================');
+
+  let passedAll = true;
 
   // 테스트 유저 생성
   const testUserId = uuidv4();
@@ -57,6 +59,7 @@ async function runTests() {
       console.log('=> [PASSED] 50층 최초 보상 지급 성공');
     } else {
       console.error('=> [FAILED] 50층 최초 보상 지급 실패');
+      passedAll = false;
     }
 
     // 시나리오 2: 30층 클리어 보상 요청 (이전 층수 역행 - 거절되어야 함)
@@ -67,6 +70,7 @@ async function runTests() {
       console.log('=> [PASSED] 층수 역행 요청 정상 차단');
     } else {
       console.error('=> [FAILED] 층수 역행 요청 차단 실패 (비정상 지급)');
+      passedAll = false;
     }
 
     // 시나리오 3: 80층 클리어 보상 요청 (차분 지급 - 60, 70, 80층 3회 분량 = 30 코인 추가 지급 예정)
@@ -77,6 +81,7 @@ async function runTests() {
       console.log('=> [PASSED] 추가 층수 차분 보상 정상 지급 완료');
     } else {
       console.error('=> [FAILED] 추가 층수 차분 보상 지급 오류');
+      passedAll = false;
     }
 
     // 시나리오 4: 80층 재요청 (중복 - 거절되어야 함)
@@ -87,6 +92,7 @@ async function runTests() {
       console.log('=> [PASSED] 중복 보상 요청 정상 차단');
     } else {
       console.error('=> [FAILED] 중복 보상 요청 차단 실패');
+      passedAll = false;
     }
 
     console.log('\n--------------------------------------------------');
@@ -128,10 +134,12 @@ async function runTests() {
       console.log('=> [PASSED] Race Condition 방지 테스트 완벽 성공! 중복 수령 방지됨.');
     } else {
       console.error('=> [FAILED] Race Condition 방지 테스트 실패! 중복 지급 의심.');
+      passedAll = false;
     }
 
   } catch (error) {
     console.error('[Test Error] 테스트 진행 도중 심각한 에러 발생:', error);
+    passedAll = false;
   } finally {
     // 테스트 데이터 깔끔하게 정리
     console.log('\n[Test] 4단계: 테스트 유저 데이터 DB 클린업 실행...');
@@ -143,7 +151,13 @@ async function runTests() {
     console.log('[Test] 모든 테스트 시나리오 검증 종료.');
     console.log('==================================================');
   }
+
+  return passedAll;
 }
 
-// 스크립트 단독 실행 시 테스트 수행
-runTests();
+runTests()
+  .then((passed) => process.exit(passed ? 0 : 1))
+  .catch((err) => {
+    console.error('[Test] Fatal error:', err);
+    process.exit(1);
+  });

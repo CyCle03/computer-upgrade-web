@@ -6,7 +6,11 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
-    "dev": "nodemon --watch src -e ts --exec ts-node src/server.ts"
+    "dev": "nodemon --watch src -e ts --exec ts-node src/server.ts",
+    "test": "ts-node src/runTests.ts",
+    "test:hardware": "ts-node src/testHardware.ts",
+    "test:reward": "ts-node src/testReward.ts",
+    "test:raid": "ts-node src/testRaid.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",
