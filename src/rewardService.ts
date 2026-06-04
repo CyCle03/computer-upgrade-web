@@ -41,7 +41,7 @@ export class RewardService {
       // 2. [보안] 유저의 관련 데이터가 존재하지 않는 경우를 대비한 Upsert (초기화)
       await client.query(`
         INSERT INTO daily_raid_progresses (user_id, last_played_date, highest_claimed_floor)
-        VALUES ($1, CURRENT_DATE, 0)
+        VALUES ($1, (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date, 0)
         ON CONFLICT (user_id) DO NOTHING
       `, [userId]);
 
@@ -70,7 +70,7 @@ export class RewardService {
       let currentScaCoins = currencyRes.rows[0].sca_coins;
 
       // 4. [보안] 데이터베이스 서버 기준의 오늘 날짜 획득
-      const dateRes = await client.query('SELECT CURRENT_DATE::text AS today');
+      const dateRes = await client.query("SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date::text AS today");
       const todayStr = dateRes.rows[0].today; // 'YYYY-MM-DD' 포맷
 
       // 5. [일일 리셋 처리] 날짜가 바뀌었다면 수령 최고 층수를 0으로 리셋하고 날짜 갱신

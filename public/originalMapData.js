@@ -243,10 +243,10 @@
   const REBIRTH_MINERAL_SCA_PER_10 = 500;
 
   const SCA_SHOP_ITEMS = [
-    { id: 'rebirthMineral500', name: '환생 시작 미네랄 +500', mineralBonus: 500, maxPurchases: 1 },
-    { id: 'rebirthMineralMax200', name: '환생 미네랄 +200', mineralBonus: 200, maxPurchases: 5 },
-    { id: 'rebirthMineralMax2000', name: '환생 미네랄 +2,000', mineralBonus: 2000, maxPurchases: 3 },
-    { id: 'rebirthMineralMax7500', name: '환생 미네랄 +7,500', mineralBonus: 7500, maxPurchases: 2 },
+    { id: 'rebirthMineral500', name: '환생 시작 미네랄 +500', mineralBonus: 500, maxPurchases: 2000 },
+    { id: 'rebirthMineralMax200', name: '환생 미네랄 +200', mineralBonus: 200, maxPurchases: 5000 },
+    { id: 'rebirthMineralMax2000', name: '환생 미네랄 +2,000', mineralBonus: 2000, maxPurchases: 500 },
+    { id: 'rebirthMineralMax7500', name: '환생 미네랄 +7,500', mineralBonus: 7500, maxPurchases: 134 },
     { id: 'huntIncome1', name: '사냥터 수입 +1%', cost: 12000, maxPurchases: 10 },
     { id: 'gameSpeed1', name: '게임 배속 +1프레임', cost: 25000, maxPurchases: 12 },
     { id: 'upgradeProb01', name: '강화 확률 +0.1%', cost: 30000, maxPurchases: 10 },
