@@ -14,6 +14,7 @@ export interface RaidPlayer {
   currentHp: number;        // DDR 오류에 의한 HP Decay 적용용 실시간 HP
   isDead: boolean;           // 유닛 사망 상태 여부
   dpsContribution: number;   // 실시간 초당 DPS 기여량
+  miningPower: number;       // 채굴증폭기에 의한 채굴력
 }
 
 /**
@@ -59,6 +60,7 @@ export class RaidRoomState {
 
     // 하드웨어 사양 사전 계산
     const specs = HardwareSimulator.calculateComputerSpecs(parts, scaUpgrades);
+    const miningPower = scaUpgrades ? (Number(scaUpgrades.miningAmplifier) || 0) * 500 : 0;
 
     const newPlayer: RaidPlayer = {
       socketId,
@@ -70,9 +72,10 @@ export class RaidRoomState {
       currentHp: specs.unitHp, // 초기 HP
       isDead: false,
       dpsContribution: 0,
+      miningPower,
     };
 
-    // 실시간 DPS 기여도 계산 (초당 공격 횟수 * 데미지 * 유닛수)
+    // 실시간 DPS 기여도 계산 (초당 공격 횟수 * 데미지 * 유닛수 * 채굴증폭기 배율)
     newPlayer.dpsContribution = this.calculatePlayerDps(newPlayer);
     this.players.set(socketId, newPlayer);
   }
@@ -122,15 +125,19 @@ export class RaidRoomState {
   }
 
   /**
-   * 개별 플레이어의 정상 DPS 연산
+   * 개별 플레이어의 정상 DPS 연산 (보스전 한정 채굴증폭기 보너스 가산)
    */
   private calculatePlayerDps(player: RaidPlayer): number {
     if (player.isDead) return 0;
     
     const { unitDamage, attackSpeedSec, unitLimit } = player.specs;
-    // DPS = (1초 / 공격주기) * 데미지 * 유닛수
+    // 기본 DPS = (1초 / 공격주기) * 데미지 * 유닛수
     const shotsPerSec = 1 / attackSpeedSec;
-    return Math.round(shotsPerSec * unitDamage * unitLimit);
+    const baseDps = Math.round(shotsPerSec * unitDamage * unitLimit);
+    
+    // 채굴증폭기(Mining Power)에 의한 데미지 증폭 (10,000 채굴력 당 +100% 데미지)
+    const ampMult = 1 + (player.miningPower / 10000);
+    return Math.round(baseDps * ampMult);
   }
 
   /**

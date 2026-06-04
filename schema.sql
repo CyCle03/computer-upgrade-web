@@ -87,6 +87,25 @@ DECLARE
 END;
 $$ LANGUAGE plpgsql; -- Placeholder to ensure rewrite success, will override below with correct code
 DROP FUNCTION IF EXISTS claim_daily_raid_reward(UUID, INT);
+CREATE OR REPLACE FUNCTION get_raid_cumulative_reward(p_floor INT)
+RETURNS INT AS $$
+BEGIN
+    RETURN CASE p_floor
+        WHEN 10 THEN 1000
+        WHEN 20 THEN 3000
+        WHEN 30 THEN 6000
+        WHEN 40 THEN 10000
+        WHEN 50 THEN 15000
+        WHEN 60 THEN 22000
+        WHEN 70 THEN 30000
+        WHEN 80 THEN 40000
+        WHEN 90 THEN 55000
+        WHEN 100 THEN 80000
+        ELSE 0
+    END;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION claim_daily_raid_reward(
     p_user_id UUID,
     p_current_floor INT
@@ -104,8 +123,9 @@ DECLARE
     v_highest_claimed_floor INT;
     v_current_sca_coins INT;
     v_coins_to_reward INT := 0;
-    v_floors_to_claim INT := 0;
-    v_coin_per_milestone INT := 5000; -- 10층당 지급할 기본 SCA 코인 수
+    v_base_reward INT := 0;
+    v_rebirth_stat INT := 0;
+    v_stat_mult NUMERIC := 1.0;
 BEGIN
     -- [검증 1] 입력받은 층수가 올바른 마일스톤 단위인지 체크 (10, 20, ..., 100)
     IF p_current_floor < 10 OR p_current_floor > 100 OR p_current_floor % 10 <> 0 THEN
@@ -163,10 +183,26 @@ BEGIN
         RETURN;
     END IF;
 
+    -- [환생수치 추가 연동] game_states 테이블에서 해당 유저의 rebirthStat 값 추출
+    BEGIN
+        SELECT ((state->>'sca_rebirthStat')::int)
+        INTO v_rebirth_stat
+        FROM game_states
+        WHERE user_id = p_user_id;
+    EXCEPTION WHEN OTHERS THEN
+        v_rebirth_stat := 0;
+    END;
+    
+    IF v_rebirth_stat IS NULL THEN
+        v_rebirth_stat := 0;
+    END IF;
+
+    -- 환생 수치 배율 연산 (10,000,000 당 +100% 보상 증폭)
+    v_stat_mult := 1.0 + (v_rebirth_stat::numeric / 10000000.0);
+
     -- [규칙 3] 중복 지급 방지 차분 계산
-    -- 예: 기존 80층 수령 상태에서 100층 클리어 시 -> (100 - 80) / 10 = 2회 분량 지급
-    v_floors_to_claim := (p_current_floor - v_highest_claimed_floor) / 10;
-    v_coins_to_reward := v_floors_to_claim * v_coin_per_milestone;
+    v_base_reward := get_raid_cumulative_reward(p_current_floor) - get_raid_cumulative_reward(v_highest_claimed_floor);
+    v_coins_to_reward := floor(v_base_reward::numeric * v_stat_mult);
 
     -- [재화 지급] SCA 코인 누적
     UPDATE permanent_currencies

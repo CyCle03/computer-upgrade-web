@@ -252,6 +252,7 @@
     { id: 'upgradeProb01', name: '강화 확률 +0.1%', cost: 30000, maxPurchases: 10 },
     { id: 'downloadSpeed10', name: '다운로드 속도 +10%', cost: 35000, maxPurchases: 10 },
     { id: 'gpuGradeUp', name: 'GPU 등급 상승', cost: 40000, maxPurchases: 3 },
+    { id: 'miningAmplifier', name: '채굴증폭기 강화 (채굴력 +500)', cost: 5000, maxPurchases: 130 },
   ];
 
   function getScaShopItemCost(item) {
@@ -269,6 +270,9 @@
       const from = GPU_GRADE_NAMES[cur];
       const to = GPU_GRADE_NAMES[cur + 1];
       return `GPU 등급: ${from} → ${to}`;
+    }
+    if (item.id === 'miningAmplifier') {
+      return `채굴증폭기 강화 (현재 채굴력: ${getMiningPower(scaUpgrades).toLocaleString()})`;
     }
     return item.name;
   }
@@ -1066,6 +1070,25 @@ function getPartLevel(part) {
     };
   }
 
+  function getMiningPower(scaUpgrades) {
+    const u = scaUpgrades || {};
+    return (u.miningAmplifier || 0) * 500;
+  }
+
+  const RAID_CUMULATIVE_REWARDS = {
+    0: 0,
+    10: 1000,
+    20: 3000,
+    30: 6000,
+    40: 10000,
+    50: 15000,
+    60: 22000,
+    70: 30000,
+    80: 40000,
+    90: 55000,
+    100: 80000
+  };
+
   global.OriginalMapGame = {
     MINERAL_PER_COIN, MANWON_MINERALS, parseSheetPrice, REBIRTH_MINERAL_CAP,
     GAME_SPEED_BASE, GAME_SPEED_MAX, GAME_SPEED_FRAME_REF,
@@ -1091,5 +1114,6 @@ function getPartLevel(part) {
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
     calcHuntIncomePerTick, calcWorkIncomePerTick, calcOptimalWorkUnits, toDownloadTargetSnapshot,
     createIntelCpu11InventoryItem,
+    getMiningPower, RAID_CUMULATIVE_REWARDS
   };
 })(typeof window !== 'undefined' ? window : globalThis);
