@@ -14,6 +14,7 @@ export interface RaidPlayer {
   currentHp: number;        // DDR 오류에 의한 HP Decay 적용용 실시간 HP
   isDead: boolean;           // 유닛 사망 상태 여부
   dpsContribution: number;   // 실시간 초당 DPS 기여량
+  miningPower: number;       // 채굴증폭기에 의한 채굴력
 }
 
 /**
@@ -36,6 +37,7 @@ export class RaidRoomState {
   public totalDps: number = 0;
 
   private timerInterval: NodeJS.Timeout | null = null;
+  private resetTimeout: NodeJS.Timeout | null = null;
   private onBroadcast: (state: any) => void;
   private onMilestoneCleared: MilestoneClearCallback;
 
@@ -48,7 +50,7 @@ export class RaidRoomState {
   /**
    * 플레이어 추가
    */
-  public addPlayer(socketId: string, userId: string, nickname: string, parts: ComputerParts) {
+  public addPlayer(socketId: string, userId: string, nickname: string, parts: ComputerParts, scaUpgrades?: any) {
     if (this.players.size >= 4) {
       throw new Error('방이 꽉 찼습니다. (최대 4인)');
     }
@@ -57,7 +59,8 @@ export class RaidRoomState {
     }
 
     // 하드웨어 사양 사전 계산
-    const specs = HardwareSimulator.calculateComputerSpecs(parts);
+    const specs = HardwareSimulator.calculateComputerSpecs(parts, scaUpgrades);
+    const miningPower = scaUpgrades ? (Number(scaUpgrades.miningAmplifier) || 0) * 500 : 0;
 
     const newPlayer: RaidPlayer = {
       socketId,
@@ -69,9 +72,10 @@ export class RaidRoomState {
       currentHp: specs.unitHp, // 초기 HP
       isDead: false,
       dpsContribution: 0,
+      miningPower,
     };
 
-    // 실시간 DPS 기여도 계산 (초당 공격 횟수 * 데미지 * 유닛수)
+    // 실시간 DPS 기여도 계산 (초당 공격 횟수 * 데미지 * 유닛수 * 채굴증폭기 배율)
     newPlayer.dpsContribution = this.calculatePlayerDps(newPlayer);
     this.players.set(socketId, newPlayer);
   }
@@ -121,15 +125,19 @@ export class RaidRoomState {
   }
 
   /**
-   * 개별 플레이어의 정상 DPS 연산
+   * 개별 플레이어의 정상 DPS 연산 (보스전 한정 채굴증폭기 보너스 가산)
    */
   private calculatePlayerDps(player: RaidPlayer): number {
     if (player.isDead) return 0;
     
     const { unitDamage, attackSpeedSec, unitLimit } = player.specs;
-    // DPS = (1초 / 공격주기) * 데미지 * 유닛수
+    // 기본 DPS = (1초 / 공격주기) * 데미지 * 유닛수
     const shotsPerSec = 1 / attackSpeedSec;
-    return Math.round(shotsPerSec * unitDamage * unitLimit);
+    const baseDps = Math.round(shotsPerSec * unitDamage * unitLimit);
+    
+    // 채굴증폭기(Mining Power)에 의한 데미지 증폭 (10,000 채굴력 당 +100% 데미지)
+    const ampMult = 1 + (player.miningPower / 10000);
+    return Math.round(baseDps * ampMult);
   }
 
   /**
@@ -191,6 +199,7 @@ export class RaidRoomState {
       this.status = 'lost';
       this.stopTimer();
       this.onBroadcast(this.getSummaryState('시간 제한이 초과되어 레이드에 패배하였습니다.'));
+      this.scheduleReset();
       return;
     }
 
@@ -245,6 +254,7 @@ export class RaidRoomState {
           this.status = 'won';
           this.stopTimer();
           this.onBroadcast(this.getSummaryState('축하합니다! 100층 보스 레이드 등반에 최종 성공하셨습니다.'));
+          this.scheduleReset();
           return;
         } else {
           // 다음 층 자동 진입 및 새로운 보스 HP 충전
@@ -271,10 +281,45 @@ export class RaidRoomState {
   }
 
   /**
+   * 레이드 종료 후 대기 상태로의 자동 리셋 예약
+   */
+  private scheduleReset() {
+    if (this.resetTimeout) {
+      clearTimeout(this.resetTimeout);
+    }
+    this.resetTimeout = setTimeout(() => {
+      this.resetToWaiting();
+    }, 7000); // 7초 후 대기실 복귀
+  }
+
+  /**
+   * 대기실(waiting) 상태 및 1층으로 복귀
+   */
+  private resetToWaiting() {
+    this.status = 'waiting';
+    this.currentFloor = 1;
+    this.timeLeft = 30;
+    this.bossMaxHp = 0;
+    this.bossCurrentHp = 0;
+    for (const player of this.players.values()) {
+      player.isReady = false;
+      player.isDead = false;
+      player.currentHp = player.specs.unitHp;
+      player.dpsContribution = this.calculatePlayerDps(player);
+    }
+    this.recalculateTotalDps();
+    this.onBroadcast(this.getSummaryState('이전 레이드가 종료되어 대기실 상태로 복귀했습니다.'));
+  }
+
+  /**
    * 레이드 강제 파괴/종료
    */
   public destroy() {
     this.stopTimer();
+    if (this.resetTimeout) {
+      clearTimeout(this.resetTimeout);
+      this.resetTimeout = null;
+    }
     this.players.clear();
   }
 

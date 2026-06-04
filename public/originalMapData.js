@@ -78,7 +78,7 @@
     { level: 11, variant: 'standard', name: 'DDR5-4800 (16GB)', cost: 0, prob: 0.05, clockMhz: 4800, capacityGb: 16, ddrGeneration: 'DDR5', attackSpeed: 20, perfPerUnit: 1500 },
     { level: 12, variant: 'standard', name: 'DDR5-5600 (16GB)', cost: 0, prob: 0.05, clockMhz: 5600, capacityGb: 16, ddrGeneration: 'DDR5', attackSpeed: 16, perfPerUnit: 2200 },
     { level: 13, variant: 'standard', name: 'DDR5-5600 (32GB)', cost: 0, prob: 0, clockMhz: 5600, capacityGb: 32, ddrGeneration: 'DDR5', attackSpeed: 16, perfPerUnit: 2200 },
-    { level: 13, variant: 'overclock', ocStep: 1, name: 'DDR5 OC-6400 (32GB)', cost: 0, prob: 0, clockMhz: 6400, capacityGb: 32, ddrGeneration: 'DDR5', attackSpeed: 12, perfPerUnit: 3000 },
+    { level: 13, variant: 'overclock', ocStep: 1, name: 'DDR5 OC-6000 (32GB)', cost: 0, prob: 0, clockMhz: 6000, capacityGb: 32, ddrGeneration: 'DDR5', attackSpeed: 12, perfPerUnit: 3000 },
     { level: 13, variant: 'overclock', ocStep: 2, name: 'DDR5 OC-7200 (32GB)', cost: 0, prob: 0, clockMhz: 7200, capacityGb: 32, ddrGeneration: 'DDR5', attackSpeed: 10, perfPerUnit: 4000 },
     { level: 13, variant: 'overclock', ocStep: 3, name: 'DDR5 OC-8000 (32GB)', cost: 0, prob: 0, clockMhz: 8000, capacityGb: 32, ddrGeneration: 'DDR5', attackSpeed: 8, perfPerUnit: 5000 },
   ];
@@ -87,21 +87,37 @@
     return RAM.filter((row) => (row.variant || 'standard') === 'standard');
   }
 
+  let _scaUpgradesRef = {};
+  function setScaUpgradesRef(ref) {
+    _scaUpgradesRef = ref || {};
+  }
+
   function getRamTierRow(part, level) {
     const lv = level != null ? level : ((part && part.level) || 1);
-    const variant = (part && part.ramVariant) || 'standard';
+    let variant = (part && part.ramVariant) || 'standard';
+    let step = part && part.ramOcStep;
+    let mhz = part && part.clockMhz;
+
+    // 장착된 RAM이 standard 상태일 때 영구 오버클럭 라이선스가 존재하면 오버클럭 스펙으로 치환
+    if (variant === 'standard') {
+      if (lv === 9 && _scaUpgradesRef.ddr4Overclocked) {
+        variant = 'overclock';
+      } else if (lv === 13 && _scaUpgradesRef.ddr5OverclockedStep > 0) {
+        variant = 'overclock';
+        step = _scaUpgradesRef.ddr5OverclockedStep;
+      }
+    }
+
     if (variant === 'overclock') {
       const ocRows = RAM.filter((row) => row.level === lv && row.variant === 'overclock');
       if (lv === 13 && ocRows.length) {
-        const mhz = part && part.clockMhz;
-        if (mhz) {
-          const byClock = ocRows.find((row) => row.clockMhz === mhz);
-          if (byClock) return byClock;
-        }
-        const step = part && part.ramOcStep;
         if (step) {
           const byStep = ocRows.find((row) => row.ocStep === step);
           if (byStep) return byStep;
+        }
+        if (mhz) {
+          const byClock = ocRows.find((row) => row.clockMhz === mhz);
+          if (byClock) return byClock;
         }
         return ocRows[0];
       }
@@ -243,15 +259,16 @@
   const REBIRTH_MINERAL_SCA_PER_10 = 500;
 
   const SCA_SHOP_ITEMS = [
-    { id: 'rebirthMineral500', name: '환생 시작 미네랄 +500', mineralBonus: 500, maxPurchases: 1 },
-    { id: 'rebirthMineralMax200', name: '환생 미네랄 +200', mineralBonus: 200, maxPurchases: 5 },
-    { id: 'rebirthMineralMax2000', name: '환생 미네랄 +2,000', mineralBonus: 2000, maxPurchases: 3 },
-    { id: 'rebirthMineralMax7500', name: '환생 미네랄 +7,500', mineralBonus: 7500, maxPurchases: 2 },
+    { id: 'rebirthMineral500', name: '환생 시작 미네랄 +500', mineralBonus: 500, maxPurchases: 2000 },
+    { id: 'rebirthMineralMax200', name: '환생 미네랄 +200', mineralBonus: 200, maxPurchases: 5000 },
+    { id: 'rebirthMineralMax2000', name: '환생 미네랄 +2,000', mineralBonus: 2000, maxPurchases: 500 },
+    { id: 'rebirthMineralMax7500', name: '환생 미네랄 +7,500', mineralBonus: 7500, maxPurchases: 134 },
     { id: 'huntIncome1', name: '사냥터 수입 +1%', cost: 12000, maxPurchases: 10 },
     { id: 'gameSpeed1', name: '게임 배속 +1프레임', cost: 25000, maxPurchases: 12 },
     { id: 'upgradeProb01', name: '강화 확률 +0.1%', cost: 30000, maxPurchases: 10 },
     { id: 'downloadSpeed10', name: '다운로드 속도 +10%', cost: 35000, maxPurchases: 10 },
     { id: 'gpuGradeUp', name: 'GPU 등급 상승', cost: 40000, maxPurchases: 3 },
+    { id: 'miningAmplifier', name: '채굴증폭기 강화 (채굴력 +500)', cost: 5000, maxPurchases: 130 },
   ];
 
   function getScaShopItemCost(item) {
@@ -269,6 +286,9 @@
       const from = GPU_GRADE_NAMES[cur];
       const to = GPU_GRADE_NAMES[cur + 1];
       return `GPU 등급: ${from} → ${to}`;
+    }
+    if (item.id === 'miningAmplifier') {
+      return `채굴증폭기 강화 (현재 채굴력: ${getMiningPower(scaUpgrades).toLocaleString()})`;
     }
     return item.name;
   }
@@ -1066,6 +1086,25 @@ function getPartLevel(part) {
     };
   }
 
+  function getMiningPower(scaUpgrades) {
+    const u = scaUpgrades || {};
+    return (u.miningAmplifier || 0) * 500;
+  }
+
+  const RAID_CUMULATIVE_REWARDS = {
+    0: 0,
+    10: 1000,
+    20: 3000,
+    30: 6000,
+    40: 10000,
+    50: 15000,
+    60: 22000,
+    70: 30000,
+    80: 40000,
+    90: 55000,
+    100: 80000
+  };
+
   global.OriginalMapGame = {
     MINERAL_PER_COIN, MANWON_MINERALS, parseSheetPrice, REBIRTH_MINERAL_CAP,
     GAME_SPEED_BASE, GAME_SPEED_MAX, GAME_SPEED_FRAME_REF,
@@ -1091,5 +1130,6 @@ function getPartLevel(part) {
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
     calcHuntIncomePerTick, calcWorkIncomePerTick, calcOptimalWorkUnits, toDownloadTargetSnapshot,
     createIntelCpu11InventoryItem,
+    getMiningPower, RAID_CUMULATIVE_REWARDS, setScaUpgradesRef
   };
 })(typeof window !== 'undefined' ? window : globalThis);

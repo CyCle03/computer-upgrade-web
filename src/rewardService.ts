@@ -2,7 +2,22 @@ import { pool } from './db';
 import { ClaimRewardResponse } from './types';
 
 // 10층당 지급할 기본 SCA 코인 수
-const COIN_PER_MILESTONE = 10;
+const COIN_PER_MILESTONE = 5000;
+
+// 각 마일스톤 도달 시의 누적 보상 도표 (10층 ~ 100층)
+const RAID_CUMULATIVE_REWARDS: Record<number, number> = {
+  0: 0,
+  10: 1000,
+  20: 3000,
+  30: 6000,
+  40: 10000,
+  50: 15000,
+  60: 22000,
+  70: 30000,
+  80: 40000,
+  90: 55000,
+  100: 80000
+};
 
 /**
  * 일일 마일스톤 보상 검증 및 지급 서비스 클래스
@@ -41,7 +56,7 @@ export class RewardService {
       // 2. [보안] 유저의 관련 데이터가 존재하지 않는 경우를 대비한 Upsert (초기화)
       await client.query(`
         INSERT INTO daily_raid_progresses (user_id, last_played_date, highest_claimed_floor)
-        VALUES ($1, CURRENT_DATE, 0)
+        VALUES ($1, (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date, 0)
         ON CONFLICT (user_id) DO NOTHING
       `, [userId]);
 
@@ -70,8 +85,18 @@ export class RewardService {
       let currentScaCoins = currencyRes.rows[0].sca_coins;
 
       // 4. [보안] 데이터베이스 서버 기준의 오늘 날짜 획득
-      const dateRes = await client.query('SELECT CURRENT_DATE::text AS today');
+      const dateRes = await client.query("SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date::text AS today");
       const todayStr = dateRes.rows[0].today; // 'YYYY-MM-DD' 포맷
+
+      // 4-1. 환생 수치 로드
+      const stateRes = await client.query(`
+        SELECT state FROM game_states WHERE user_id = $1
+      `, [userId]);
+      let rebirthStat = 0;
+      if (stateRes.rows.length > 0 && stateRes.rows[0].state) {
+        rebirthStat = Number(stateRes.rows[0].state.sca_rebirthStat) || 0;
+      }
+      const statMult = 1.0 + (rebirthStat / 10000000.0);
 
       // 5. [일일 리셋 처리] 날짜가 바뀌었다면 수령 최고 층수를 0으로 리셋하고 날짜 갱신
       if (lastPlayedDateStr !== todayStr) {
@@ -100,10 +125,8 @@ export class RewardService {
       }
 
       // 7. [차분 지급량 계산] 중복 지급 방지
-      // 예: 오늘 첫 트라이 80층 클리어 (0 -> 80층 분량 = 80개 지급)
-      // 두 번째 트라이 다른 방 100층 클리어 (80 -> 100층 분량 = 20개 지급)
-      const floorsToClaim = (currentFloor - highestClaimedFloor) / 10;
-      const coinsToReward = floorsToClaim * COIN_PER_MILESTONE;
+      const baseReward = (RAID_CUMULATIVE_REWARDS[currentFloor] || 0) - (RAID_CUMULATIVE_REWARDS[highestClaimedFloor] || 0);
+      const coinsToReward = Math.floor(baseReward * statMult);
 
       // 8. [재화 누적] permanent_currencies 테이블 갱신
       const updatedCurrencyRes = await client.query(`

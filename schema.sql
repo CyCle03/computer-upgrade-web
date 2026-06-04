@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS permanent_currencies (
 -- highest_claimed_floor는 오늘 이미 보상을 수령한 최고 층수로, 0에서 100 사이의 10의 배수여야 함.
 CREATE TABLE IF NOT EXISTS daily_raid_progresses (
     user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    last_played_date DATE DEFAULT CURRENT_DATE NOT NULL,
+    last_played_date DATE DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date NOT NULL,
     highest_claimed_floor INTEGER DEFAULT 0 NOT NULL,
     CONSTRAINT chk_highest_floor CHECK (
         highest_claimed_floor >= 0 AND 
@@ -83,7 +83,49 @@ DECLARE
     v_current_sca_coins INT;
     v_coins_to_reward INT := 0;
     v_floors_to_claim INT := 0;
-    v_coin_per_milestone INT := 10; -- 10층당 지급할 기본 SCA 코인 수
+    v_coin_per_milestone INT := 5000; -- 10층당 지급할 기본 SCA 코인 수
+END;
+$$ LANGUAGE plpgsql; -- Placeholder to ensure rewrite success, will override below with correct code
+DROP FUNCTION IF EXISTS claim_daily_raid_reward(UUID, INT);
+CREATE OR REPLACE FUNCTION get_raid_cumulative_reward(p_floor INT)
+RETURNS INT AS $$
+BEGIN
+    RETURN CASE p_floor
+        WHEN 10 THEN 1000
+        WHEN 20 THEN 3000
+        WHEN 30 THEN 6000
+        WHEN 40 THEN 10000
+        WHEN 50 THEN 15000
+        WHEN 60 THEN 22000
+        WHEN 70 THEN 30000
+        WHEN 80 THEN 40000
+        WHEN 90 THEN 55000
+        WHEN 100 THEN 80000
+        ELSE 0
+    END;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION claim_daily_raid_reward(
+    p_user_id UUID,
+    p_current_floor INT
+)
+RETURNS TABLE (
+    success BOOLEAN,
+    message TEXT,
+    claimed_coins INT,
+    new_highest_floor INT,
+    current_total_coins INT
+) AS $$
+DECLARE
+    v_today DATE;
+    v_last_played_date DATE;
+    v_highest_claimed_floor INT;
+    v_current_sca_coins INT;
+    v_coins_to_reward INT := 0;
+    v_base_reward INT := 0;
+    v_rebirth_stat INT := 0;
+    v_stat_mult NUMERIC := 1.0;
 BEGIN
     -- [검증 1] 입력받은 층수가 올바른 마일스톤 단위인지 체크 (10, 20, ..., 100)
     IF p_current_floor < 10 OR p_current_floor > 100 OR p_current_floor % 10 <> 0 THEN
@@ -91,8 +133,8 @@ BEGIN
         RETURN;
     END IF;
 
-    -- [보안 1] 클라이언트 시간이 아닌, 서버 데이터베이스 기준의 현재 날짜를 가져옴
-    v_today := CURRENT_DATE;
+    -- [보안 1] 클라이언트 시간이 아닌, KST 한국 표준시 기준의 현재 날짜를 가져옴
+    v_today := (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date;
 
     -- [보안 2] Race Condition 및 재화 복사 방지를 위해 관련 행들에 FOR UPDATE 로우 락 설정
     -- 유저의 일일 레이드 진행 상황 및 재화 행이 존재하지 않는 경우 최초 삽입(Upsert) 진행
@@ -141,10 +183,26 @@ BEGIN
         RETURN;
     END IF;
 
+    -- [환생수치 추가 연동] game_states 테이블에서 해당 유저의 rebirthStat 값 추출
+    BEGIN
+        SELECT ((state->>'sca_rebirthStat')::int)
+        INTO v_rebirth_stat
+        FROM game_states
+        WHERE user_id = p_user_id;
+    EXCEPTION WHEN OTHERS THEN
+        v_rebirth_stat := 0;
+    END;
+    
+    IF v_rebirth_stat IS NULL THEN
+        v_rebirth_stat := 0;
+    END IF;
+
+    -- 환생 수치 배율 연산 (10,000,000 당 +100% 보상 증폭)
+    v_stat_mult := 1.0 + (v_rebirth_stat::numeric / 10000000.0);
+
     -- [규칙 3] 중복 지급 방지 차분 계산
-    -- 예: 기존 80층 수령 상태에서 100층 클리어 시 -> (100 - 80) / 10 = 2회 분량 지급
-    v_floors_to_claim := (p_current_floor - v_highest_claimed_floor) / 10;
-    v_coins_to_reward := v_floors_to_claim * v_coin_per_milestone;
+    v_base_reward := get_raid_cumulative_reward(p_current_floor) - get_raid_cumulative_reward(v_highest_claimed_floor);
+    v_coins_to_reward := floor(v_base_reward::numeric * v_stat_mult);
 
     -- [재화 지급] SCA 코인 누적
     UPDATE permanent_currencies

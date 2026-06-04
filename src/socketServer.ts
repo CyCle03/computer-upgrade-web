@@ -61,7 +61,7 @@ export function setupSocketServer(httpServer: HttpServer) {
      * 방 참여 이벤트
      * userId·nickname은 세션 토큰·DB에서 확인한다 (클라이언트 값 신뢰하지 않음).
      */
-    socket.on('joinRoom', async ({ roomId, parts }: { roomId: string; parts: ComputerParts }) => {
+    socket.on('joinRoom', async ({ roomId, parts, scaUpgrades }: { roomId: string; parts: ComputerParts; scaUpgrades?: any }) => {
       try {
         if (!roomId || !parts) {
           socket.emit('error_message', '방 입장 정보가 누락되었습니다.');
@@ -112,8 +112,7 @@ export function setupSocketServer(httpServer: HttpServer) {
         }
 
         const room = activeRooms.get(roomId)!;
-
-        room.addPlayer(socket.id, userId, nickname, parts);
+        room.addPlayer(socket.id, userId, nickname, parts, scaUpgrades);
         socket.join(roomId);
         currentRoomId = roomId;
 
