@@ -78,7 +78,7 @@
     { level: 11, variant: 'standard', name: 'DDR5-4800 (16GB)', cost: 0, prob: 0.05, clockMhz: 4800, capacityGb: 16, ddrGeneration: 'DDR5', attackSpeed: 20, perfPerUnit: 1500 },
     { level: 12, variant: 'standard', name: 'DDR5-5600 (16GB)', cost: 0, prob: 0.05, clockMhz: 5600, capacityGb: 16, ddrGeneration: 'DDR5', attackSpeed: 16, perfPerUnit: 2200 },
     { level: 13, variant: 'standard', name: 'DDR5-5600 (32GB)', cost: 0, prob: 0, clockMhz: 5600, capacityGb: 32, ddrGeneration: 'DDR5', attackSpeed: 16, perfPerUnit: 2200 },
-    { level: 13, variant: 'overclock', ocStep: 1, name: 'DDR5 OC-6400 (32GB)', cost: 0, prob: 0, clockMhz: 6400, capacityGb: 32, ddrGeneration: 'DDR5', attackSpeed: 12, perfPerUnit: 3000 },
+    { level: 13, variant: 'overclock', ocStep: 1, name: 'DDR5 OC-6000 (32GB)', cost: 0, prob: 0, clockMhz: 6000, capacityGb: 32, ddrGeneration: 'DDR5', attackSpeed: 12, perfPerUnit: 3000 },
     { level: 13, variant: 'overclock', ocStep: 2, name: 'DDR5 OC-7200 (32GB)', cost: 0, prob: 0, clockMhz: 7200, capacityGb: 32, ddrGeneration: 'DDR5', attackSpeed: 10, perfPerUnit: 4000 },
     { level: 13, variant: 'overclock', ocStep: 3, name: 'DDR5 OC-8000 (32GB)', cost: 0, prob: 0, clockMhz: 8000, capacityGb: 32, ddrGeneration: 'DDR5', attackSpeed: 8, perfPerUnit: 5000 },
   ];
@@ -87,21 +87,37 @@
     return RAM.filter((row) => (row.variant || 'standard') === 'standard');
   }
 
+  let _scaUpgradesRef = {};
+  function setScaUpgradesRef(ref) {
+    _scaUpgradesRef = ref || {};
+  }
+
   function getRamTierRow(part, level) {
     const lv = level != null ? level : ((part && part.level) || 1);
-    const variant = (part && part.ramVariant) || 'standard';
+    let variant = (part && part.ramVariant) || 'standard';
+    let step = part && part.ramOcStep;
+    let mhz = part && part.clockMhz;
+
+    // 장착된 RAM이 standard 상태일 때 영구 오버클럭 라이선스가 존재하면 오버클럭 스펙으로 치환
+    if (variant === 'standard') {
+      if (lv === 9 && _scaUpgradesRef.ddr4Overclocked) {
+        variant = 'overclock';
+      } else if (lv === 13 && _scaUpgradesRef.ddr5OverclockedStep > 0) {
+        variant = 'overclock';
+        step = _scaUpgradesRef.ddr5OverclockedStep;
+      }
+    }
+
     if (variant === 'overclock') {
       const ocRows = RAM.filter((row) => row.level === lv && row.variant === 'overclock');
       if (lv === 13 && ocRows.length) {
-        const mhz = part && part.clockMhz;
-        if (mhz) {
-          const byClock = ocRows.find((row) => row.clockMhz === mhz);
-          if (byClock) return byClock;
-        }
-        const step = part && part.ramOcStep;
         if (step) {
           const byStep = ocRows.find((row) => row.ocStep === step);
           if (byStep) return byStep;
+        }
+        if (mhz) {
+          const byClock = ocRows.find((row) => row.clockMhz === mhz);
+          if (byClock) return byClock;
         }
         return ocRows[0];
       }
@@ -1114,6 +1130,6 @@ function getPartLevel(part) {
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
     calcHuntIncomePerTick, calcWorkIncomePerTick, calcOptimalWorkUnits, toDownloadTargetSnapshot,
     createIntelCpu11InventoryItem,
-    getMiningPower, RAID_CUMULATIVE_REWARDS
+    getMiningPower, RAID_CUMULATIVE_REWARDS, setScaUpgradesRef
   };
 })(typeof window !== 'undefined' ? window : globalThis);

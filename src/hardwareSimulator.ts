@@ -52,7 +52,16 @@ export class HardwareSimulator {
       throw new Error('[HardwareSimulator] OriginalMapGame is not loaded.');
     }
 
-    const { cpu, gpu, ram, cooler, motherboard, storage } = parts;
+    const { cpu, gpu, cooler, motherboard, storage } = parts;
+    let ram = parts.ram;
+
+    if (ram && scaUpgrades) {
+      if (ram.level === 9 && scaUpgrades.ddr4Overclocked) {
+        ram = OMG.applyRamOverclock(ram);
+      } else if (ram.level === 13 && scaUpgrades.ddr5OverclockedStep > 0) {
+        ram = OMG.applyRamOverclock(ram, scaUpgrades.ddr5OverclockedStep);
+      }
+    }
 
     // ------------------------------------------------------------------------
     // 1단계: 페널티 및 오류 감지 (물리 조건 검증)
