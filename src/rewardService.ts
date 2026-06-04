@@ -2,7 +2,7 @@ import { pool } from './db';
 import { ClaimRewardResponse } from './types';
 
 // 10층당 지급할 기본 SCA 코인 수
-const COIN_PER_MILESTONE = 10;
+const COIN_PER_MILESTONE = 5000;
 
 /**
  * 일일 마일스톤 보상 검증 및 지급 서비스 클래스

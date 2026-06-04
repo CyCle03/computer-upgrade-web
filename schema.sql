@@ -83,7 +83,7 @@ DECLARE
     v_current_sca_coins INT;
     v_coins_to_reward INT := 0;
     v_floors_to_claim INT := 0;
-    v_coin_per_milestone INT := 10; -- 10층당 지급할 기본 SCA 코인 수
+    v_coin_per_milestone INT := 5000; -- 10층당 지급할 기본 SCA 코인 수
 END;
 $$ LANGUAGE plpgsql; -- Placeholder to ensure rewrite success, will override below with correct code
 DROP FUNCTION IF EXISTS claim_daily_raid_reward(UUID, INT);
@@ -105,7 +105,7 @@ DECLARE
     v_current_sca_coins INT;
     v_coins_to_reward INT := 0;
     v_floors_to_claim INT := 0;
-    v_coin_per_milestone INT := 10; -- 10층당 지급할 기본 SCA 코인 수
+    v_coin_per_milestone INT := 5000; -- 10층당 지급할 기본 SCA 코인 수
 BEGIN
     -- [검증 1] 입력받은 층수가 올바른 마일스톤 단위인지 체크 (10, 20, ..., 100)
     IF p_current_floor < 10 OR p_current_floor > 100 OR p_current_floor % 10 <> 0 THEN
