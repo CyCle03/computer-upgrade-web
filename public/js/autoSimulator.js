@@ -1,0 +1,561 @@
+/**
+ * AUTO · 방치 수입 시뮬레이터
+ * React setState 없이 메모리에서 돌린 뒤 최종 상태만 반환한다.
+ */
+(function (global) {
+  const OMG = global.OriginalMapGame;
+  if (!OMG) return;
+
+  const MAX_INCOME_TICKS = 120000;
+  const DEFAULT_MAX_AUTO_TICKS = 50000;
+
+  function partMatchesBuyMeta(part, type, buyMeta) {
+    if (!part || part.type !== type) return false;
+    if (type === 'cpu') return (part.manufacturer || 'Intel') === (buyMeta.manufacturer || 'Intel');
+    if (type === 'cooler') return (part.coolerKind || 'air') === (buyMeta.coolerKind || 'air');
+    if (type === 'storage') {
+      const kind = part.storageKind || (part.storageType === 'SSD' ? 'nvme' : 'hdd');
+      return kind === (buyMeta.storageKind || 'hdd');
+    }
+    return true;
+  }
+
+  function buildBuyMetaForVariant(type, variantKey) {
+    if (type === 'cpu') return { manufacturer: variantKey };
+    if (type === 'cooler') return { coolerKind: variantKey };
+    if (type === 'storage') return { storageKind: variantKey };
+    return {};
+  }
+
+  function getComponentBuyMeta(ctx, type) {
+    return {
+      type,
+      manufacturer: type === 'cpu' ? ctx.cpuBuyManufacturer : undefined,
+      coolerKind: type === 'cooler' ? ctx.coolerBuyKind : undefined,
+      storageKind: type === 'storage' ? ctx.storageBuyKind : undefined,
+    };
+  }
+
+  function getAutoBuyLevel(type, goal, buyMeta) {
+    const levels = OMG.getPurchasableLevels(type, buyMeta);
+    if (!levels.length) return null;
+    const target = goal || 1;
+    const below = levels.filter((lv) => lv < target);
+    if (below.length) return Math.max(...below);
+    if (levels.includes(target)) return target;
+    return Math.min(...levels);
+  }
+
+  function getAutoJobs(ctx) {
+    return [
+      { type: 'cpu', variantKey: 'Intel', active: ctx.autoBuyCpuByMfr && ctx.autoBuyCpuByMfr.Intel, label: 'Intel CPU' },
+      { type: 'cpu', variantKey: 'AMD', active: ctx.autoBuyCpuByMfr && ctx.autoBuyCpuByMfr.AMD, label: 'AMD CPU' },
+      { type: 'gpu', variantKey: null, active: ctx.autoBuyGpu, label: 'GPU' },
+      { type: 'ram', variantKey: null, active: ctx.autoBuyRam, label: 'RAM' },
+      { type: 'cooler', variantKey: 'air', active: ctx.autoBuyCoolerByKind && ctx.autoBuyCoolerByKind.air, label: '공랭' },
+      { type: 'cooler', variantKey: 'water', active: ctx.autoBuyCoolerByKind && ctx.autoBuyCoolerByKind.water, label: '수랭' },
+      { type: 'storage', variantKey: 'hdd', active: ctx.autoBuyStorageByKind && ctx.autoBuyStorageByKind.hdd, label: 'HDD' },
+      { type: 'storage', variantKey: 'nvme', active: ctx.autoBuyStorageByKind && ctx.autoBuyStorageByKind.nvme, label: 'NVMe' },
+    ];
+  }
+
+  function disableAutoVariant(ctx, type, variantKey, message) {
+    if (type === 'cpu') ctx.autoBuyCpuByMfr = { ...ctx.autoBuyCpuByMfr, [variantKey]: false };
+    else if (type === 'cooler') ctx.autoBuyCoolerByKind = { ...ctx.autoBuyCoolerByKind, [variantKey]: false };
+    else if (type === 'storage') ctx.autoBuyStorageByKind = { ...ctx.autoBuyStorageByKind, [variantKey]: false };
+    else if (type === 'gpu') ctx.autoBuyGpu = false;
+    else if (type === 'ram') ctx.autoBuyRam = false;
+    if (message) ctx.logs.push(message);
+  }
+
+  function simBuy(ctx, type, level, buyMeta) {
+    const costM = OMG.getShopTierCostMinerals(type, level, buyMeta);
+    if (ctx.minerals < costM) return false;
+    ctx.minerals -= costM;
+    ctx.inventory.push(OMG.buildInventoryPart(type, level, buyMeta));
+    ctx.stats.buys += 1;
+    return true;
+  }
+
+  function simUpgrade(ctx, partId) {
+    const idx = ctx.inventory.findIndex((p) => p.id === partId);
+    if (idx < 0) return false;
+    const part = ctx.inventory[idx];
+    const prob = OMG.getUpgradeProbability(part.type, part.level, part, ctx.probBonusRate || 0);
+    if (Math.random() <= prob) {
+      ctx.inventory[idx] = OMG.applyTierStats(part, part.level + 1);
+      ctx.stats.upgrades += 1;
+    } else {
+      ctx.inventory.splice(idx, 1);
+      ctx.stats.explosions += 1;
+    }
+    ctx.stats.autoActions += 1;
+    return true;
+  }
+
+  /** AUTO 1스텝 (강화 우선 → 구매). opts.upgradesOnly 이면 구매 생략 */
+  function simulateOneAutoStep(ctx, opts) {
+    if (ctx.isUpgrading) return false;
+    const upgradesOnly = opts && opts.upgradesOnly;
+
+    let anyActive = false;
+    let waitingForMinerals = false;
+
+    for (const job of getAutoJobs(ctx)) {
+      if (!job.active) continue;
+      anyActive = true;
+      const { type, variantKey, label } = job;
+      const buyMeta = variantKey != null
+        ? buildBuyMetaForVariant(type, variantKey)
+        : getComponentBuyMeta(ctx, type);
+      const goalVal = ctx.autoTargetLevels[type];
+      const goal = variantKey != null && goalVal && typeof goalVal === 'object'
+        ? (goalVal[variantKey] || 1)
+        : (typeof goalVal === 'number' ? goalVal : 1);
+      const levels = OMG.getPurchasableLevels(type, buyMeta);
+      if (!levels.length) continue;
+
+      const buyLevel = getAutoBuyLevel(type, goal, buyMeta);
+      const owned = ctx.inventory.filter((p) => partMatchesBuyMeta(p, type, buyMeta));
+      const maxOwnedLevel = owned.length ? Math.max(...owned.map((p) => p.level)) : 0;
+      const upgradeTarget = owned
+        .filter((p) => p.level < goal && p.level < OMG.getMaxLevel(type, p))
+        .sort((a, b) => b.level - a.level)[0];
+      const needsShopBuy = buyLevel != null && (owned.length === 0 || maxOwnedLevel < buyLevel);
+
+      if (buyLevel == null && owned.length === 0) {
+        disableAutoVariant(ctx, type, variantKey, `⚠️ [AUTO] ${label} 직접 구매 가능한 강 없음 → 중단`);
+        continue;
+      }
+
+      if (upgradeTarget) {
+        simUpgrade(ctx, upgradeTarget.id);
+        return true;
+      }
+
+      if (upgradesOnly) {
+        if (!needsShopBuy) {
+          disableAutoVariant(ctx, type, variantKey, `🎉 [AUTO] ${label} 목표 ${goal}강 달성`);
+        }
+        continue;
+      }
+
+      if (needsShopBuy) {
+        if (simBuy(ctx, type, buyLevel, buyMeta)) return true;
+        waitingForMinerals = true;
+        continue;
+      }
+
+      disableAutoVariant(ctx, type, variantKey, `🎉 [AUTO] ${label} 목표 ${goal}강 달성`);
+    }
+
+    if (!anyActive) return false;
+    if (waitingForMinerals) return false;
+    return false;
+  }
+
+  function cloneInventory(inv) {
+    return JSON.parse(JSON.stringify(inv || []));
+  }
+
+  /** 해당 job 부품만 새 인벤으로 교체 (다른 부품 유지) */
+  function mergeJobInventory(oldInv, newInv, type, buyMeta) {
+    const others = oldInv.filter((p) => !partMatchesBuyMeta(p, type, buyMeta));
+    const jobItems = newInv.filter((p) => partMatchesBuyMeta(p, type, buyMeta));
+    return others.concat(jobItems);
+  }
+
+  function getJobUpgradeTarget(inv, type, buyMeta, goal) {
+    return inv
+      .filter((p) => partMatchesBuyMeta(p, type, buyMeta) && p.level < goal && p.level < OMG.getMaxLevel(type, p))
+      .sort((a, b) => b.level - a.level)[0];
+  }
+
+  function resolveJobContext(ctx, job) {
+    const { type, variantKey, label } = job;
+    const buyMeta = variantKey != null
+      ? buildBuyMetaForVariant(type, variantKey)
+      : getComponentBuyMeta(ctx, type);
+    const goalVal = ctx.autoTargetLevels[type];
+    const goal = variantKey != null && goalVal && typeof goalVal === 'object'
+      ? (goalVal[variantKey] || 1)
+      : (typeof goalVal === 'number' ? goalVal : 1);
+    const levels = OMG.getPurchasableLevels(type, buyMeta);
+    const buyLevel = levels.length ? getAutoBuyLevel(type, goal, buyMeta) : null;
+    const buyCost = buyLevel != null ? OMG.getShopTierCostMinerals(type, buyLevel, buyMeta) : 0;
+    return { type, variantKey, label, buyMeta, goal, buyLevel, buyCost };
+  }
+
+  function needsShopBuyForJob(inv, buyLevel, type, buyMeta) {
+    const owned = inv.filter((p) => partMatchesBuyMeta(p, type, buyMeta));
+    const maxOwnedLevel = owned.length ? Math.max(...owned.map((p) => p.level)) : 0;
+    return buyLevel != null && (owned.length === 0 || maxOwnedLevel < buyLevel);
+  }
+
+  function isJobGoalReached(inv, type, buyMeta, goal) {
+    const owned = inv.filter((p) => partMatchesBuyMeta(p, type, buyMeta));
+    if (!owned.length) return false;
+    return owned.some((p) => p.level >= goal);
+  }
+
+  /**
+   * 한 job에 대해 최대 maxAttempts번 강화(＋필요 시 구매)를 메모리에서 시뮬.
+   * - 강화 1회라도 성공: 그 시점까지 쓴 구매비만 차감, 인벤 반영 후 종료
+   * - 전부 실패: 시도한 구매비 전부 차감, 파괴된 상태 반영
+   * (강화 자체는 미네랄 0, 구매만 미네랄 소모)
+   */
+  function simulateJobUpgradeBatch(ctx, job, maxAttempts) {
+    if (ctx.isUpgrading) return { success: false };
+
+    const jc = resolveJobContext(ctx, job);
+    const { type, variantKey, label, buyMeta, goal, buyLevel, buyCost } = jc;
+
+    if (!OMG.getPurchasableLevels(type, buyMeta).length) return { success: false };
+
+    if (buyLevel == null && !ctx.inventory.some((p) => partMatchesBuyMeta(p, type, buyMeta))) {
+      disableAutoVariant(ctx, type, variantKey, `⚠️ [AUTO] ${label} 직접 구매 가능한 강 없음 → 중단`);
+      return { success: false };
+    }
+
+    if (isJobGoalReached(ctx.inventory, type, buyMeta, goal)) {
+      disableAutoVariant(ctx, type, variantKey, `🎉 [AUTO] ${label} 목표 ${goal}강 달성`);
+      return { success: true, goalReached: true };
+    }
+
+    const cap = Math.max(1, Math.min(maxAttempts || 100, 500));
+    let minerals = ctx.minerals;
+    let inv = cloneInventory(ctx.inventory);
+    let spent = 0;
+    let batchBuys = 0;
+    let batchUpgrades = 0;
+    let batchExplosions = 0;
+    let hadSuccess = false;
+
+    for (let attempt = 0; attempt < cap; attempt += 1) {
+      if (isJobGoalReached(inv, type, buyMeta, goal)) {
+        hadSuccess = true;
+        break;
+      }
+
+      let target = getJobUpgradeTarget(inv, type, buyMeta, goal);
+
+      if (!target) {
+        if (!needsShopBuyForJob(inv, buyLevel, type, buyMeta)) break;
+        if (minerals < buyCost) break;
+        minerals -= buyCost;
+        spent += buyCost;
+        batchBuys += 1;
+        inv.push(OMG.buildInventoryPart(type, buyLevel, buyMeta));
+        target = inv[inv.length - 1];
+      }
+
+      if (!target || target.level >= goal) {
+        if (target && target.level >= goal) hadSuccess = true;
+        break;
+      }
+
+      const idx = inv.findIndex((p) => p.id === target.id);
+      if (idx < 0) continue;
+
+      const prob = OMG.getUpgradeProbability(target.type, target.level, target, ctx.probBonusRate || 0);
+      if (Math.random() <= prob) {
+        inv[idx] = OMG.applyTierStats(target, target.level + 1);
+        batchUpgrades += 1;
+        hadSuccess = true;
+        if (inv[idx].level >= goal) {
+          disableAutoVariant(ctx, type, variantKey, `🎉 [AUTO] ${label} 목표 ${goal}강 달성`);
+          break;
+        }
+        continue;
+      }
+
+      inv.splice(idx, 1);
+      batchExplosions += 1;
+    }
+
+    const changed = batchBuys + batchUpgrades + batchExplosions > 0;
+    if (changed) {
+      if (hadSuccess) {
+        ctx.minerals -= spent;
+      } else if (spent > 0) {
+        ctx.minerals -= spent;
+      }
+      ctx.inventory = mergeJobInventory(ctx.inventory, inv, type, buyMeta);
+    }
+
+    if (batchBuys > 0) ctx.stats.buys += batchBuys;
+    if (batchUpgrades > 0) ctx.stats.upgrades += batchUpgrades;
+    if (batchExplosions > 0) ctx.stats.explosions += batchExplosions;
+
+    return { success: hadSuccess, spent, upgrades: batchUpgrades, explosions: batchExplosions, buys: batchBuys };
+  }
+
+  /**
+   * tick 1회 AUTO: 활성 job마다 배치 강화 시뮬 (기본 최대 100회).
+   */
+  function simulateAutoPerTick(ctx, options) {
+    if (ctx.isUpgrading || !hasActiveAuto(ctx)) return;
+
+    const maxAttempts = (options && options.maxBatchAttempts) || 100;
+    const mineralBudget = ctx.minerals;
+
+    for (const job of getAutoJobs(ctx)) {
+      if (!job.active) continue;
+      const jc = resolveJobContext(ctx, job);
+      if (jc.buyCost > 0 && mineralBudget < jc.buyCost && !getJobUpgradeTarget(ctx.inventory, jc.type, jc.buyMeta, jc.goal)) {
+        continue;
+      }
+      simulateJobUpgradeBatch(ctx, job, maxAttempts);
+    }
+  }
+
+  function calcWorkHuntIncomePerTick(ctx) {
+    const workEarn = OMG.calcWorkIncomePerTick(
+      ctx.workParts,
+      ctx.workTaskIndex,
+      ctx.specs.penalties.mineralMultiplier,
+      ctx.rebirthIncomeMult,
+      ctx.incomeBonusRate,
+      ctx.effectiveUnitLimit,
+      ctx.effectiveWorkUnits
+    );
+    let total = workEarn > 0 ? workEarn : 0;
+    if (!ctx.isDownloading) {
+      const huntEarn = OMG.calcHuntIncomePerTick(
+        ctx.workParts,
+        ctx.workTaskIndex,
+        OMG.getEffectiveUnlockedGameIndex(ctx.unlockedGameIndex),
+        ctx.incomeBonusRate,
+        false,
+        ctx.effectiveUnitLimit,
+        ctx.effectiveWorkUnits
+      );
+      if (huntEarn > 0) total += huntEarn;
+    }
+    return total;
+  }
+
+  function hasActiveAuto(ctx) {
+    const c = ctx.autoBuyCpuByMfr || {};
+    const cl = ctx.autoBuyCoolerByKind || {};
+    const st = ctx.autoBuyStorageByKind || {};
+    return !!(ctx.autoBuyGpu || ctx.autoBuyRam || c.Intel || c.AMD
+      || cl.air || cl.water || st.hdd || st.nvme);
+  }
+
+  /** elapsedMs 만큼 수입만 반영 (AUTO 간격 없음). 추가된 미네랄량 반환 */
+  function applyIncomeOnly(ctx, elapsedMs) {
+    if (elapsedMs <= 0) return 0;
+    let gained = 0;
+
+    if (ctx.isPartyHunting && OMG.PARTY_HUNTING_TIERS[ctx.partyHuntingTier]) {
+      const tier = OMG.PARTY_HUNTING_TIERS[ctx.partyHuntingTier];
+      const partyTickMs = OMG.calcGameSpeedTickMs(ctx.scaUpgrades || {}, 3000);
+      let partyRem = (ctx.remParty || 0) + elapsedMs;
+      const partyConsumed = OMG.consumeElapsedTicks(partyRem, partyTickMs, MAX_INCOME_TICKS);
+      ctx.remParty = partyConsumed.remainderMs;
+      if (partyConsumed.ticks > 0) {
+        const m = Math.round(tier.mineralPerTick * (1 + (ctx.incomeBonusRate || 0))) * partyConsumed.ticks;
+        ctx.minerals += m;
+        ctx.scaCoinsGain = (ctx.scaCoinsGain || 0) + tier.scaCoins * partyConsumed.ticks;
+        ctx.stats.incomeTicks += partyConsumed.ticks;
+        gained += m;
+      }
+    } else {
+      const incomeTickMs = OMG.calcIncomeEventIntervalMs(ctx.scaUpgrades || {}, ctx.ramAttackFrames);
+      let incomeRem = (ctx.remWorkHunt || 0) + elapsedMs;
+      const incomeConsumed = OMG.consumeElapsedTicks(incomeRem, incomeTickMs, MAX_INCOME_TICKS);
+      ctx.remWorkHunt = incomeConsumed.remainderMs;
+      if (incomeConsumed.ticks > 0) {
+        const perIncome = calcWorkHuntIncomePerTick(ctx);
+        if (perIncome > 0) {
+          const add = perIncome * incomeConsumed.ticks;
+          ctx.minerals += add;
+          ctx.stats.incomeTicks += incomeConsumed.ticks;
+          gained += add;
+        }
+      }
+    }
+    return gained;
+  }
+
+  /**
+   * 일반 게임 tick: 수입 + AUTO 1라운드 (무료 강화 배치 + 구매 1건까지).
+   */
+  function simulateGameTick(ctx, elapsedMs, options) {
+    if (!ctx.stats) {
+      ctx.stats = { incomeMinerals: 0, incomeTicks: 0, autoActions: 0, buys: 0, upgrades: 0, explosions: 0 };
+    }
+    if (!ctx.logs) ctx.logs = [];
+    ctx.stats.incomeMinerals += applyIncomeOnly(ctx, elapsedMs);
+    if (hasActiveAuto(ctx) && !(options && options.skipAuto)) {
+      simulateAutoPerTick(ctx, options);
+    }
+    ctx.stats.autoActions = ctx.stats.buys + ctx.stats.upgrades + ctx.stats.explosions;
+    return ctx;
+  }
+
+  /**
+   * 탭 복귀 등 장시간 방치: 구간별 수입 후 AUTO 라운드를 auto 간격만큼 반복.
+   */
+  function simulateBackgroundCatchUp(ctx, elapsedMs, options) {
+    if (!ctx.stats) {
+      ctx.stats = { incomeMinerals: 0, incomeTicks: 0, autoActions: 0, buys: 0, upgrades: 0, explosions: 0 };
+    }
+    if (!ctx.logs) ctx.logs = [];
+    if (elapsedMs <= 0) return ctx;
+
+    const chunkMs = (options && options.chunkMs) || 15000;
+    const autoTickMs = OMG.calcAutoLoopIntervalMs(ctx.scaUpgrades || {});
+    let left = elapsedMs;
+
+    while (left > 0) {
+      const chunk = Math.min(left, chunkMs);
+      ctx.stats.incomeMinerals += applyIncomeOnly(ctx, chunk);
+      if (hasActiveAuto(ctx)) {
+        const rounds = Math.min(Math.max(1, Math.floor(chunk / autoTickMs)), 800);
+        for (let i = 0; i < rounds; i += 1) {
+          simulateAutoPerTick(ctx, options);
+        }
+      }
+      left -= chunk;
+    }
+    ctx.stats.autoActions = ctx.stats.buys + ctx.stats.upgrades + ctx.stats.explosions;
+    return ctx;
+  }
+
+  /**
+   * @deprecated 방치 전용 — simulateBackgroundCatchUp 또는 simulateGameTick 사용
+   */
+  function simulateIdleElapsed(ctx, elapsedMs, options) {
+    if (!ctx.stats) {
+      ctx.stats = { incomeMinerals: 0, incomeTicks: 0, autoActions: 0, buys: 0, upgrades: 0, explosions: 0 };
+    }
+    if (!ctx.logs) ctx.logs = [];
+    if (elapsedMs <= 0) return ctx;
+
+    const maxAutoTicks = (options && options.maxAutoTicks) || DEFAULT_MAX_AUTO_TICKS;
+    const mineralsStart = ctx.minerals;
+
+    if (ctx.isPartyHunting && OMG.PARTY_HUNTING_TIERS[ctx.partyHuntingTier]) {
+      const tier = OMG.PARTY_HUNTING_TIERS[ctx.partyHuntingTier];
+      const partyTickMs = OMG.calcGameSpeedTickMs(ctx.scaUpgrades || {}, 3000);
+      const autoTickMs = OMG.calcAutoLoopIntervalMs(ctx.scaUpgrades || {});
+      let partyRem = (ctx.remParty || 0) + elapsedMs;
+      let autoRem = (ctx.remAuto || 0) + elapsedMs;
+      const partyConsumed = OMG.consumeElapsedTicks(partyRem, partyTickMs, MAX_INCOME_TICKS);
+      const autoConsumed = OMG.consumeElapsedTicks(autoRem, autoTickMs, MAX_INCOME_TICKS);
+      ctx.remParty = partyConsumed.remainderMs;
+      ctx.remAuto = autoConsumed.remainderMs;
+
+      let partyTicks = partyConsumed.ticks;
+      let autoTicks = Math.min(autoConsumed.ticks, maxAutoTicks);
+      const partyEvery = Math.max(1, Math.round(partyTickMs / autoTickMs));
+      let counter = 0;
+
+      while ((partyTicks > 0 || autoTicks > 0) && (partyTicks + autoTicks) < MAX_INCOME_TICKS * 2) {
+        if (partyTicks > 0 && (autoTicks === 0 || counter >= partyEvery)) {
+          const m = Math.round(tier.mineralPerTick * (1 + (ctx.incomeBonusRate || 0)));
+          ctx.minerals += m;
+          ctx.scaCoinsGain = (ctx.scaCoinsGain || 0) + tier.scaCoins;
+          ctx.stats.incomeTicks += 1;
+          partyTicks -= 1;
+          counter = 0;
+        } else if (autoTicks > 0) {
+          simulateOneAutoStep(ctx);
+          autoTicks -= 1;
+          counter += 1;
+        } else break;
+      }
+    } else {
+      const incomeTickMs = OMG.calcIncomeEventIntervalMs(ctx.scaUpgrades || {}, ctx.ramAttackFrames);
+      const autoTickMs = OMG.calcAutoLoopIntervalMs(ctx.scaUpgrades || {});
+      let incomeRem = (ctx.remWorkHunt || 0) + elapsedMs;
+      let autoRem = (ctx.remAuto || 0) + elapsedMs;
+      const incomeConsumed = OMG.consumeElapsedTicks(incomeRem, incomeTickMs, MAX_INCOME_TICKS);
+      const autoConsumed = OMG.consumeElapsedTicks(autoRem, autoTickMs, MAX_INCOME_TICKS);
+      ctx.remWorkHunt = incomeConsumed.remainderMs;
+      ctx.remAuto = autoConsumed.remainderMs;
+
+      let incomeTicks = incomeConsumed.ticks;
+      let autoTicks = Math.min(autoConsumed.ticks, maxAutoTicks);
+      const perIncome = calcWorkHuntIncomePerTick(ctx);
+      const incomeEvery = Math.max(1, Math.round(incomeTickMs / autoTickMs));
+      let counter = 0;
+      let guard = 0;
+
+      while ((incomeTicks > 0 || autoTicks > 0) && guard++ < MAX_INCOME_TICKS * 2) {
+        const shouldIncome = incomeTicks > 0 && perIncome > 0
+          && (autoTicks === 0 || counter >= incomeEvery);
+        if (shouldIncome) {
+          ctx.minerals += perIncome;
+          ctx.stats.incomeTicks += 1;
+          incomeTicks -= 1;
+          counter = 0;
+        } else if (autoTicks > 0) {
+          simulateOneAutoStep(ctx);
+          autoTicks -= 1;
+          counter += 1;
+        } else if (incomeTicks > 0) {
+          ctx.minerals += perIncome;
+          ctx.stats.incomeTicks += 1;
+          incomeTicks -= 1;
+        } else {
+          break;
+        }
+      }
+    }
+
+    ctx.stats.incomeMinerals = ctx.minerals - mineralsStart;
+    ctx.stats.autoActions = ctx.stats.buys + ctx.stats.upgrades + ctx.stats.explosions;
+    return ctx;
+  }
+
+  function snapshotFromGameState(s) {
+    return {
+      minerals: s.minerals ?? 0,
+      inventory: JSON.parse(JSON.stringify(s.inventory || [])),
+      autoTargetLevels: JSON.parse(JSON.stringify(s.autoTargetLevels || {})),
+      autoBuyCpuByMfr: { ...(s.autoBuyCpuByMfr || {}) },
+      autoBuyGpu: !!s.autoBuyGpu,
+      autoBuyRam: !!s.autoBuyRam,
+      autoBuyCoolerByKind: { ...(s.autoBuyCoolerByKind || {}) },
+      autoBuyStorageByKind: { ...(s.autoBuyStorageByKind || {}) },
+      probBonusRate: s.probBonusRate ?? 0,
+      cpuBuyManufacturer: s.cpuBuyManufacturer,
+      coolerBuyKind: s.coolerBuyKind,
+      storageBuyKind: s.storageBuyKind,
+      scaUpgrades: s.scaUpgrades || {},
+      ramAttackFrames: s.ramAttackFrames,
+      workParts: s.workParts,
+      workTaskIndex: s.workTaskIndex,
+      specs: s.specs,
+      rebirthIncomeMult: s.rebirthIncomeMult,
+      incomeBonusRate: s.incomeBonusRate,
+      effectiveUnitLimit: s.effectiveUnitLimit,
+      effectiveWorkUnits: s.effectiveWorkUnits,
+      unlockedGameIndex: s.unlockedGameIndex,
+      isDownloading: s.isDownloading,
+      isPartyHunting: s.isPartyHunting,
+      partyHuntingTier: s.partyHuntingTier,
+      isUpgrading: s.isUpgrading,
+      remWorkHunt: 0,
+      remAuto: 0,
+      remParty: 0,
+      scaCoinsGain: 0,
+      logs: [],
+      stats: { incomeMinerals: 0, incomeTicks: 0, autoActions: 0, buys: 0, upgrades: 0, explosions: 0 },
+    };
+  }
+
+  global.AutoSimulator = {
+    simulateGameTick,
+    simulateBackgroundCatchUp,
+    simulateAutoPerTick,
+    simulateJobUpgradeBatch,
+    simulateIdleElapsed,
+    simulateOneAutoStep,
+    snapshotFromGameState,
+    hasActiveAuto,
+  };
+})(window);

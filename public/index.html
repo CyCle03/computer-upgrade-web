@@ -16,6 +16,7 @@
   <script src="/socket.io/socket.io.js"></script>
   <script src="/originalMapData.js"></script>
   <script src="/js/gameSync.js"></script>
+  <script src="/js/autoSimulator.js"></script>
   <style>
     /* 가독성: 기본 글자 크기 소폭 상향 (Tailwind rem + 소형 px 클래스) */
     html {
@@ -109,6 +110,7 @@
       const [isUpgrading, setIsUpgrading] = useState(false);
       const gameStateRef = useRef({});
       const wallClockRef = useRef({ lastMs: Date.now() });
+      const hiddenAtRef = useRef(null);
       const tickRemainderRef = useRef({ workHunt: 0, party: 0, auto: 0 });
       const [activeUpgradingPart, setActiveUpgradingPart] = useState(null);
       const [rebirthCount, setRebirthCount] = useState(() => {
@@ -1065,140 +1067,88 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setDownloadProgress(100);
       };
 
-      const runOneAutoJob = () => {
-        const s = gameStateRef.current;
-        if (s.isUpgrading) return false;
-
-        const jobs = [
-          { type: 'cpu', variantKey: 'Intel', active: s.autoBuyCpuByMfr && s.autoBuyCpuByMfr.Intel, label: 'Intel CPU' },
-          { type: 'cpu', variantKey: 'AMD', active: s.autoBuyCpuByMfr && s.autoBuyCpuByMfr.AMD, label: 'AMD CPU' },
-          { type: 'gpu', variantKey: null, active: s.autoBuyGpu, label: 'GPU' },
-          { type: 'ram', variantKey: null, active: s.autoBuyRam, label: 'RAM' },
-          { type: 'cooler', variantKey: 'air', active: s.autoBuyCoolerByKind && s.autoBuyCoolerByKind.air, label: '공랭' },
-          { type: 'cooler', variantKey: 'water', active: s.autoBuyCoolerByKind && s.autoBuyCoolerByKind.water, label: '수랭' },
-          { type: 'storage', variantKey: 'hdd', active: s.autoBuyStorageByKind && s.autoBuyStorageByKind.hdd, label: 'HDD' },
-          { type: 'storage', variantKey: 'nvme', active: s.autoBuyStorageByKind && s.autoBuyStorageByKind.nvme, label: 'NVMe' },
-        ];
-
-        for (const job of jobs) {
-          if (!job.active) continue;
-          const { type, variantKey, label } = job;
-          const buyMeta = variantKey != null ? buildBuyMetaForVariant(type, variantKey) : {
-            manufacturer: type === 'cpu' ? s.cpuBuyManufacturer : undefined,
-            coolerKind: type === 'cooler' ? s.coolerBuyKind : undefined,
-            storageKind: type === 'storage' ? s.storageBuyKind : undefined,
-          };
-          const goal = (() => {
-            const v = s.autoTargetLevels[type];
-            if (variantKey != null && v && typeof v === 'object') return v[variantKey] || 1;
-            return typeof v === 'number' ? v : 1;
-          })();
-          const levels = OMG.getPurchasableLevels(type, buyMeta);
-          if (!levels.length) continue;
-          const target = goal || 1;
-          const buyLevel = getAutoBuyLevel(type, target, buyMeta);
-          const owned = (s.inventory || []).filter((p) => p.type === type && partMatchesBuyMeta(p, type, buyMeta));
-          const maxOwnedLevel = owned.length ? Math.max(...owned.map((p) => p.level)) : 0;
-          const upgradeTarget = owned
-            .filter((p) => p.level < goal && p.level < OMG.getMaxLevel(type, p))
-            .sort((a, b) => b.level - a.level)[0];
-          const needsShopBuy = buyLevel != null && (owned.length === 0 || maxOwnedLevel < buyLevel);
-
-          if (buyLevel == null && owned.length === 0) {
-            setVariantAutoBuyOff(type, variantKey);
-            setCombatLogs((prev) => [...prev.slice(-7), `⚠️ [SYSTEM] ${label} 직접 구매 가능한 강이 없어 AUTO를 중단합니다.`]);
-            return true;
-          }
-          if (needsShopBuy) {
-            const costM = OMG.getShopTierCostMinerals(type, buyLevel, buyMeta);
-            if ((s.minerals ?? 0) >= costM) {
-              handleBuyComponentPack(type, buyLevel, buyMeta, { auto: true });
-              return true;
-            }
-            setVariantAutoBuyOff(type, variantKey);
-            setCombatLogs((prev) => [...prev.slice(-7), `⚠️ [SYSTEM] 미네랄 부족으로 ${label} +${buyLevel}강 자동 구매가 중단되었습니다.`]);
-            return true;
-          }
-          if (upgradeTarget) {
-            handleInventoryUpgrade(upgradeTarget.id, { auto: true });
-            return true;
-          }
-          setVariantAutoBuyOff(type, variantKey);
-          setCombatLogs((prev) => [...prev.slice(-7), `🎉 [SYSTEM] ${label} 자동강화 목표 ${goal}강 달성.`]);
-          return true;
+      const applySimResult = (simCtx, opts = {}) => {
+        gameStateRef.current.minerals = simCtx.minerals;
+        gameStateRef.current.inventory = simCtx.inventory;
+        setMinerals(simCtx.minerals);
+        setInventory(simCtx.inventory);
+        if (simCtx.scaCoinsGain) {
+          setScaCoins((p) => p + simCtx.scaCoinsGain);
         }
-        return false;
+        setAutoBuyCpuByMfr({ ...simCtx.autoBuyCpuByMfr });
+        setAutoBuyCoolerByKind({ ...simCtx.autoBuyCoolerByKind });
+        setAutoBuyStorageByKind({ ...simCtx.autoBuyStorageByKind });
+        setAutoBuyGpu(!!simCtx.autoBuyGpu);
+        setAutoBuyRam(!!simCtx.autoBuyRam);
+        if (opts.showSummary && simCtx.stats) {
+          const st = simCtx.stats;
+          if (st.incomeMinerals > 0 || st.autoActions > 0) {
+            const parts = [];
+            if (st.incomeMinerals > 0) parts.push(`수입 +${OMG.formatMineral(st.incomeMinerals)}`);
+            if (st.upgrades > 0) parts.push(`강화 ${st.upgrades}`);
+            if (st.buys > 0) parts.push(`구매 ${st.buys}`);
+            if (st.explosions > 0) parts.push(`파괴 ${st.explosions}`);
+            pushToast(`⏳ 방치 정산 · ${parts.join(' · ')}`, 'success', 4500);
+          }
+        }
+        if (simCtx.logs && simCtx.logs.length) {
+          setCombatLogs((prev) => [...prev.slice(-6), ...simCtx.logs.slice(-2)]);
+        }
+      };
+
+      const runIdleSimulation = (elapsedMs, options = {}) => {
+        const Sim = window.AutoSimulator;
+        if (!Sim || elapsedMs <= 0) return null;
+        const simCtx = Sim.snapshotFromGameState(gameStateRef.current);
+        simCtx.remWorkHunt = tickRemainderRef.current.workHunt;
+        simCtx.remAuto = tickRemainderRef.current.auto;
+        simCtx.remParty = tickRemainderRef.current.party;
+        if (options.catchUp) {
+          Sim.simulateBackgroundCatchUp(simCtx, elapsedMs, options);
+        } else {
+          Sim.simulateGameTick(simCtx, elapsedMs, options);
+        }
+        tickRemainderRef.current.workHunt = simCtx.remWorkHunt ?? 0;
+        tickRemainderRef.current.auto = simCtx.remAuto ?? 0;
+        tickRemainderRef.current.party = simCtx.remParty ?? 0;
+        applySimResult(simCtx, options);
+        return simCtx;
+      };
+
+      /** AUTO 켠 직후 1라운드만 즉시 처리 */
+      const flushAutoNow = () => {
+        const Sim = window.AutoSimulator;
+        if (!Sim || !Sim.hasActiveAuto(gameStateRef.current)) return;
+        const simCtx = Sim.snapshotFromGameState(gameStateRef.current);
+        Sim.simulateAutoPerTick(simCtx);
+        applySimResult(simCtx);
       };
 
       useEffect(() => {
         const LOOP_MS = 200;
-        const MAX_INCOME_TICKS = 120000;
-        const MAX_AUTO_STEPS = document.hidden ? 80 : 12;
+        const TICK_ELAPSED_CAP_MS = 300000;
+        const BACKGROUND_CATCHUP_CAP_MS = 4 * 60 * 60 * 1000;
+
+        const catchUpBackgroundSession = () => {
+          if (document.hidden || !hiddenAtRef.current) return;
+          const gap = Math.min(Date.now() - hiddenAtRef.current, BACKGROUND_CATCHUP_CAP_MS);
+          hiddenAtRef.current = null;
+          if (gap <= 0) return;
+          runIdleSimulation(gap, { catchUp: true, showSummary: true, maxAutoTicks: 50000 });
+          wallClockRef.current.lastMs = Date.now();
+        };
 
         const tick = () => {
           const now = Date.now();
           let elapsed = now - wallClockRef.current.lastMs;
           wallClockRef.current.lastMs = now;
           if (elapsed < 0) elapsed = 0;
-          if (elapsed > 300000) elapsed = 300000;
+          if (elapsed > TICK_ELAPSED_CAP_MS) elapsed = TICK_ELAPSED_CAP_MS;
+
+          runIdleSimulation(elapsed);
 
           const s = gameStateRef.current;
           const rem = tickRemainderRef.current;
-
-          if (s.isPartyHunting && OMG.PARTY_HUNTING_TIERS[s.partyHuntingTier]) {
-            const tier = OMG.PARTY_HUNTING_TIERS[s.partyHuntingTier];
-            const partyTickMs = OMG.calcGameSpeedTickMs(s.scaUpgrades, 3000);
-            const partyTotal = rem.party + elapsed;
-            const partyConsumed = OMG.consumeElapsedTicks(partyTotal, partyTickMs, MAX_INCOME_TICKS);
-            rem.party = partyConsumed.remainderMs;
-            if (partyConsumed.ticks > 0) {
-              const m = Math.round(tier.mineralPerTick * (1 + (s.incomeBonusRate || 0))) * partyConsumed.ticks;
-              const c = tier.scaCoins * partyConsumed.ticks;
-              setMinerals((p) => {
-                const n = p + m;
-                gameStateRef.current.minerals = n;
-                return n;
-              });
-              setScaCoins((p) => p + c);
-            }
-          } else {
-            const incomeTickMs = OMG.calcIncomeEventIntervalMs(s.scaUpgrades, s.ramAttackFrames);
-            const whTotal = rem.workHunt + elapsed;
-            const whConsumed = OMG.consumeElapsedTicks(whTotal, incomeTickMs, MAX_INCOME_TICKS);
-            rem.workHunt = whConsumed.remainderMs;
-            if (whConsumed.ticks > 0) {
-              const workEarn = OMG.calcWorkIncomePerTick(
-                s.workParts,
-                s.workTaskIndex,
-                s.specs.penalties.mineralMultiplier,
-                s.rebirthIncomeMult,
-                s.incomeBonusRate,
-                s.effectiveUnitLimit,
-                s.effectiveWorkUnits
-              );
-              let total = 0;
-              if (workEarn > 0) total += workEarn * whConsumed.ticks;
-              if (!s.isDownloading) {
-                const huntEarn = OMG.calcHuntIncomePerTick(
-                  s.workParts,
-                  s.workTaskIndex,
-                  OMG.getEffectiveUnlockedGameIndex(s.unlockedGameIndex),
-                  s.incomeBonusRate,
-                  false,
-                  s.effectiveUnitLimit,
-                  s.effectiveWorkUnits
-                );
-                if (huntEarn > 0) total += huntEarn * whConsumed.ticks;
-              }
-              if (total > 0) {
-                setMinerals((p) => {
-                  const n = p + total;
-                  gameStateRef.current.minerals = n;
-                  return n;
-                });
-              }
-            }
-          }
 
           if (s.isDownloading && s.downloadTarget && s.downloadStartedAt) {
             const dlTickMs = Math.max(20, OMG.calcGameSpeedTickMs(s.scaUpgrades, 100));
@@ -1217,11 +1167,11 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           if (s.scaUpgrades && s.scaUpgrades.overclockLabBuilt) {
             if (rem.overclock === undefined) rem.overclock = 0;
             rem.overclock += elapsed;
-            
+
             if (rem.overclock >= 1000) {
               const secondsElapsed = Math.floor(rem.overclock / 1000);
               rem.overclock %= 1000;
-              
+
               const currentLvl = s.scaUpgrades.overclockLabLevel || 1;
               const spec = OVERCLOCK_LAB_SPECS[currentLvl];
               if (spec) {
@@ -1240,10 +1190,10 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   const dps = Math.round((1 / s.specs.attackSpeedSec) * s.specs.unitDamage * s.specs.unitLimit);
                   const netDmgPerSec = Math.max(1, dps - spec.defense);
                   const totalDmg = netDmgPerSec * secondsElapsed;
-                  
+
                   let curShield = s.overclockLabShield !== undefined ? s.overclockLabShield : spec.shield;
                   let curHp = s.overclockLabHp !== undefined ? s.overclockLabHp : spec.hp;
-                  
+
                   if (curShield > 0) {
                     if (totalDmg >= curShield) {
                       const carryDmg = totalDmg - curShield;
@@ -1255,12 +1205,12 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   } else {
                     curHp = Math.max(0, curHp - totalDmg);
                   }
-                  
+
                   s.overclockLabHp = curHp;
                   s.overclockLabShield = curShield;
                   setOverclockLabHp(curHp);
                   setOverclockLabShield(curShield);
-                  
+
                   if (curHp <= 0) {
                     const dropRoll = Math.random() < 0.3;
                     if (dropRoll) {
@@ -1271,7 +1221,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     } else {
                       setCombatLogs((prev) => [...prev.slice(-7), `⚙️ [RESEARCH] 오버클럭 연구소 건물을 파괴했으나 파츠를 획득하지 못했습니다.`]);
                     }
-                    
+
                     s.overclockLabCooldown = 3;
                     s.overclockLabHp = 0;
                     s.overclockLabShield = 0;
@@ -1283,26 +1233,33 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               }
             }
           }
-
-          const autoTickMs = OMG.calcAutoLoopIntervalMs(s.scaUpgrades);
-          const autoTotal = rem.auto + elapsed;
-          const autoConsumed = OMG.consumeElapsedTicks(autoTotal, autoTickMs, MAX_INCOME_TICKS);
-          rem.auto = autoConsumed.remainderMs;
-          const autoSteps = Math.min(autoConsumed.ticks, MAX_AUTO_STEPS);
-          for (let i = 0; i < autoSteps; i++) {
-            if (!runOneAutoJob()) break;
-          }
         };
 
         wallClockRef.current.lastMs = Date.now();
         const id = setInterval(tick, LOOP_MS);
-        const onWake = () => tick();
-        document.addEventListener('visibilitychange', onWake);
-        window.addEventListener('focus', onWake);
+
+        const onVisibility = () => {
+          if (document.hidden) {
+            if (!hiddenAtRef.current) hiddenAtRef.current = Date.now();
+          } else {
+            catchUpBackgroundSession();
+            tick();
+          }
+        };
+
+        const onFocus = () => {
+          if (!document.hidden) {
+            catchUpBackgroundSession();
+            tick();
+          }
+        };
+
+        document.addEventListener('visibilitychange', onVisibility);
+        window.addEventListener('focus', onFocus);
         return () => {
           clearInterval(id);
-          document.removeEventListener('visibilitychange', onWake);
-          window.removeEventListener('focus', onWake);
+          document.removeEventListener('visibilitychange', onVisibility);
+          window.removeEventListener('focus', onFocus);
         };
       }, []);
 
