@@ -39,7 +39,7 @@ export function setupSocketServer(httpServer: HttpServer) {
      * @param nickname 유저 닉네임
      * @param parts 유저의 현재 컴퓨터 조립 부품 세트
      */
-    socket.on('joinRoom', async ({ roomId, userId, nickname, parts }: { roomId: string, userId: string, nickname: string, parts: ComputerParts }) => {
+    socket.on('joinRoom', async ({ roomId, userId, nickname, parts, scaUpgrades }: { roomId: string, userId: string, nickname: string, parts: ComputerParts, scaUpgrades?: any }) => {
       try {
         if (!roomId || !userId || !nickname || !parts) {
           socket.emit('error_message', '방 입장 정보가 누락되었습니다.');
@@ -95,7 +95,7 @@ export function setupSocketServer(httpServer: HttpServer) {
         const room = activeRooms.get(roomId)!;
         
         // 유저 소켓 채널 등록 및 플레이어 추가
-        room.addPlayer(socket.id, userId, nickname, parts);
+        room.addPlayer(socket.id, userId, nickname, parts, scaUpgrades);
         socket.join(roomId);
         currentRoomId = roomId;
 
