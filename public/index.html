@@ -111,9 +111,10 @@
       const [autoStatus, setAutoStatus] = useState({ code: 'off', message: 'AUTO 꺼짐' });
       const [autoFeed, setAutoFeed] = useState([]);
       const [mineralFlash, setMineralFlash] = useState(null);
-      const [highlightPartId, setHighlightPartId] = useState(null);
       const mineralFlashTimerRef = useRef(null);
-      const highlightTimerRef = useRef(null);
+      const inventoryUiTimerRef = useRef(null);
+      const pendingInventoryRef = useRef(null);
+      const lastInventorySigRef = useRef('');
       const hasActiveAuto = useMemo(() => {
         const Sim = window.AutoSimulator;
         if (!Sim) return false;
@@ -131,15 +132,78 @@
         }, 700);
       };
 
-      const pulsePartHighlight = (partId) => {
-        if (!partId) return;
-        setHighlightPartId(partId);
-        if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
-        highlightTimerRef.current = setTimeout(() => {
-          setHighlightPartId(null);
-          highlightTimerRef.current = null;
-        }, 900);
+      const INVENTORY_UI_THROTTLE_MS = 1000;
+
+      const inventorySignature = (inv) => {
+        if (!inv || !inv.length) return '';
+        return inv.map((p) => `${p.id}:${p.type}:${p.level}`).sort().join('|');
       };
+
+      /** 시뮬 ref는 즉시, React 창고 UI는 AUTO 중 스로틀 (깜빡임 방지) */
+      const flushInventoryUi = (nextInv, options = {}) => {
+        const sig = inventorySignature(nextInv);
+        gameStateRef.current.inventory = nextInv;
+        if (!options.force && sig === lastInventorySigRef.current) return;
+
+        if (inventoryUiTimerRef.current) {
+          clearTimeout(inventoryUiTimerRef.current);
+          inventoryUiTimerRef.current = null;
+        }
+        pendingInventoryRef.current = null;
+        lastInventorySigRef.current = sig;
+        setInventory(nextInv);
+      };
+
+      const scheduleInventoryUi = (nextInv, options = {}) => {
+        const sig = inventorySignature(nextInv);
+        gameStateRef.current.inventory = nextInv;
+        if (!options.force && sig === lastInventorySigRef.current) return;
+
+        const Sim = window.AutoSimulator;
+        const autoOn = !options.force && Sim && Sim.hasActiveAuto(gameStateRef.current);
+        if (autoOn && !options.catchUp) {
+          pendingInventoryRef.current = nextInv;
+          if (inventoryUiTimerRef.current) return;
+          inventoryUiTimerRef.current = setTimeout(() => {
+            inventoryUiTimerRef.current = null;
+            const pending = pendingInventoryRef.current;
+            if (!pending) return;
+            const psig = inventorySignature(pending);
+            if (psig === lastInventorySigRef.current) return;
+            lastInventorySigRef.current = psig;
+            setInventory(pending);
+            pendingInventoryRef.current = null;
+          }, INVENTORY_UI_THROTTLE_MS);
+          return;
+        }
+        flushInventoryUi(nextInv, options);
+      };
+
+      useEffect(() => {
+        lastInventorySigRef.current = inventorySignature(inventory);
+        gameStateRef.current.inventory = inventory;
+      }, [inventory]);
+
+      useEffect(() => {
+        if (!hasActiveAuto && pendingInventoryRef.current) {
+          flushInventoryUi(pendingInventoryRef.current, { force: true });
+        }
+      }, [hasActiveAuto]);
+
+      useEffect(() => {
+        return () => {
+          if (inventoryUiTimerRef.current) clearTimeout(inventoryUiTimerRef.current);
+        };
+      }, []);
+
+      useEffect(() => {
+        const onWalletSync = (e) => {
+          const n = Number(e.detail && e.detail.scaCoins);
+          if (!Number.isNaN(n)) setScaCoins(n);
+        };
+        window.addEventListener('sca_wallet_sync', onWalletSync);
+        return () => window.removeEventListener('sca_wallet_sync', onWalletSync);
+      }, []);
 
       const gameStateRef = useRef({});
       const wallClockRef = useRef({ lastMs: Date.now() });
@@ -630,7 +694,7 @@
         localStorage.setItem('sca_isDownloading', isDownloading ? 'true' : 'false');
         if (downloadStartedAt) localStorage.setItem('sca_downloadStartedAt', String(downloadStartedAt));
         else localStorage.removeItem('sca_downloadStartedAt');
-        localStorage.setItem('sca_inventory', JSON.stringify(inventory));
+        localStorage.setItem('sca_inventory', JSON.stringify(gameStateRef.current.inventory || inventory));
         localStorage.setItem('sca_autoBuyCpuByMfr', JSON.stringify(autoBuyCpuByMfr));
         localStorage.setItem('sca_autoBuyGpu', autoBuyGpu.toString());
         localStorage.setItem('sca_autoBuyRam', autoBuyRam.toString());
@@ -1055,6 +1119,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       // ----------------------------------------------------------------------
       useEffect(() => {
         gameStateRef.current = {
+          ...gameStateRef.current,
           workParts,
           workTaskIndex,
           specs,
@@ -1075,7 +1140,6 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           ramAttackFrames,
           gpuAttackFrames,
           minerals,
-          inventory,
           isUpgrading,
           autoBuyCpuByMfr,
           autoBuyGpu,
@@ -1095,7 +1159,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         workParts, workTaskIndex, specs, rebirthIncomeMult, incomeBonusRate, economyUnitLimit, overclockLabActive,
         effectiveWorkUnits, unlockedGameIndex, effectiveUnlockedGameIndex, isPartyHunting, partyHuntingTier,
         isDownloading, downloadTarget, downloadStartedAt, scaUpgrades, ramAttackFrames, gpuAttackFrames,
-        minerals, inventory, isUpgrading, autoBuyCpuByMfr, autoBuyGpu, autoBuyRam, autoBuyCoolerByKind,
+        minerals, isUpgrading, autoBuyCpuByMfr, autoBuyGpu, autoBuyRam, autoBuyCoolerByKind,
         autoBuyStorageByKind, autoTargetLevels, cpuBuyManufacturer, coolerBuyKind, storageBuyKind, probBonusRate,
         overclockLabHp, overclockLabShield, overclockLabCooldown,
       ]);
@@ -1125,9 +1189,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       const applySimResult = (simCtx, opts = {}) => {
         const mineralsBefore = gameStateRef.current.minerals ?? minerals;
         gameStateRef.current.minerals = simCtx.minerals;
-        gameStateRef.current.inventory = simCtx.inventory;
+        scheduleInventoryUi(simCtx.inventory, opts);
         setMinerals(simCtx.minerals);
-        setInventory(simCtx.inventory);
         if (simCtx.scaCoinsGain) {
           setScaCoins((p) => p + simCtx.scaCoinsGain);
         }
@@ -1148,12 +1211,6 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           simCtx.autoEvents.forEach((ev) => {
             feedItems.push({ ...ev, ts: Date.now() });
           });
-          const lastEv = simCtx.autoEvents[simCtx.autoEvents.length - 1];
-          if (lastEv.partId) pulsePartHighlight(lastEv.partId);
-          if (!opts.showSummary) {
-            const toastKind = lastEv.kind === 'explosion' ? 'exploded' : lastEv.kind === 'upgrade' ? 'success' : 'info';
-            pushToast(lastEv.message, toastKind, 1400);
-          }
         }
         if (feedItems.length) {
           setAutoFeed((prev) => [...feedItems, ...prev].slice(0, 12));
@@ -1589,13 +1646,13 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         socketCon.on('milestone_reward_claimed', (data) => {
           const { clearedFloor, txResult } = data;
           if (txResult.success) {
-            setScaCoins((prev) => {
-              const next = prev + txResult.claimedCoins;
-              localStorage.setItem('sca_scaCoins', String(next));
-              return next;
-            });
-            scheduleServerSync();
-            setRewardMessage(`돌파 성공. ${clearedFloor}층 마일스톤 보상 SCA 코인 +${txResult.claimedCoins} 지급 완료.`);
+            const total = Number(txResult.currentTotalCoins) || 0;
+            setScaCoins(total);
+            localStorage.setItem('sca_scaCoins', String(total));
+            if (typeof flushServerSync === 'function') flushServerSync();
+            else scheduleServerSync();
+            pushToast(`레이드 ${clearedFloor}층 · SCA +${txResult.claimedCoins.toLocaleString()} (잔액 ${total.toLocaleString()})`, 'success', 3500);
+            setRewardMessage(`돌파 성공. ${clearedFloor}층 마일스톤 보상 SCA 코인 +${txResult.claimedCoins} 지급 완료. (잔액 ${total.toLocaleString()})`);
             setTimeout(() => setRewardMessage(null), 4000);
 
             // 최고 층수 업데이트
@@ -1605,6 +1662,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               localStorage.setItem('sca_scaUpgrades', JSON.stringify(next));
               return next;
             });
+          } else if (txResult.message) {
+            pushToast(`레이드 보상: ${txResult.message}`, 'info', 3000);
           }
         });
 
@@ -2337,11 +2396,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                           const prob = isMax ? 0 : getUpgradeProbability(p.type, p.level, p);
 
                           return (
-                            <div key={p.id} className={`p-3 bg-slate-900/60 rounded border transition flex flex-col justify-between space-y-2 ${
-                              highlightPartId === p.id
-                                ? 'border-amber-400 ring-2 ring-amber-400/30 animate-pulse bg-amber-950/20'
-                                : 'border-slate-800 hover:border-slate-700'
-                            }`}>
+                            <div key={p.id} className="p-3 bg-slate-900/60 rounded border border-slate-800 hover:border-slate-700 transition flex flex-col justify-between space-y-2">
                               <div>
                                 <div className="flex justify-between items-center mb-1">
                                   <span className={`text-[11px] font-mono px-1.5 py-0.5 rounded font-bold ${badgeStyle}`}>

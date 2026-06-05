@@ -46,17 +46,32 @@ export class StateService {
 
   /**
    * 진행도 저장(Upsert). 'sca_'로 시작하는 문자열 키/값만 보관한다.
+   * sca_scaCoins는 서버·클라이언트 중 큰 값을 유지한다 (레이드 지급 후 stale 덮어쓰기 방지).
    */
   static async saveState(userId: string, state: unknown): Promise<GameStatePayload> {
     const sanitized = sanitizeState(state);
+    const existingRes = await pool.query(
+      `SELECT state FROM game_states WHERE user_id = $1`,
+      [userId]
+    );
+    const existing: GameStatePayload =
+      existingRes.rowCount && existingRes.rows[0].state
+        ? { ...(existingRes.rows[0].state as GameStatePayload) }
+        : {};
+
+    const merged: GameStatePayload = { ...existing, ...sanitized };
+    const serverSca = Number(existing.sca_scaCoins) || 0;
+    const clientSca = Number(sanitized.sca_scaCoins) || 0;
+    merged.sca_scaCoins = String(Math.max(serverSca, clientSca));
+
     await pool.query(
       `INSERT INTO game_states (user_id, state, updated_at)
        VALUES ($1, $2::jsonb, CURRENT_TIMESTAMP)
        ON CONFLICT (user_id)
        DO UPDATE SET state = EXCLUDED.state, updated_at = CURRENT_TIMESTAMP`,
-      [userId, JSON.stringify(sanitized)]
+      [userId, JSON.stringify(merged)]
     );
-    return sanitized;
+    return merged;
   }
 }
 

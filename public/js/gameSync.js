@@ -84,6 +84,10 @@
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ state: this.collectState() }),
         });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.success && data.state && data.state.sca_scaCoins != null) {
+          localStorage.setItem('sca_scaCoins', String(data.state.sca_scaCoins));
+        }
         return res.ok;
       } catch (e) {
         return false;
@@ -112,20 +116,26 @@
   let __scaSyncTimer = null;
   let __scaLastSync = 0;
 
+  function emitWalletSync() {
+    const v = localStorage.getItem('sca_scaCoins');
+    if (v == null) return;
+    window.dispatchEvent(new CustomEvent('sca_wallet_sync', { detail: { scaCoins: Number(v) || 0 } }));
+  }
+
   function scheduleServerSync() {
     if (!GameSync.getToken()) return;
     const now = Date.now();
     if (now - __scaLastSync >= SYNC_MAX_WAIT_MS) {
       if (__scaSyncTimer) { clearTimeout(__scaSyncTimer); __scaSyncTimer = null; }
       __scaLastSync = now;
-      GameSync.saveToServer();
+      GameSync.saveToServer().then((ok) => { if (ok) emitWalletSync(); });
       return;
     }
     if (__scaSyncTimer) clearTimeout(__scaSyncTimer);
     __scaSyncTimer = setTimeout(() => {
       __scaSyncTimer = null;
       __scaLastSync = Date.now();
-      GameSync.saveToServer();
+      GameSync.saveToServer().then((ok) => { if (ok) emitWalletSync(); });
     }, SYNC_DEBOUNCE_MS);
   }
 
@@ -138,6 +148,11 @@
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ state: GameSync.collectState() }),
         keepalive: true,
+      }).then((res) => res.json().catch(() => ({}))).then((data) => {
+        if (data.success && data.state && data.state.sca_scaCoins != null) {
+          localStorage.setItem('sca_scaCoins', String(data.state.sca_scaCoins));
+          emitWalletSync();
+        }
       });
       __scaLastSync = Date.now();
     } catch (e) { /* best-effort */ }
