@@ -455,8 +455,16 @@
   }
 
   function getUpgradeProbability(type, currentLevel, part, bonusProb) {
-    const tier = getTier(type, part, currentLevel + 1);
-    return tier ? Math.min(1, tier.prob + (bonusProb || 0)) : 0;
+    const nextLevel = currentLevel + 1;
+    const tier = getTier(type, part, nextLevel);
+    if (!tier) return 0;
+    let baseProb = tier.prob;
+    // 시트 최종 강 행 prob=0은 '최고강' 표기 — 13→14 등 마지막 강화는 직전 강 확률 적용
+    if (baseProb <= 0 && nextLevel >= getMaxLevel(type, part)) {
+      const prevTier = getTier(type, part, currentLevel);
+      baseProb = prevTier ? prevTier.prob : 0;
+    }
+    return Math.min(1, baseProb + (bonusProb || 0));
   }
 
   function getPartName(type, level, part, scaUpgrades) {
