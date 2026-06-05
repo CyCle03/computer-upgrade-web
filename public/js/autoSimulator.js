@@ -68,34 +68,73 @@
     if (message) ctx.logs.push(message);
   }
 
-  function simBuy(ctx, type, level, buyMeta) {
-    const costM = OMG.getShopTierCostMinerals(type, level, buyMeta);
-    if (ctx.minerals < costM) return false;
-    ctx.minerals -= costM;
-    ctx.inventory.push(OMG.buildInventoryPart(type, level, buyMeta));
-    ctx.stats.buys += 1;
-    return true;
+  function pushAutoEvent(ctx, event) {
+    if (!event) return;
+    ctx.autoEvents = ctx.autoEvents || [];
+    ctx.autoEvents.push(event);
+    ctx.lastAutoEvent = event;
   }
 
-  function simUpgrade(ctx, partId) {
+  function simBuy(ctx, type, level, buyMeta, label) {
+    const costM = OMG.getShopTierCostMinerals(type, level, buyMeta);
+    if (ctx.minerals < costM) return null;
+    ctx.minerals -= costM;
+    const part = OMG.buildInventoryPart(type, level, buyMeta);
+    ctx.inventory.push(part);
+    ctx.stats.buys += 1;
+    const tierName = OMG.getPartName(type, level, part);
+    const event = {
+      kind: 'buy',
+      type,
+      level,
+      partId: part.id,
+      cost: costM,
+      label: label || type.toUpperCase(),
+      message: `[AUTO] ${label || type} ${tierName} +${level}강 구매 (−${OMG.formatMineral(costM)})`,
+    };
+    pushAutoEvent(ctx, event);
+    return event;
+  }
+
+  function simUpgrade(ctx, partId, label) {
     const idx = ctx.inventory.findIndex((p) => p.id === partId);
-    if (idx < 0) return false;
+    if (idx < 0) return null;
     const part = ctx.inventory[idx];
     const prob = OMG.getUpgradeProbability(part.type, part.level, part, ctx.probBonusRate || 0);
+    const partLabel = label || part.type.toUpperCase();
     if (Math.random() <= prob) {
-      ctx.inventory[idx] = OMG.applyTierStats(part, part.level + 1);
+      const nextLevel = part.level + 1;
+      ctx.inventory[idx] = OMG.applyTierStats(part, nextLevel);
       ctx.stats.upgrades += 1;
-    } else {
-      ctx.inventory.splice(idx, 1);
-      ctx.stats.explosions += 1;
+      const event = {
+        kind: 'upgrade',
+        type: part.type,
+        level: nextLevel,
+        fromLevel: part.level,
+        partId,
+        label: partLabel,
+        message: `[AUTO] ${partLabel} +${part.level}강 → +${nextLevel}강 성공`,
+      };
+      pushAutoEvent(ctx, event);
+      return event;
     }
-    ctx.stats.autoActions += 1;
-    return true;
+    ctx.inventory.splice(idx, 1);
+    ctx.stats.explosions += 1;
+    const event = {
+      kind: 'explosion',
+      type: part.type,
+      level: part.level,
+      partId,
+      label: partLabel,
+      message: `[AUTO] ${partLabel} +${part.level}강 파괴`,
+    };
+    pushAutoEvent(ctx, event);
+    return event;
   }
 
   /** AUTO 1스텝 (강화 우선 → 구매). opts.upgradesOnly 이면 구매 생략 */
   function simulateOneAutoStep(ctx, opts) {
-    if (ctx.isUpgrading) return false;
+    if (ctx.isUpgrading) return { acted: false, reason: 'manual' };
     const upgradesOnly = opts && opts.upgradesOnly;
 
     let anyActive = false;
@@ -129,8 +168,12 @@
       }
 
       if (upgradeTarget) {
-        simUpgrade(ctx, upgradeTarget.id);
-        return true;
+        const event = simUpgrade(ctx, upgradeTarget.id, label);
+        if (event) {
+          ctx.stats.autoActions += 1;
+          return { acted: true, event };
+        }
+        continue;
       }
 
       if (upgradesOnly) {
@@ -141,7 +184,11 @@
       }
 
       if (needsShopBuy) {
-        if (simBuy(ctx, type, buyLevel, buyMeta)) return true;
+        const event = simBuy(ctx, type, buyLevel, buyMeta, label);
+        if (event) {
+          ctx.stats.autoActions += 1;
+          return { acted: true, event };
+        }
         waitingForMinerals = true;
         continue;
       }
@@ -149,9 +196,57 @@
       disableAutoVariant(ctx, type, variantKey, `🎉 [AUTO] ${label} 목표 ${goal}강 달성`);
     }
 
-    if (!anyActive) return false;
-    if (waitingForMinerals) return false;
-    return false;
+    if (!anyActive) return { acted: false, reason: 'off' };
+    if (waitingForMinerals) return { acted: false, reason: 'waiting_minerals' };
+    return { acted: false, reason: 'idle' };
+  }
+
+  function detectAutoStatus(ctx) {
+    if (!hasActiveAuto(ctx)) {
+      return { code: 'off', message: 'AUTO 꺼짐' };
+    }
+    if (ctx.isUpgrading) {
+      return { code: 'manual', message: '수동 강화 중 — AUTO 일시 정지' };
+    }
+
+    let waiting = false;
+    let canAct = false;
+    for (const job of getAutoJobs(ctx)) {
+      if (!job.active) continue;
+      const jc = resolveJobContext(ctx, job);
+      const target = getJobUpgradeTarget(ctx.inventory, jc.type, jc.buyMeta, jc.goal);
+      if (target) {
+        canAct = true;
+        break;
+      }
+      if (needsShopBuyForJob(ctx.inventory, jc.buyLevel, jc.type, jc.buyMeta)) {
+        if (ctx.minerals >= jc.buyCost) canAct = true;
+        else waiting = true;
+      }
+    }
+
+    if (canAct) return { code: 'running', message: 'AUTO 진행 중' };
+    if (waiting) return { code: 'waiting', message: '미네랄 부족 — 수입 대기 중' };
+    return { code: 'idle', message: 'AUTO 대기 (목표 달성 또는 작업 없음)' };
+  }
+
+  /** 실시간 tick용 — AUTO 간격마다 1스텝씩, 이벤트 수집 */
+  function simulateAutoRealtimeSteps(ctx, elapsedMs, options) {
+    if (ctx.isUpgrading || !hasActiveAuto(ctx)) {
+      ctx.autoStatus = detectAutoStatus(ctx);
+      return;
+    }
+    const autoTickMs = OMG.calcAutoLoopIntervalMs(ctx.scaUpgrades || {});
+    const maxSteps = (options && options.maxAutoStepsPerTick) || 1;
+    let autoRem = (ctx.remAuto || 0) + elapsedMs;
+    const autoConsumed = OMG.consumeElapsedTicks(autoRem, autoTickMs, maxSteps);
+    ctx.remAuto = autoConsumed.remainderMs;
+    ctx.autoEvents = [];
+    for (let i = 0; i < autoConsumed.ticks; i += 1) {
+      simulateOneAutoStep(ctx, options);
+    }
+    ctx.autoStatus = detectAutoStatus(ctx);
+    ctx.stats.autoActions = ctx.stats.buys + ctx.stats.upgrades + ctx.stats.explosions;
   }
 
   function cloneInventory(inv) {
@@ -310,6 +405,7 @@
   }
 
   function calcWorkHuntIncomePerTick(ctx) {
+    OMG.setScaUpgradesRef(ctx.scaUpgrades || {});
     const workEarn = OMG.calcWorkIncomePerTick(
       ctx.workParts,
       ctx.workTaskIndex,
@@ -380,18 +476,21 @@
   }
 
   /**
-   * 일반 게임 tick: 수입 + AUTO 1라운드 (무료 강화 배치 + 구매 1건까지).
+   * 일반 게임 tick: 수입 + AUTO (실시간 1스텝씩, 이벤트·상태 반환).
    */
   function simulateGameTick(ctx, elapsedMs, options) {
     if (!ctx.stats) {
       ctx.stats = { incomeMinerals: 0, incomeTicks: 0, autoActions: 0, buys: 0, upgrades: 0, explosions: 0 };
     }
     if (!ctx.logs) ctx.logs = [];
+    const mineralsBefore = ctx.minerals;
     ctx.stats.incomeMinerals += applyIncomeOnly(ctx, elapsedMs);
+    ctx.tickIncomeDelta = ctx.minerals - mineralsBefore;
     if (hasActiveAuto(ctx) && !(options && options.skipAuto)) {
-      simulateAutoPerTick(ctx, options);
+      simulateAutoRealtimeSteps(ctx, elapsedMs, options);
+    } else {
+      ctx.autoStatus = detectAutoStatus(ctx);
     }
-    ctx.stats.autoActions = ctx.stats.buys + ctx.stats.upgrades + ctx.stats.explosions;
     return ctx;
   }
 
@@ -552,10 +651,12 @@
     simulateGameTick,
     simulateBackgroundCatchUp,
     simulateAutoPerTick,
+    simulateAutoRealtimeSteps,
     simulateJobUpgradeBatch,
     simulateIdleElapsed,
     simulateOneAutoStep,
-    snapshotFromGameState,
+    detectAutoStatus,
     hasActiveAuto,
+    snapshotFromGameState,
   };
 })(window);

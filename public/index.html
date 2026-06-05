@@ -108,6 +108,39 @@
         }, ms);
       };
       const [isUpgrading, setIsUpgrading] = useState(false);
+      const [autoStatus, setAutoStatus] = useState({ code: 'off', message: 'AUTO 꺼짐' });
+      const [autoFeed, setAutoFeed] = useState([]);
+      const [mineralFlash, setMineralFlash] = useState(null);
+      const [highlightPartId, setHighlightPartId] = useState(null);
+      const mineralFlashTimerRef = useRef(null);
+      const highlightTimerRef = useRef(null);
+      const hasActiveAuto = useMemo(() => {
+        const Sim = window.AutoSimulator;
+        if (!Sim) return false;
+        return Sim.hasActiveAuto({
+          autoBuyCpuByMfr, autoBuyGpu, autoBuyRam, autoBuyCoolerByKind, autoBuyStorageByKind,
+        });
+      }, [autoBuyCpuByMfr, autoBuyGpu, autoBuyRam, autoBuyCoolerByKind, autoBuyStorageByKind]);
+
+      const pulseMineralFlash = (kind) => {
+        setMineralFlash(kind);
+        if (mineralFlashTimerRef.current) clearTimeout(mineralFlashTimerRef.current);
+        mineralFlashTimerRef.current = setTimeout(() => {
+          setMineralFlash(null);
+          mineralFlashTimerRef.current = null;
+        }, 700);
+      };
+
+      const pulsePartHighlight = (partId) => {
+        if (!partId) return;
+        setHighlightPartId(partId);
+        if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+        highlightTimerRef.current = setTimeout(() => {
+          setHighlightPartId(null);
+          highlightTimerRef.current = null;
+        }, 900);
+      };
+
       const gameStateRef = useRef({});
       const wallClockRef = useRef({ lastMs: Date.now() });
       const hiddenAtRef = useRef(null);
@@ -460,10 +493,18 @@
         };
       }, [cpu, gpu, ram, cooler, motherboard, storage, scaUpgrades, gpuAttackFrames, ramAttackFrames, gpuGrade, workParts, workTaskIndex, economyUnitLimit, workUnitMode, manualWorkUnits, workSpecStatus, effectiveUnlockedGameIndex, rebirthIncomeMult, incomeBonusRate, isDownloading]);
 
-      const overclockLabUnitDps = useMemo(() => {
-        if (!overclockLabActive) return 0;
-        return Math.max(1, Math.round((1 / specs.attackSpeedSec) * specs.unitDamage));
-      }, [overclockLabActive, specs.attackSpeedSec, specs.unitDamage]);
+      const overclockLabFarmLevelBySpec = useMemo(
+        () => OMG.calcMaxOverclockLabLevel(OMG.calcUnitDps(specs.unitDamage, specs.attackSpeedSec)),
+        [specs.unitDamage, specs.attackSpeedSec]
+      );
+
+      /** 스펙(차출 1기 DPS)으로 자동 결정되는 파밍 연구소 레벨 */
+      const effectiveOverclockLabLevel = overclockLabFarmLevelBySpec;
+
+      const nextOverclockLabLevel = overclockLabFarmLevelBySpec < 4 ? overclockLabFarmLevelBySpec + 1 : null;
+      const dpsForNextOverclockLab = nextOverclockLabLevel
+        ? OMG.OVERCLOCK_LAB_SPECS[nextOverclockLabLevel].minDps
+        : null;
 
       const effectiveWorkUnits = useMemo(() => {
         if (!workSpecStatus.ok || maxWorkUnits <= 0) return 0;
@@ -1082,6 +1123,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       };
 
       const applySimResult = (simCtx, opts = {}) => {
+        const mineralsBefore = gameStateRef.current.minerals ?? minerals;
         gameStateRef.current.minerals = simCtx.minerals;
         gameStateRef.current.inventory = simCtx.inventory;
         setMinerals(simCtx.minerals);
@@ -1094,6 +1136,29 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setAutoBuyStorageByKind({ ...simCtx.autoBuyStorageByKind });
         setAutoBuyGpu(!!simCtx.autoBuyGpu);
         setAutoBuyRam(!!simCtx.autoBuyRam);
+
+        const mineralDelta = simCtx.minerals - mineralsBefore;
+        if (mineralDelta > 0) pulseMineralFlash('gain');
+        else if (mineralDelta < 0) pulseMineralFlash('spend');
+
+        if (simCtx.autoStatus) setAutoStatus(simCtx.autoStatus);
+
+        const feedItems = [];
+        if (simCtx.autoEvents && simCtx.autoEvents.length) {
+          simCtx.autoEvents.forEach((ev) => {
+            feedItems.push({ ...ev, ts: Date.now() });
+          });
+          const lastEv = simCtx.autoEvents[simCtx.autoEvents.length - 1];
+          if (lastEv.partId) pulsePartHighlight(lastEv.partId);
+          if (!opts.showSummary) {
+            const toastKind = lastEv.kind === 'explosion' ? 'exploded' : lastEv.kind === 'upgrade' ? 'success' : 'info';
+            pushToast(lastEv.message, toastKind, 1400);
+          }
+        }
+        if (feedItems.length) {
+          setAutoFeed((prev) => [...feedItems, ...prev].slice(0, 12));
+        }
+
         if (opts.showSummary && simCtx.stats) {
           const st = simCtx.stats;
           if (st.incomeMinerals > 0 || st.autoActions > 0) {
@@ -1107,6 +1172,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         }
         if (simCtx.logs && simCtx.logs.length) {
           setCombatLogs((prev) => [...prev.slice(-6), ...simCtx.logs.slice(-2)]);
+          simCtx.logs.forEach((line) => {
+            setAutoFeed((prev) => [{ kind: 'system', message: line, ts: Date.now() }, ...prev].slice(0, 12));
+          });
         }
       };
 
@@ -1120,7 +1188,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         if (options.catchUp) {
           Sim.simulateBackgroundCatchUp(simCtx, elapsedMs, options);
         } else {
-          Sim.simulateGameTick(simCtx, elapsedMs, options);
+          Sim.simulateGameTick(simCtx, elapsedMs, { maxAutoStepsPerTick: 1, ...options });
         }
         tickRemainderRef.current.workHunt = simCtx.remWorkHunt ?? 0;
         tickRemainderRef.current.auto = simCtx.remAuto ?? 0;
@@ -1129,14 +1197,34 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         return simCtx;
       };
 
-      /** AUTO 켠 직후 1라운드만 즉시 처리 */
+      /** AUTO 켠 직후 1스텝 즉시 처리 */
       const flushAutoNow = () => {
         const Sim = window.AutoSimulator;
         if (!Sim || !Sim.hasActiveAuto(gameStateRef.current)) return;
         const simCtx = Sim.snapshotFromGameState(gameStateRef.current);
-        Sim.simulateAutoPerTick(simCtx);
+        if (!simCtx.stats) {
+          simCtx.stats = { incomeMinerals: 0, incomeTicks: 0, autoActions: 0, buys: 0, upgrades: 0, explosions: 0 };
+        }
+        simCtx.autoEvents = [];
+        Sim.simulateOneAutoStep(simCtx);
+        simCtx.autoStatus = Sim.detectAutoStatus(simCtx);
         applySimResult(simCtx);
       };
+
+      useEffect(() => {
+        const Sim = window.AutoSimulator;
+        if (!Sim) return;
+        const ctx = {
+          ...gameStateRef.current,
+          autoBuyCpuByMfr, autoBuyGpu, autoBuyRam, autoBuyCoolerByKind, autoBuyStorageByKind,
+        };
+        if (Sim.hasActiveAuto(ctx)) {
+          setAutoStatus(Sim.detectAutoStatus(ctx));
+          flushAutoNow();
+        } else {
+          setAutoStatus({ code: 'off', message: 'AUTO 꺼짐' });
+        }
+      }, [autoBuyCpuByMfr, autoBuyGpu, autoBuyRam, autoBuyCoolerByKind, autoBuyStorageByKind]);
 
       useEffect(() => {
         const LOOP_MS = 200;
@@ -1177,72 +1265,77 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             }
           }
 
-          // [오버클럭 연구소 건물 실시간 타격]
+          // [오버클럭 연구소] 차출 1기 — 스펙에 맞는 최고 레벨 건물 자동 파밍
           if (s.scaUpgrades && s.scaUpgrades.overclockLabBuilt) {
-            if (rem.overclock === undefined) rem.overclock = 0;
-            rem.overclock += elapsed;
+            const labUnitDps = OMG.calcUnitDps(s.specs.unitDamage, s.specs.attackSpeedSec);
+            const farmLvl = OMG.calcMaxOverclockLabLevel(labUnitDps);
+            const spec = OMG.OVERCLOCK_LAB_SPECS[farmLvl];
+            if (spec) {
+              const sec = elapsed / 1000;
+              let cd = s.overclockLabCooldown || 0;
 
-            if (rem.overclock >= 1000) {
-              const secondsElapsed = Math.floor(rem.overclock / 1000);
-              rem.overclock %= 1000;
+              if (cd <= 0 && s.overclockLabFarmLevel !== farmLvl) {
+                s.overclockLabFarmLevel = farmLvl;
+                s.overclockLabHp = spec.hp;
+                s.overclockLabShield = spec.shield;
+                setOverclockLabHp(spec.hp);
+                setOverclockLabShield(spec.shield);
+              }
 
-              const currentLvl = s.scaUpgrades.overclockLabLevel || 1;
-              const spec = OVERCLOCK_LAB_SPECS[currentLvl];
-              if (spec) {
-                let cd = s.overclockLabCooldown || 0;
-                if (cd > 0) {
-                  cd = Math.max(0, cd - secondsElapsed);
-                  s.overclockLabCooldown = cd;
-                  setOverclockLabCooldown(cd);
-                  if (cd === 0) {
-                    s.overclockLabHp = spec.hp;
-                    s.overclockLabShield = spec.shield;
-                    setOverclockLabHp(spec.hp);
-                    setOverclockLabShield(spec.shield);
+              if (cd > 0) {
+                cd = Math.max(0, cd - sec);
+                s.overclockLabCooldown = cd;
+                setOverclockLabCooldown(cd);
+                if (cd === 0) {
+                  s.overclockLabFarmLevel = farmLvl;
+                  s.overclockLabHp = spec.hp;
+                  s.overclockLabShield = spec.shield;
+                  setOverclockLabHp(spec.hp);
+                  setOverclockLabShield(spec.shield);
+                }
+              } else {
+                const netDmgPerSec = OMG.calcOverclockLabNetDps(labUnitDps, farmLvl);
+                const totalDmg = netDmgPerSec * sec;
+
+                if (totalDmg > 0) {
+                let curShield = s.overclockLabShield !== undefined ? s.overclockLabShield : spec.shield;
+                let curHp = s.overclockLabHp !== undefined ? s.overclockLabHp : spec.hp;
+
+                if (curShield > 0) {
+                  if (totalDmg >= curShield) {
+                    const carryDmg = totalDmg - curShield;
+                    curShield = 0;
+                    curHp = Math.max(0, curHp - carryDmg);
+                  } else {
+                    curShield -= totalDmg;
                   }
                 } else {
-                  const labUnitDps = Math.max(1, Math.round((1 / s.specs.attackSpeedSec) * s.specs.unitDamage));
-                  const netDmgPerSec = Math.max(1, labUnitDps - spec.defense);
-                  const totalDmg = netDmgPerSec * secondsElapsed;
+                  curHp = Math.max(0, curHp - totalDmg);
+                }
 
-                  let curShield = s.overclockLabShield !== undefined ? s.overclockLabShield : spec.shield;
-                  let curHp = s.overclockLabHp !== undefined ? s.overclockLabHp : spec.hp;
+                s.overclockLabHp = curHp;
+                s.overclockLabShield = curShield;
+                setOverclockLabHp(curHp);
+                setOverclockLabShield(curShield);
 
-                  if (curShield > 0) {
-                    if (totalDmg >= curShield) {
-                      const carryDmg = totalDmg - curShield;
-                      curShield = 0;
-                      curHp = Math.max(0, curHp - carryDmg);
-                    } else {
-                      curShield -= totalDmg;
-                    }
+                if (curHp <= 0) {
+                  const dropRoll = Math.random() < 0.3;
+                  if (dropRoll) {
+                    const dropPart = generateOverclockPart(farmLvl);
+                    s.scaUpgrades.overclockActivePart = dropPart;
+                    setScaUpgrades({ ...s.scaUpgrades });
+                    setCombatLogs((prev) => [...prev.slice(-7), `🎉 [RESEARCH] Lv.${farmLvl} 연구소 파괴 — OC 파츠(${dropPart.generation} OC-${dropPart.targetMhz}) 획득!`]);
                   } else {
-                    curHp = Math.max(0, curHp - totalDmg);
+                    setCombatLogs((prev) => [...prev.slice(-7), `⚙️ [RESEARCH] Lv.${farmLvl} 연구소를 파괴했으나 파츠 드랍 실패.`]);
                   }
 
-                  s.overclockLabHp = curHp;
-                  s.overclockLabShield = curShield;
-                  setOverclockLabHp(curHp);
-                  setOverclockLabShield(curShield);
-
-                  if (curHp <= 0) {
-                    const dropRoll = Math.random() < 0.3;
-                    if (dropRoll) {
-                      const dropPart = generateOverclockPart(currentLvl);
-                      s.scaUpgrades.overclockActivePart = dropPart;
-                      setScaUpgrades({ ...s.scaUpgrades });
-                      setCombatLogs((prev) => [...prev.slice(-7), `🎉 [RESEARCH] 오버클럭 연구소 건물을 파괴하여 오버클럭 파츠(${dropPart.generation} OC-${dropPart.targetMhz})를 획득했습니다!`]);
-                    } else {
-                      setCombatLogs((prev) => [...prev.slice(-7), `⚙️ [RESEARCH] 오버클럭 연구소 건물을 파괴했으나 파츠를 획득하지 못했습니다.`]);
-                    }
-
-                    s.overclockLabCooldown = 3;
-                    s.overclockLabHp = 0;
-                    s.overclockLabShield = 0;
-                    setOverclockLabCooldown(3);
-                    setOverclockLabHp(0);
-                    setOverclockLabShield(0);
-                  }
+                  s.overclockLabCooldown = OMG.OVERCLOCK_LAB_RESPAWN_SEC;
+                  s.overclockLabHp = 0;
+                  s.overclockLabShield = 0;
+                  setOverclockLabCooldown(OMG.OVERCLOCK_LAB_RESPAWN_SEC);
+                  setOverclockLabHp(0);
+                  setOverclockLabShield(0);
+                }
                 }
               }
             }
@@ -1276,19 +1369,6 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           window.removeEventListener('focus', onFocus);
         };
       }, []);
-
-      const OVERCLOCK_LAB_SPECS = {
-        1: { hp: 2000000, shield: 1000000, defense: 10 },
-        2: { hp: 20000000, shield: 10000000, defense: 50 },
-        3: { hp: 100000000, shield: 50000000, defense: 150 },
-        4: { hp: 500000000, shield: 250000000, defense: 500 }
-      };
-
-      const OVERCLOCK_LAB_UPGRADE_COSTS = {
-        1: 10000000000,  // 1→2: 100억
-        2: 50000000000,  // 2→3: 500억
-        3: 200000000000, // 3→4: 2,000억
-      };
 
       const generateOverclockPart = (labLevel) => {
         const roll = Math.random();
@@ -1453,10 +1533,11 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           return next;
         });
 
-        const spec = OVERCLOCK_LAB_SPECS[scaUpgrades.overclockLabLevel || 1];
+        const spec = OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel];
         setOverclockLabHp(spec.hp);
         setOverclockLabShield(spec.shield);
         setOverclockLabCooldown(0);
+        gameStateRef.current.overclockLabFarmLevel = effectiveOverclockLabLevel;
         gameStateRef.current.overclockLabHp = spec.hp;
         gameStateRef.current.overclockLabShield = spec.shield;
         gameStateRef.current.overclockLabCooldown = 0;
@@ -1473,30 +1554,6 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           return next;
         });
         setCombatLogs(prev => [...prev.slice(-7), `↩️ [RESEARCH] 연구소 공격 유닛을 복귀시켰습니다. (작업·사냥 풀 +1기)`]);
-      };
-
-      const handleUpgradeOverclockLab = () => {
-        const curLvl = scaUpgrades.overclockLabLevel || 1;
-        if (curLvl >= 4) {
-          alert('연구소가 이미 최대 레벨(4레벨)입니다.');
-          return;
-        }
-        const cost = OVERCLOCK_LAB_UPGRADE_COSTS[curLvl];
-        if (minerals < cost) {
-          alert('미네랄이 부족하여 연구소를 레벨업할 수 없습니다.');
-          return;
-        }
-        setMinerals(p => {
-          const next = p - cost;
-          gameStateRef.current.minerals = next;
-          return next;
-        });
-        setScaUpgrades(prev => {
-          const next = { ...prev, overclockLabLevel: curLvl + 1 };
-          localStorage.setItem('sca_scaUpgrades', JSON.stringify(next));
-          return next;
-        });
-        setCombatLogs(prev => [...prev.slice(-7), `⚙️ [RESEARCH] 오버클럭 연구소를 ${curLvl + 1}레벨로 업그레이드하였습니다.`]);
       };
 
       // ----------------------------------------------------------------------
@@ -1609,9 +1666,17 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border border-slate-800">
+            <div className={`flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border transition-colors duration-300 ${
+              mineralFlash === 'gain' ? 'border-emerald-500/60 bg-emerald-950/30' :
+              mineralFlash === 'spend' ? 'border-amber-500/60 bg-amber-950/20' :
+              'border-slate-800'
+            }`}>
               <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">MINERALS (원)</span>
-              <span className="text-lg font-bold text-emerald-400 font-mono flex items-center space-x-1">
+              <span className={`text-lg font-bold font-mono flex items-center space-x-1 transition-colors duration-300 ${
+                mineralFlash === 'gain' ? 'text-emerald-300 scale-105' :
+                mineralFlash === 'spend' ? 'text-amber-300' :
+                'text-emerald-400'
+              }`}>
                 <span>{minerals.toLocaleString()}<span className="text-slate-500 text-xs ml-1">원</span></span>
               </span>
             </div>
@@ -1674,20 +1739,14 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 <h2 className="text-sm font-bold text-emerald-300 flex items-center gap-1.5">
                   <span>🧪 오버클럭 연구소</span>
                   <span className="text-[10px] bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded-full border border-emerald-800/40">
-                    Lv.{scaUpgrades.overclockLabLevel || 1}
+                    파밍 Lv.{effectiveOverclockLabLevel}
                   </span>
                 </h2>
-                
-                <button 
-                  onClick={handleUpgradeOverclockLab} 
-                  disabled={(scaUpgrades.overclockLabLevel || 1) >= 4 || minerals < OVERCLOCK_LAB_UPGRADE_COSTS[scaUpgrades.overclockLabLevel || 1]}
-                  className="px-2 py-1 text-[10px] bg-slate-900 border border-slate-800 rounded hover:border-emerald-500/40 text-emerald-400 disabled:opacity-40 disabled:pointer-events-none"
-                >
-                  {(scaUpgrades.overclockLabLevel || 1) >= 4 
-                    ? '최대 레벨' 
-                    : `레벨업 (${(OVERCLOCK_LAB_UPGRADE_COSTS[scaUpgrades.overclockLabLevel || 1] / 100000000).toLocaleString()}억 원)`
-                  }
-                </button>
+                <span className="text-[10px] text-slate-500">
+                  {dpsForNextOverclockLab != null
+                    ? `Lv.${nextOverclockLabLevel} 필요 1기 DPS ≥ ${dpsForNextOverclockLab.toLocaleString()}`
+                    : '최고 레벨 파밍 중'}
+                </span>
               </div>
 
               {/* 현재 해금된 영구 오버클럭 상태 */}
@@ -1719,11 +1778,11 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     <div className="relative h-4 bg-slate-900 rounded overflow-hidden">
                       <div 
                         className="h-full bg-cyan-600 transition-all duration-300"
-                        style={{ width: `${Math.max(0, Math.min(100, (overclockLabShield / (OVERCLOCK_LAB_SPECS[scaUpgrades.overclockLabLevel || 1]?.shield || 1000000)) * 100))}%` }}
+                        style={{ width: `${Math.max(0, Math.min(100, (overclockLabShield / (OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.shield || 1000000)) * 100))}%` }}
                       ></div>
                       <div className="absolute inset-0 flex justify-between items-center px-2 text-[10px] text-white font-bold drop-shadow-md">
                         <span>Shield</span>
-                        <span>{overclockLabShield.toLocaleString()} / {(OVERCLOCK_LAB_SPECS[scaUpgrades.overclockLabLevel || 1]?.shield || 0).toLocaleString()}</span>
+                        <span>{overclockLabShield.toLocaleString()} / {(OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.shield || 0).toLocaleString()}</span>
                       </div>
                     </div>
 
@@ -1731,17 +1790,17 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     <div className="relative h-4 bg-slate-900 rounded overflow-hidden">
                       <div 
                         className="h-full bg-rose-600 transition-all duration-300"
-                        style={{ width: `${Math.max(0, Math.min(100, (overclockLabHp / (OVERCLOCK_LAB_SPECS[scaUpgrades.overclockLabLevel || 1]?.hp || 2000000)) * 100))}%` }}
+                        style={{ width: `${Math.max(0, Math.min(100, (overclockLabHp / (OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.hp || 2000000)) * 100))}%` }}
                       ></div>
                       <div className="absolute inset-0 flex justify-between items-center px-2 text-[10px] text-white font-bold drop-shadow-md">
                         <span>HP</span>
-                        <span>{overclockLabHp.toLocaleString()} / {(OVERCLOCK_LAB_SPECS[scaUpgrades.overclockLabLevel || 1]?.hp || 0).toLocaleString()}</span>
+                        <span>{overclockLabHp.toLocaleString()} / {(OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.hp || 0).toLocaleString()}</span>
                       </div>
                     </div>
 
                     <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono">
-                      <span>방어력: {OVERCLOCK_LAB_SPECS[scaUpgrades.overclockLabLevel || 1]?.defense}</span>
-                      <span>차출 1기 DPS: <strong className="text-cyan-400">{overclockLabUnitDps.toLocaleString()}</strong></span>
+                      <span>방어력: {OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.defense}</span>
+                      <span>차출 1기 DPS: <strong className="text-cyan-400">{OMG.calcUnitDps(specs.unitDamage, specs.attackSpeedSec).toLocaleString()}</strong></span>
                     </div>
                     <button
                       type="button"
@@ -1831,7 +1890,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 </div>
               ) : (
                 <div className="py-4 bg-slate-950/30 rounded border border-dashed border-slate-900 text-center text-slate-500 text-[11px]">
-                  작업·사냥 풀에서 유닛 1기를 차출해 연구소 건물을 공격·파괴하면 오버클럭 조율 파츠를 획득할 수 있습니다. (드랍률: 30%, 미네랄 불필요)
+                  작업·사냥 유닛 1기 차출 공격. 차출 DPS가 높을수록 더 높은 Lv. 연구소를 자동 파밍합니다. (드랍률 30%, 미네랄·레벨업 불필요)
                 </div>
               )}
             </section>
@@ -1987,9 +2046,15 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     <span className="text-emerald-400 font-bold">{specs.unitDefense}</span>
                   </div>
                   <div className="flex justify-between col-span-2 border-t border-slate-900 pt-2 text-sm">
-                    <span className="text-slate-500">유닛당 초당 DPS 기여도:</span>
+                    <span className="text-slate-500">1기 DPS (연구소·레이드 기준):</span>
                     <span className="text-cyan-400 font-bold font-mono">
-                      {Math.round((1 / specs.attackSpeedSec) * specs.unitDamage * specs.unitLimit).toLocaleString()} DPS/합산
+                      {OMG.calcUnitDps(specs.unitDamage, specs.attackSpeedSec).toLocaleString()} DPS
+                    </span>
+                  </div>
+                  <div className="flex justify-between col-span-2 text-xs">
+                    <span className="text-slate-500">전체 {specs.unitLimit}기 합산 DPS:</span>
+                    <span className="text-slate-400 font-mono">
+                      {(OMG.calcUnitDps(specs.unitDamage, specs.attackSpeedSec) * specs.unitLimit).toLocaleString()} DPS
                     </span>
                   </div>
                 </div>
@@ -2178,6 +2243,44 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       })}
                     </div>
 
+                    {hasActiveAuto && (
+                      <div className="mt-2 p-3 rounded-lg border border-emerald-900/50 bg-slate-950/70 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-bold text-emerald-400 font-mono uppercase tracking-wider flex items-center gap-1.5">
+                            {autoStatus.code === 'running' && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />}
+                            {autoStatus.code === 'waiting' && <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />}
+                            {autoStatus.code === 'manual' && <span className="w-2 h-2 rounded-full bg-cyan-400" />}
+                            {(autoStatus.code === 'idle' || autoStatus.code === 'off') && <span className="w-2 h-2 rounded-full bg-slate-600" />}
+                            AUTO 실시간
+                          </span>
+                          <span className={`text-[10px] font-mono ${
+                            autoStatus.code === 'running' ? 'text-emerald-400' :
+                            autoStatus.code === 'waiting' ? 'text-amber-400' :
+                            autoStatus.code === 'manual' ? 'text-cyan-400' :
+                            'text-slate-500'
+                          }`}>{autoStatus.message}</span>
+                        </div>
+                        <div className="max-h-24 overflow-y-auto space-y-0.5 font-mono text-[10px]">
+                          {autoFeed.length === 0 ? (
+                            <p className="text-slate-600 py-1">구매·강화·수입 이벤트가 여기 표시됩니다.</p>
+                          ) : autoFeed.map((item, i) => (
+                            <div
+                              key={`${item.ts}-${i}-${item.message}`}
+                              className={
+                                item.kind === 'explosion' ? 'text-rose-400' :
+                                item.kind === 'upgrade' ? 'text-emerald-400' :
+                                item.kind === 'buy' ? 'text-cyan-300' :
+                                item.kind === 'income' ? 'text-emerald-500/80' :
+                                'text-slate-400'
+                              }
+                            >
+                              {item.message}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                   </div>
 
                   {/* ================================================================== */}
@@ -2234,7 +2337,11 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                           const prob = isMax ? 0 : getUpgradeProbability(p.type, p.level, p);
 
                           return (
-                            <div key={p.id} className="p-3 bg-slate-900/60 rounded border border-slate-800 hover:border-slate-700 transition flex flex-col justify-between space-y-2">
+                            <div key={p.id} className={`p-3 bg-slate-900/60 rounded border transition flex flex-col justify-between space-y-2 ${
+                              highlightPartId === p.id
+                                ? 'border-amber-400 ring-2 ring-amber-400/30 animate-pulse bg-amber-950/20'
+                                : 'border-slate-800 hover:border-slate-700'
+                            }`}>
                               <div>
                                 <div className="flex justify-between items-center mb-1">
                                   <span className={`text-[11px] font-mono px-1.5 py-0.5 rounded font-bold ${badgeStyle}`}>

@@ -802,6 +802,27 @@
     return getGpuTierAttack(tier, calcGpuGrade(scaUpgrades || {}));
   }
 
+  /** CPU 소환 유닛 DPS 배율 — index.html getSummonUnit 과 동일 */
+  const CPU_SUMMON_DPS_FACTORS = [1.0, 1.5, 2.2, 3.2, 4.8, 7.2, 11.0, 16.0, 25.0, 45.0];
+  const INCOME_REF_UNIT_DAMAGE = 2;
+
+  function getCpuSummonDpsFactor(cpu) {
+    const lv = Math.max(1, Math.min(10, getPartLevel(cpu)));
+    return CPU_SUMMON_DPS_FACTORS[lv - 1] || lv * 5;
+  }
+
+  /** 1기 타격 데미지(GPU×CPU) — RAM 공속은 calcIncomeEventIntervalMs 에서 별도 반영 */
+  function calcUnitDamageForIncome(parts, scaUpgrades) {
+    const gpu = parts && parts.gpu;
+    const cpu = parts && parts.cpu;
+    const atk = getGpuAttackPower(gpu, scaUpgrades);
+    return Math.max(1, Math.round(atk * getCpuSummonDpsFactor(cpu)));
+  }
+
+  function calcIncomeDamageMultiplier(parts, scaUpgrades) {
+    return Math.max(1, calcUnitDamageForIncome(parts, scaUpgrades) / INCOME_REF_UNIT_DAMAGE);
+  }
+
   function perfToGuideRamGb(perf) {
     if (perf <= 25) return 1;
     if (perf <= 150) return 2;
@@ -1042,16 +1063,18 @@ function getPartLevel(part) {
     const game = getGameHunt(getEffectiveUnlockedGameIndex(unlockedGameIndex));
     if (!game || alloc.activeHuntingUnits <= 0) return 0;
     const bonus = 1 + (incomeBonusRate || 0);
-    return Math.round(game.mineralPerUnit * alloc.activeHuntingUnits * bonus);
+    const dmgMult = calcIncomeDamageMultiplier(parts, _scaUpgradesRef);
+    return Math.round(game.mineralPerUnit * alloc.activeHuntingUnits * bonus * dmgMult);
   }
 
   function calcWorkIncomePerTick(parts, workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, workUnitsOverride) {
     const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride);
     if (!alloc.canRunWork || alloc.activeWorkUnits <= 0) return 0;
     const task = getWorkTask(workTaskIndex);
+    const dmgMult = calcIncomeDamageMultiplier(parts, _scaUpgradesRef);
     return Math.round(
       task.mineralPerUnit * alloc.activeWorkUnits *
-      (mineralMultiplier || 1) * (rebirthIncomeMult || 1) * (1 + (incomeBonusRate || 0))
+      (mineralMultiplier || 1) * (rebirthIncomeMult || 1) * (1 + (incomeBonusRate || 0)) * dmgMult
     );
   }
 
@@ -1105,6 +1128,39 @@ function getPartLevel(part) {
     100: 80000
   };
 
+  /**
+   * 오버클럭 연구소 건물 스펙.
+   * defense = 방어력(초당 net DPS = unitDps − defense)
+   * minDps  = 해당 레벨 파밍에 필요한 차출 1기 DPS (엔트리→하이엔드 구간)
+   */
+  const OVERCLOCK_LAB_SPECS = {
+    1: { hp: 2000000, shield: 1000000, defense: 10, minDps: 0 },
+    2: { hp: 20000000, shield: 10000000, defense: 50, minDps: 5000 },
+    3: { hp: 100000000, shield: 50000000, defense: 150, minDps: 50000 },
+    4: { hp: 500000000, shield: 250000000, defense: 500, minDps: 150000 },
+  };
+  const OVERCLOCK_LAB_RESPAWN_SEC = 1;
+
+  function calcUnitDps(unitDamage, attackSpeedSec) {
+    const sec = Math.max(0.1, attackSpeedSec || 1);
+    return Math.max(1, Math.round((1 / sec) * (unitDamage || 1)));
+  }
+
+  function calcMaxOverclockLabLevel(unitDps) {
+    let max = 1;
+    for (let lvl = 1; lvl <= 4; lvl++) {
+      const spec = OVERCLOCK_LAB_SPECS[lvl];
+      if (spec && unitDps >= (spec.minDps || 0)) max = lvl;
+    }
+    return max;
+  }
+
+  function calcOverclockLabNetDps(unitDps, farmLevel) {
+    const spec = OVERCLOCK_LAB_SPECS[farmLevel];
+    if (!spec) return 0;
+    return Math.max(0, unitDps - spec.defense);
+  }
+
   global.OriginalMapGame = {
     MINERAL_PER_COIN, MANWON_MINERALS, parseSheetPrice, REBIRTH_MINERAL_CAP,
     GAME_SPEED_BASE, GAME_SPEED_MAX, GAME_SPEED_FRAME_REF,
@@ -1129,7 +1185,10 @@ function getPartLevel(part) {
     getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
     calcHuntIncomePerTick, calcWorkIncomePerTick, calcOptimalWorkUnits, toDownloadTargetSnapshot,
+    getCpuSummonDpsFactor, calcUnitDamageForIncome, calcIncomeDamageMultiplier,
     createIntelCpu11InventoryItem,
-    getMiningPower, RAID_CUMULATIVE_REWARDS, setScaUpgradesRef
+    getMiningPower, RAID_CUMULATIVE_REWARDS, setScaUpgradesRef,
+    OVERCLOCK_LAB_SPECS, OVERCLOCK_LAB_RESPAWN_SEC,
+    calcUnitDps, calcMaxOverclockLabLevel, calcOverclockLabNetDps,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
