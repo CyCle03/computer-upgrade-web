@@ -467,6 +467,37 @@
     return Math.min(1, baseProb + (bonusProb || 0));
   }
 
+  /** 강화 구간별 확률 검증용 (CI·디버그) */
+  function auditUpgradeProbTable() {
+    const specs = [
+      { label: 'Intel CPU', type: 'cpu', part: { type: 'cpu', manufacturer: 'Intel' } },
+      { label: 'AMD CPU', type: 'cpu', part: { type: 'cpu', manufacturer: 'AMD' } },
+      { label: 'GPU', type: 'gpu', part: { type: 'gpu' } },
+      { label: 'RAM', type: 'ram', part: { type: 'ram', ramVariant: 'standard' } },
+      { label: 'Cooler 공랭', type: 'cooler', part: { type: 'cooler', coolerKind: 'air' } },
+      { label: 'Cooler 수랭', type: 'cooler', part: { type: 'cooler', coolerKind: 'water' } },
+      { label: 'HDD', type: 'storage', part: { type: 'storage', storageKind: 'hdd' } },
+      { label: 'NVMe', type: 'storage', part: { type: 'storage', storageKind: 'nvme' } },
+    ];
+    const rows = [];
+    specs.forEach(({ label, type, part }) => {
+      const max = getMaxLevel(type, part);
+      for (let lv = 1; lv < max; lv += 1) {
+        const prob = getUpgradeProbability(type, lv, part, 0);
+        const nextTier = getTier(type, part, lv + 1);
+        rows.push({
+          label,
+          from: lv,
+          to: lv + 1,
+          prob,
+          sheetProb: nextTier ? nextTier.prob : null,
+          isFinalStep: lv + 1 >= max,
+        });
+      }
+    });
+    return rows;
+  }
+
   function getPartName(type, level, part, scaUpgrades) {
     if (type === 'gpu') return getGpuDisplayName(level, part, scaUpgrades);
     const tier = getTier(type, part, level);
@@ -1175,7 +1206,7 @@ function getPartLevel(part) {
     GPU_GRADE_NAMES, GPU_GRADE_ATTACK_FRAMES, GPU_GRADE_BENCHMARK_MULTIPLIERS, DOWNLOAD_BASE_MB,
     INTEL_CPU, AMD_CPU, GPU, RAM, COOLER_AIR, COOLER_WATER, HDD, NVME,
     MOTHERBOARDS, WORK_TASKS, GAME_HUNTING, WORK_HUNTING_GROUNDS, PARTY_HUNTING_TIERS, SCA_SHOP_ITEMS, DOWNLOAD_TARGETS, GPU_GRADE_PERF_MULT,
-    getPartTable, getMaxLevel, getTier, getUpgradeCost, getUpgradeProbability, getPartName,
+    getPartTable, getMaxLevel, getTier, getUpgradeCost, getUpgradeProbability, auditUpgradeProbTable, getPartName,
     applyTierStats, getCpuCoolingRequired, getCpuCores, convertMineralsToCoins,
     calcRebirthPerformanceScore, calcRebirthStatGain, calcRebirthScaReward,
     calcRebirthStartMinerals, calcRebirthIncomeMultiplier,

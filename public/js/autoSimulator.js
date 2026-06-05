@@ -65,6 +65,7 @@
     else if (type === 'storage') ctx.autoBuyStorageByKind = { ...ctx.autoBuyStorageByKind, [variantKey]: false };
     else if (type === 'gpu') ctx.autoBuyGpu = false;
     else if (type === 'ram') ctx.autoBuyRam = false;
+    ctx.autoFlagsDirty = true;
     if (message) ctx.logs.push(message);
   }
 
@@ -620,6 +621,7 @@
       autoBuyRam: !!s.autoBuyRam,
       autoBuyCoolerByKind: { ...(s.autoBuyCoolerByKind || {}) },
       autoBuyStorageByKind: { ...(s.autoBuyStorageByKind || {}) },
+      autoFlagsDirty: false,
       probBonusRate: s.probBonusRate ?? 0,
       cpuBuyManufacturer: s.cpuBuyManufacturer,
       coolerBuyKind: s.coolerBuyKind,

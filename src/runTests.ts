@@ -29,6 +29,11 @@ async function main() {
     process.exit(1);
   }
 
+  console.log('[TestRunner] upgrade probability tests...');
+  if (!runScript('src/testUpgradeProb.ts')) {
+    process.exit(1);
+  }
+
   if (hasDbConfig()) {
     console.log('[TestRunner] reward integration tests (DB)...');
     if (!runScript('src/testReward.ts')) {

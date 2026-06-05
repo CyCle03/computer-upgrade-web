@@ -1194,11 +1194,13 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         if (simCtx.scaCoinsGain) {
           setScaCoins((p) => p + simCtx.scaCoinsGain);
         }
-        setAutoBuyCpuByMfr({ ...simCtx.autoBuyCpuByMfr });
-        setAutoBuyCoolerByKind({ ...simCtx.autoBuyCoolerByKind });
-        setAutoBuyStorageByKind({ ...simCtx.autoBuyStorageByKind });
-        setAutoBuyGpu(!!simCtx.autoBuyGpu);
-        setAutoBuyRam(!!simCtx.autoBuyRam);
+        if (simCtx.autoFlagsDirty) {
+          setAutoBuyCpuByMfr({ ...simCtx.autoBuyCpuByMfr });
+          setAutoBuyCoolerByKind({ ...simCtx.autoBuyCoolerByKind });
+          setAutoBuyStorageByKind({ ...simCtx.autoBuyStorageByKind });
+          setAutoBuyGpu(!!simCtx.autoBuyGpu);
+          setAutoBuyRam(!!simCtx.autoBuyRam);
+        }
 
         const mineralDelta = simCtx.minerals - mineralsBefore;
         if (mineralDelta > 0) pulseMineralFlash('gain');
@@ -1268,6 +1270,47 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         applySimResult(simCtx);
       };
 
+      const toggleAutoCpuMfr = (mfr) => {
+        setAutoBuyCpuByMfr((prev) => {
+          const next = { ...prev, [mfr]: !prev[mfr] };
+          gameStateRef.current.autoBuyCpuByMfr = next;
+          if (next[mfr]) queueMicrotask(flushAutoNow);
+          return next;
+        });
+      };
+      const toggleAutoCoolerKind = (kind) => {
+        setAutoBuyCoolerByKind((prev) => {
+          const next = { ...prev, [kind]: !prev[kind] };
+          gameStateRef.current.autoBuyCoolerByKind = next;
+          if (next[kind]) queueMicrotask(flushAutoNow);
+          return next;
+        });
+      };
+      const toggleAutoStorageKind = (kind) => {
+        setAutoBuyStorageByKind((prev) => {
+          const next = { ...prev, [kind]: !prev[kind] };
+          gameStateRef.current.autoBuyStorageByKind = next;
+          if (next[kind]) queueMicrotask(flushAutoNow);
+          return next;
+        });
+      };
+      const toggleAutoGpu = () => {
+        setAutoBuyGpu((prev) => {
+          const next = !prev;
+          gameStateRef.current.autoBuyGpu = next;
+          if (next) queueMicrotask(flushAutoNow);
+          return next;
+        });
+      };
+      const toggleAutoRam = () => {
+        setAutoBuyRam((prev) => {
+          const next = !prev;
+          gameStateRef.current.autoBuyRam = next;
+          if (next) queueMicrotask(flushAutoNow);
+          return next;
+        });
+      };
+
       useEffect(() => {
         const Sim = window.AutoSimulator;
         if (!Sim) return;
@@ -1277,7 +1320,6 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         };
         if (Sim.hasActiveAuto(ctx)) {
           setAutoStatus(Sim.detectAutoStatus(ctx));
-          flushAutoNow();
         } else {
           setAutoStatus({ code: 'off', message: 'AUTO 꺼짐' });
         }
@@ -2275,14 +2317,14 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2.5 border-t border-slate-900">
                       {[
-                        { type: 'cpu', variantKey: 'Intel', label: 'Intel CPU', emoji: '🧠', on: autoBuyCpuByMfr.Intel, toggle: () => setAutoBuyCpuByMfr((p) => ({ ...p, Intel: !p.Intel })), activeCls: 'bg-emerald-500/20 border-emerald-500 text-emerald-400' },
-                        { type: 'cpu', variantKey: 'AMD', label: 'AMD CPU', emoji: '🧠', on: autoBuyCpuByMfr.AMD, toggle: () => setAutoBuyCpuByMfr((p) => ({ ...p, AMD: !p.AMD })), activeCls: 'bg-emerald-500/20 border-emerald-500 text-emerald-400' },
-                        { type: 'cooler', variantKey: 'air', label: '공랭', emoji: '❄️', on: autoBuyCoolerByKind.air, toggle: () => setAutoBuyCoolerByKind((p) => ({ ...p, air: !p.air })), activeCls: 'bg-rose-500/20 border-rose-500 text-rose-400' },
-                        { type: 'cooler', variantKey: 'water', label: '수랭', emoji: '❄️', on: autoBuyCoolerByKind.water, toggle: () => setAutoBuyCoolerByKind((p) => ({ ...p, water: !p.water })), activeCls: 'bg-rose-500/20 border-rose-500 text-rose-400' },
-                        { type: 'storage', variantKey: 'hdd', label: 'HDD', emoji: '💾', on: autoBuyStorageByKind.hdd, toggle: () => setAutoBuyStorageByKind((p) => ({ ...p, hdd: !p.hdd })), activeCls: 'bg-cyan-500/20 border-cyan-500 text-cyan-400' },
-                        { type: 'storage', variantKey: 'nvme', label: 'NVMe', emoji: '💾', on: autoBuyStorageByKind.nvme, toggle: () => setAutoBuyStorageByKind((p) => ({ ...p, nvme: !p.nvme })), activeCls: 'bg-cyan-500/20 border-cyan-500 text-cyan-400' },
-                        { type: 'gpu', variantKey: null, label: 'GPU', emoji: '🎮', on: autoBuyGpu, toggle: () => setAutoBuyGpu((p) => !p), activeCls: 'bg-cyan-500/20 border-cyan-500 text-cyan-400' },
-                        { type: 'ram', variantKey: null, label: 'RAM', emoji: '⚡', on: autoBuyRam, toggle: () => setAutoBuyRam((p) => !p), activeCls: 'bg-emerald-500/20 border-emerald-500 text-emerald-400' },
+                        { type: 'cpu', variantKey: 'Intel', label: 'Intel CPU', emoji: '🧠', on: autoBuyCpuByMfr.Intel, toggle: () => toggleAutoCpuMfr('Intel'), activeCls: 'bg-emerald-500/20 border-emerald-500 text-emerald-400' },
+                        { type: 'cpu', variantKey: 'AMD', label: 'AMD CPU', emoji: '🧠', on: autoBuyCpuByMfr.AMD, toggle: () => toggleAutoCpuMfr('AMD'), activeCls: 'bg-emerald-500/20 border-emerald-500 text-emerald-400' },
+                        { type: 'cooler', variantKey: 'air', label: '공랭', emoji: '❄️', on: autoBuyCoolerByKind.air, toggle: () => toggleAutoCoolerKind('air'), activeCls: 'bg-rose-500/20 border-rose-500 text-rose-400' },
+                        { type: 'cooler', variantKey: 'water', label: '수랭', emoji: '❄️', on: autoBuyCoolerByKind.water, toggle: () => toggleAutoCoolerKind('water'), activeCls: 'bg-rose-500/20 border-rose-500 text-rose-400' },
+                        { type: 'storage', variantKey: 'hdd', label: 'HDD', emoji: '💾', on: autoBuyStorageByKind.hdd, toggle: () => toggleAutoStorageKind('hdd'), activeCls: 'bg-cyan-500/20 border-cyan-500 text-cyan-400' },
+                        { type: 'storage', variantKey: 'nvme', label: 'NVMe', emoji: '💾', on: autoBuyStorageByKind.nvme, toggle: () => toggleAutoStorageKind('nvme'), activeCls: 'bg-cyan-500/20 border-cyan-500 text-cyan-400' },
+                        { type: 'gpu', variantKey: null, label: 'GPU', emoji: '🎮', on: autoBuyGpu, toggle: toggleAutoGpu, activeCls: 'bg-cyan-500/20 border-cyan-500 text-cyan-400' },
+                        { type: 'ram', variantKey: null, label: 'RAM', emoji: '⚡', on: autoBuyRam, toggle: toggleAutoRam, activeCls: 'bg-emerald-500/20 border-emerald-500 text-emerald-400' },
                       ].map((row) => {
                         const buyMeta = row.variantKey != null ? buildBuyMetaForVariant(row.type, row.variantKey) : getComponentBuyMeta(row.type);
                         const goal = getVariantAutoTarget(row.type, row.variantKey);
