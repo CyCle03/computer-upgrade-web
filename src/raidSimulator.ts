@@ -38,6 +38,7 @@ export class RaidRoomState {
 
   private timerInterval: NodeJS.Timeout | null = null;
   private resetTimeout: NodeJS.Timeout | null = null;
+  private tickInProgress = false;
   private onBroadcast: (state: any) => void;
   private onMilestoneCleared: MilestoneClearCallback;
 
@@ -188,11 +189,13 @@ export class RaidRoomState {
    * 실시간 전투 시뮬레이션 매 초 루프
    */
   private async tickCombat() {
-    if (this.status !== 'fighting') {
-      this.stopTimer();
+    if (this.status !== 'fighting' || this.tickInProgress) {
+      if (this.status !== 'fighting') this.stopTimer();
       return;
     }
+    this.tickInProgress = true;
 
+    try {
     // 1. 시간 감소 및 타임아웃 패배 체크
     this.timeLeft -= 1;
     if (this.timeLeft <= 0) {
@@ -226,6 +229,7 @@ export class RaidRoomState {
     // 4. 연쇄 관통(Overkill Multi-Floor Clear) 로직
     // 한 틱에 DPS 잔여 데미지로 하위 보스들을 연속으로 격파
     let damageRemaining = this.totalDps;
+    const milestoneFloors: number[] = [];
 
     while (damageRemaining > 0 && this.status === 'fighting') {
       const damageApplied = Math.min(this.bossCurrentHp, damageRemaining);
@@ -235,18 +239,9 @@ export class RaidRoomState {
       if (this.bossCurrentHp <= 0) {
         const clearedFloor = this.currentFloor;
 
-        // 10층 단위 돌파 성공 시 실시간 DB 보상 마일스톤 연동 트리거
+        // 10층 단위 돌파 — 틱 종료 후 순차 지급 (동시 claim 레이스 방지)
         if (clearedFloor % 10 === 0) {
-          console.log(`[Raid] ${clearedFloor}층 마일스톤 돌파 완료. 보상 안전 지급 트랜잭션 트리거 시작.`);
-          for (const player of this.players.values()) {
-            this.onMilestoneCleared(player.userId, clearedFloor)
-              .then(res => {
-                console.log(`[Raid Reward] 유저 ${player.nickname} 보상 결과:`, res);
-              })
-              .catch(err => {
-                console.error(`[Raid Reward] 유저 ${player.nickname} 보상 실패:`, err);
-              });
-          }
+          milestoneFloors.push(clearedFloor);
         }
 
         if (clearedFloor >= 100) {
@@ -266,8 +261,23 @@ export class RaidRoomState {
       }
     }
 
+    for (const floor of milestoneFloors) {
+      console.log(`[Raid] ${floor}층 마일스톤 돌파 완료. 보상 지급 시작.`);
+      for (const player of this.players.values()) {
+        try {
+          const res = await this.onMilestoneCleared(player.userId, floor);
+          console.log(`[Raid Reward] 유저 ${player.nickname} 보상 결과:`, res);
+        } catch (err) {
+          console.error(`[Raid Reward] 유저 ${player.nickname} 보상 실패:`, err);
+        }
+      }
+    }
+
     // 5. 실시간 상태 브로드캐스트 전송
     this.onBroadcast(this.getSummaryState());
+    } finally {
+      this.tickInProgress = false;
+    }
   }
 
   /**

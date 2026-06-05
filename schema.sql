@@ -126,6 +126,8 @@ DECLARE
     v_base_reward INT := 0;
     v_rebirth_stat INT := 0;
     v_stat_mult NUMERIC := 1.0;
+    v_wallet_sca INT := 0;
+    v_new_wallet_sca INT := 0;
 BEGIN
     -- [검증 1] 입력받은 층수가 올바른 마일스톤 단위인지 체크 (10, 20, ..., 100)
     IF p_current_floor < 10 OR p_current_floor > 100 OR p_current_floor % 10 <> 0 THEN
@@ -147,6 +149,10 @@ BEGIN
     VALUES (p_user_id, 0)
     ON CONFLICT (user_id) DO NOTHING;
 
+    INSERT INTO game_states (user_id, state)
+    VALUES (p_user_id, '{}'::jsonb)
+    ON CONFLICT (user_id) DO NOTHING;
+
     -- 로우 락을 걸고 현재 정보 획득
     SELECT last_played_date, highest_claimed_floor 
     INTO v_last_played_date, v_highest_claimed_floor
@@ -157,6 +163,12 @@ BEGIN
     SELECT sca_coins
     INTO v_current_sca_coins
     FROM permanent_currencies
+    WHERE user_id = p_user_id
+    FOR UPDATE;
+
+    SELECT COALESCE((state->>'sca_scaCoins')::int, 0)
+    INTO v_wallet_sca
+    FROM game_states
     WHERE user_id = p_user_id
     FOR UPDATE;
 
@@ -179,13 +191,13 @@ BEGIN
             '이미 해당 층수 이하의 모든 마일스톤 보상을 수령하셨습니다.'::TEXT, 
             0, 
             v_highest_claimed_floor, 
-            v_current_sca_coins;
+            v_wallet_sca;
         RETURN;
     END IF;
 
-    -- [환생수치 추가 연동] game_states 테이블에서 해당 유저의 rebirthStat 값 추출
+    -- [환생수치 추가 연동] game_states에서 rebirthStat 추출
     BEGIN
-        SELECT ((state->>'sca_rebirthStat')::int)
+        SELECT COALESCE((state->>'sca_rebirthStat')::int, 0)
         INTO v_rebirth_stat
         FROM game_states
         WHERE user_id = p_user_id;
@@ -204,11 +216,15 @@ BEGIN
     v_base_reward := get_raid_cumulative_reward(p_current_floor) - get_raid_cumulative_reward(v_highest_claimed_floor);
     v_coins_to_reward := floor(v_base_reward::numeric * v_stat_mult);
 
-    -- [재화 지급] SCA 코인 누적
+    -- [재화 지급] permanent_currencies(감사) + game_states.sca_scaCoins(지갑)
     UPDATE permanent_currencies
     SET sca_coins = sca_coins + v_coins_to_reward
-    WHERE user_id = p_user_id
-    RETURNING sca_coins INTO v_current_sca_coins;
+    WHERE user_id = p_user_id;
+
+    v_new_wallet_sca := v_wallet_sca + v_coins_to_reward;
+    UPDATE game_states
+    SET state = jsonb_set(COALESCE(state, '{}'::jsonb), '{sca_scaCoins}', to_jsonb(v_new_wallet_sca::text))
+    WHERE user_id = p_user_id;
 
     -- [진행도 갱신] 최고 달성 층수 오늘 날짜로 업데이트
     UPDATE daily_raid_progresses
@@ -221,7 +237,7 @@ BEGIN
         '보상이 정상적으로 지급되었습니다.'::TEXT, 
         v_coins_to_reward, 
         p_current_floor, 
-        v_current_sca_coins;
+        v_new_wallet_sca;
 END;
 $$ LANGUAGE plpgsql;
 

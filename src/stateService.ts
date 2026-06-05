@@ -7,16 +7,41 @@ import { GameStatePayload } from './types';
 export class StateService {
   /**
    * 저장된 진행도 조회. 없으면 빈 객체 반환.
+   * 레이드 보상이 permanent_currencies에만 쌓인 구버전 데이터는 sca_scaCoins로 1회 병합한다.
    */
   static async getState(userId: string): Promise<GameStatePayload> {
     const res = await pool.query(
       `SELECT state FROM game_states WHERE user_id = $1`,
       [userId]
     );
-    if (res.rowCount === 0 || !res.rows[0].state) {
-      return {};
+    const state: GameStatePayload =
+      res.rowCount && res.rows[0].state
+        ? { ...(res.rows[0].state as GameStatePayload) }
+        : {};
+
+    const currRes = await pool.query(
+      `SELECT sca_coins FROM permanent_currencies WHERE user_id = $1`,
+      [userId]
+    );
+    const orphanedRaidSca = Number(currRes.rows[0]?.sca_coins) || 0;
+    if (orphanedRaidSca <= 0) {
+      return state;
     }
-    return res.rows[0].state as GameStatePayload;
+
+    const walletSca = Number(state.sca_scaCoins) || 0;
+    const merged = walletSca + orphanedRaidSca;
+    state.sca_scaCoins = String(merged);
+
+    await pool.query(`UPDATE permanent_currencies SET sca_coins = 0 WHERE user_id = $1`, [userId]);
+    await pool.query(
+      `INSERT INTO game_states (user_id, state, updated_at)
+       VALUES ($1, $2::jsonb, CURRENT_TIMESTAMP)
+       ON CONFLICT (user_id)
+       DO UPDATE SET state = EXCLUDED.state, updated_at = CURRENT_TIMESTAMP`,
+      [userId, JSON.stringify(sanitizeState(state))]
+    );
+
+    return state;
   }
 
   /**

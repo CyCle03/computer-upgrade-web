@@ -66,6 +66,12 @@ export class RewardService {
         ON CONFLICT (user_id) DO NOTHING
       `, [userId]);
 
+      await client.query(`
+        INSERT INTO game_states (user_id, state)
+        VALUES ($1, '{}'::jsonb)
+        ON CONFLICT (user_id) DO NOTHING
+      `, [userId]);
+
       // 3. [보안 핵심] SELECT ... FOR UPDATE 로우 레벨 락 획득 (Race Condition 완벽 차단)
       const progressRes = await client.query(`
         SELECT last_played_date::text, highest_claimed_floor 
@@ -74,28 +80,23 @@ export class RewardService {
         FOR UPDATE
       `, [userId]);
 
-      const currencyRes = await client.query(`
-        SELECT sca_coins 
-        FROM permanent_currencies 
-        WHERE user_id = $1 
-        FOR UPDATE
-      `, [userId]);
-
       let { last_played_date: lastPlayedDateStr, highest_claimed_floor: highestClaimedFloor } = progressRes.rows[0];
-      let currentScaCoins = currencyRes.rows[0].sca_coins;
+
+      await client.query(`
+        SELECT sca_coins FROM permanent_currencies WHERE user_id = $1 FOR UPDATE
+      `, [userId]);
 
       // 4. [보안] 데이터베이스 서버 기준의 오늘 날짜 획득
       const dateRes = await client.query("SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date::text AS today");
       const todayStr = dateRes.rows[0].today; // 'YYYY-MM-DD' 포맷
 
-      // 4-1. 환생 수치 로드
+      // 4-1. 환생 수치·지갑 SCA (game_states) 로드 — 화면 잔액과 동일 소스
       const stateRes = await client.query(`
-        SELECT state FROM game_states WHERE user_id = $1
+        SELECT state FROM game_states WHERE user_id = $1 FOR UPDATE
       `, [userId]);
-      let rebirthStat = 0;
-      if (stateRes.rows.length > 0 && stateRes.rows[0].state) {
-        rebirthStat = Number(stateRes.rows[0].state.sca_rebirthStat) || 0;
-      }
+      const gameState = stateRes.rows[0]?.state ?? {};
+      const walletScaBefore = Number(gameState.sca_scaCoins) || 0;
+      const rebirthStat = Number(gameState.sca_rebirthStat) || 0;
       const statMult = 1.0 + (rebirthStat / 10000000.0);
 
       // 5. [일일 리셋 처리] 날짜가 바뀌었다면 수령 최고 층수를 0으로 리셋하고 날짜 갱신
@@ -120,7 +121,7 @@ export class RewardService {
           message: '이미 해당 층수 이하의 모든 마일스톤 보상을 수령하셨습니다.',
           claimedCoins: 0,
           newHighestFloor: highestClaimedFloor,
-          currentTotalCoins: currentScaCoins,
+          currentTotalCoins: walletScaBefore,
         };
       }
 
@@ -128,15 +129,19 @@ export class RewardService {
       const baseReward = (RAID_CUMULATIVE_REWARDS[currentFloor] || 0) - (RAID_CUMULATIVE_REWARDS[highestClaimedFloor] || 0);
       const coinsToReward = Math.floor(baseReward * statMult);
 
-      // 8. [재화 누적] permanent_currencies 테이블 갱신
-      const updatedCurrencyRes = await client.query(`
+      // 8. [재화 누적] permanent_currencies(감사용) + game_states.sca_scaCoins(실제 지갑) 동시 반영
+      await client.query(`
         UPDATE permanent_currencies
         SET sca_coins = sca_coins + $1
         WHERE user_id = $2
-        RETURNING sca_coins
       `, [coinsToReward, userId]);
-      
-      const newTotalCoins = updatedCurrencyRes.rows[0].sca_coins;
+
+      const newWalletSca = walletScaBefore + coinsToReward;
+      await client.query(`
+        UPDATE game_states
+        SET state = jsonb_set(COALESCE(state, '{}'::jsonb), '{sca_scaCoins}', to_jsonb($1::text))
+        WHERE user_id = $2
+      `, [String(newWalletSca), userId]);
 
       // 9. [진행도 갱신] daily_raid_progresses 최고 수령 층수 업데이트
       await client.query(`
@@ -153,7 +158,7 @@ export class RewardService {
         message: '보상이 정상적으로 지급되었습니다.',
         claimedCoins: coinsToReward,
         newHighestFloor: currentFloor,
-        currentTotalCoins: newTotalCoins,
+        currentTotalCoins: newWalletSca,
       };
 
     } catch (error) {
