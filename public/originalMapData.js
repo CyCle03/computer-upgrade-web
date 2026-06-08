@@ -1,6 +1,7 @@
 /**
  * [SCA] 컴퓨터 강화하기 V1.2.9 — 원본 유즈맵 기준 게임 데이터
  * 미네랄 = 원(1:1). tier.cost = 스프레드시트 구매가. "-"=0(강화만), NC=N×천만.
+ * 원작 UI: 가스 칸 = 조립 PC 스펙(재화 아님). 코인 = 별도 재화(MINERAL_PER_COIN 환전).
  */
 (function (global) {
   const MINERAL_PER_COIN = 10000000;
