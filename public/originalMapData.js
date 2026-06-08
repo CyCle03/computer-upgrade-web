@@ -1359,7 +1359,7 @@ function getPartLevel(part) {
   }
 
   function calcWorkIncomePerSec(parts, workTaskIndex, unitDamage, ramAttackFrames, scaUpgrades, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, workUnitsOverride, activeUnitsOverride) {
-    const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride);
+    const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride, scaUpgrades, unitDamage, ramAttackFrames);
     const active = activeUnitsOverride != null ? activeUnitsOverride : alloc.activeWorkUnits;
     if (!alloc.canRunWork || active <= 0) return 0;
     const kps = calcKillsPerSecond(unitDamage, ramAttackFrames, scaUpgrades, getWorkMobSpec(workTaskIndex)) * active;
@@ -1369,7 +1369,7 @@ function getPartLevel(part) {
 
   function calcHuntIncomePerSec(parts, workTaskIndex, unlockedGameIndex, unitDamage, ramAttackFrames, scaUpgrades, incomeBonusRate, isDownloading, maxUnitsOverride, workUnitsOverride, activeUnitsOverride) {
     if (isDownloading) return 0;
-    const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride);
+    const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride, scaUpgrades, unitDamage, ramAttackFrames);
     const active = activeUnitsOverride != null ? activeUnitsOverride : alloc.activeHuntingUnits;
     if (active <= 0) return 0;
     const kps = calcKillsPerSecond(unitDamage, ramAttackFrames, scaUpgrades, getGameMobSpec(unlockedGameIndex)) * active;

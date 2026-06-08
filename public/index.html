@@ -54,6 +54,57 @@
     const scheduleServerSync = window.scheduleServerSync;
     const flushServerSync = window.flushServerSync;
 
+    function loadJsonStorage(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw === null) return fallback;
+        return JSON.parse(raw);
+      } catch (e) {
+        console.warn('[storage] 손상된 저장값 제거:', key, e);
+        localStorage.removeItem(key);
+        return fallback;
+      }
+    }
+
+    if (!OMG || !OMG.WORK_TASKS) {
+      document.getElementById('root').innerHTML = (
+        '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:2rem;font-family:monospace;color:#fca5a5;text-align:center">'
+        + '<div><p style="font-size:1.1rem;margin-bottom:0.5rem">게임 데이터를 불러오지 못했습니다.</p>'
+        + '<p style="color:#94a3b8;font-size:0.85rem">서버(npm start)로 접속했는지, /originalMapData.js 가 로드되는지 확인해 주세요.</p></div></div>'
+      );
+      throw new Error('OriginalMapGame is not available');
+    }
+
+    class ErrorBoundary extends React.Component {
+      constructor(props) {
+        super(props);
+        this.state = { error: null };
+      }
+      static getDerivedStateFromError(error) {
+        return { error };
+      }
+      render() {
+        if (this.state.error) {
+          return (
+            <div className="min-h-screen flex items-center justify-center p-6">
+              <div className="max-w-lg w-full bg-rose-950/40 border border-rose-500/40 rounded-xl p-6 space-y-3 font-mono text-sm">
+                <p className="text-rose-300 font-bold">화면을 표시하지 못했습니다</p>
+                <p className="text-slate-300 break-words">{String(this.state.error && this.state.error.message || this.state.error)}</p>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="px-4 py-2 rounded bg-rose-500/20 border border-rose-500/50 text-rose-200"
+                >
+                  새로고침
+                </button>
+              </div>
+            </div>
+          );
+        }
+        return this.props.children;
+      }
+    }
+
     function App({ onLogout }) {
       // ----------------------------------------------------------------------
       // 1. 핵심 유저 재화 및 강화 피드백 상태 정의
@@ -275,47 +326,25 @@
       // ----------------------------------------------------------------------
       // 2. 조립 컴퓨터 부품 상태 정의
       // ----------------------------------------------------------------------
-      const [cpu, setCpu] = useState(() => {
-        const saved = localStorage.getItem('sca_cpu');
-        return saved !== null ? JSON.parse(saved) : { manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' };
-      });
-      const [gpu, setGpu] = useState(() => {
-        const saved = localStorage.getItem('sca_gpu');
-        return saved !== null ? JSON.parse(saved) : { level: 1 };
-      });
-      const [ram, setRam] = useState(() => {
-        const saved = localStorage.getItem('sca_ram');
-        return saved !== null ? JSON.parse(saved) : { level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' };
-      });
+      const [cpu, setCpu] = useState(() => loadJsonStorage('sca_cpu', { manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' }));
+      const [gpu, setGpu] = useState(() => loadJsonStorage('sca_gpu', { level: 1 }));
+      const [ram, setRam] = useState(() => loadJsonStorage('sca_ram', { level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' }));
       const [ramSlots, setRamSlots] = useState(() => {
         const saved = localStorage.getItem('sca_ramSlots');
         const n = saved !== null ? parseInt(saved, 10) : 1;
         return OMG.getRamSlotCount(n);
       });
-      const [cooler, setCooler] = useState(() => {
-        const saved = localStorage.getItem('sca_cooler');
-        return saved !== null ? JSON.parse(saved) : { level: 1, coolingCapacity: 500, coolerKind: 'air' };
-      });
-      const [motherboard, setMotherboard] = useState(() => {
-        const saved = localStorage.getItem('sca_motherboard');
-        return saved !== null ? JSON.parse(saved) : { name: '인텔 P55', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 0 };
-      });
-      const [storage, setStorage] = useState(() => {
-        const saved = localStorage.getItem('sca_storage');
-        return saved !== null ? JSON.parse(saved) : { type: 'HDD', capacityGb: 60, level: 1, storageKind: 'hdd' };
-      });
+      const [cooler, setCooler] = useState(() => loadJsonStorage('sca_cooler', { level: 1, coolingCapacity: 500, coolerKind: 'air' }));
+      const [motherboard, setMotherboard] = useState(() => loadJsonStorage('sca_motherboard', { name: '인텔 P55', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 0 }));
+      const [storage, setStorage] = useState(() => loadJsonStorage('sca_storage', { type: 'HDD', capacityGb: 60, level: 1, storageKind: 'hdd' }));
 
-      const [inventory, setInventory] = useState(() => {
-        const saved = localStorage.getItem('sca_inventory');
-        if (saved !== null) return JSON.parse(saved);
-        return [
+      const [inventory, setInventory] = useState(() => loadJsonStorage('sca_inventory', [
           { id: 'inv-cpu-1', type: 'cpu', level: 1, manufacturer: 'Intel', ddrGeneration: 'DDR3' },
           { id: 'inv-gpu-1', type: 'gpu', level: 1 },
           { id: 'inv-ram-1', type: 'ram', level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' },
           { id: 'inv-cooler-1', type: 'cooler', level: 1, coolingCapacity: 500, coolerKind: 'air' },
           { id: 'inv-storage-1', type: 'storage', level: 1, storageType: 'HDD', storageKind: 'hdd', capacityGb: 60 }
-        ];
-      });
+      ]));
 
       // ----------------------------------------------------------------------
       // 3. 사냥터 및 다운로드 진행 상태 정의
@@ -356,8 +385,8 @@
         return saved ? parseInt(saved, 10) : null;
       });
       const [downloadTarget, setDownloadTarget] = useState(() => {
-        const saved = localStorage.getItem('sca_downloadTarget');
-        if (saved !== null) return JSON.parse(saved);
+        const saved = loadJsonStorage('sca_downloadTarget', null);
+        if (saved) return saved;
         const t = OMG.DOWNLOAD_TARGETS[0];
         return { name: t.name, sizeMb: t.sizeMb, requiredGb: t.requiredGb, gameIndex: t.gameIndex };
       });
@@ -3107,16 +3136,32 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       useEffect(() => {
         const token = GameSync.getToken();
         if (!token) { setPhase('auth'); return; }
+        let cancelled = false;
+        const timeoutId = setTimeout(() => {
+          if (cancelled) return;
+          GameSync.clearAuth();
+          setError('서버 동기화 시간이 초과되었습니다. 다시 로그인해 주세요.');
+          setPhase('auth');
+        }, 12000);
         (async () => {
           try {
             const state = await GameSync.loadFromServer();
+            if (cancelled) return;
+            clearTimeout(timeoutId);
             GameSync.restoreState(state);
             setPhase('ready');
           } catch (e) {
+            if (cancelled) return;
+            clearTimeout(timeoutId);
             GameSync.clearAuth();
+            setError(e.message || '진행도를 불러오지 못했습니다.');
             setPhase('auth');
           }
         })();
+        return () => {
+          cancelled = true;
+          clearTimeout(timeoutId);
+        };
       }, []);
 
       const submit = async (e) => {
@@ -3237,7 +3282,11 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
 
     const container = document.getElementById('root');
     const root = ReactDOM.createRoot(container);
-    root.render(<AuthGate />);
+    root.render(
+      <ErrorBoundary>
+        <AuthGate />
+      </ErrorBoundary>
+    );
   </script>
 </body>
 </html>

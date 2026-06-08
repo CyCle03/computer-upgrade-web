@@ -107,8 +107,13 @@ export class HardwareSimulator {
     }
 
     // B. 사냥터 배치 가용 유닛 수 (RAM 용량 GB 기반)
+    const ramAttackFrames = OMG.calcRamAttackFrames(ram);
+    const gpuAttackPower = OMG.getGpuAttackPower(gpu, scaUpgrades || {});
+    const unitDamage = Math.round(gpuAttackPower * getCpuSummonUnitDpsFactor(cpu.level));
     const _workUnitsForSpecs = 0; // 백엔드 보스 레이드 시점 사냥터 용량 계산을 위함 (기본 0)
-    const ramAllocation = OMG.calcRamAllocation(parts, 0, unitLimit, _workUnitsForSpecs, scaUpgrades || {});
+    const ramAllocation = OMG.calcRamAllocation(
+      parts, 0, unitLimit, _workUnitsForSpecs, scaUpgrades || {}, unitDamage, ramAttackFrames
+    );
     const maxHuntingUnits = ramAllocation.activeHuntingUnits;
 
     // C. 유닛 체력 (CPU 기반)
@@ -118,13 +123,9 @@ export class HardwareSimulator {
     const unitShield = motherboard.shieldIncrease;
 
     // E. 유닛 공격 속도 (RAM 프레임 기반, 초 단위)
-    const ramAttackFrames = OMG.calcRamAttackFrames(ram);
     const attackSpeedSec = Math.max(0.1, Math.round((ramAttackFrames / 24) * 100) / 100);
 
-    // F. 유닛 데미지 (GPU 및 CPU 소환수 배율 시너지 적용)
-    const gpuAttackPower = OMG.getGpuAttackPower(gpu, scaUpgrades || {});
-    const dpsFactor = getCpuSummonUnitDpsFactor(cpu.level);
-    const unitDamage = Math.round(gpuAttackPower * dpsFactor);
+    // F. 유닛 데미지 (GPU 및 CPU 소환수 배율 시너지 적용) — 위에서 선계산
 
     // G. 유닛 기본 방어력 (Cooler 기반)
     let unitDefense = cooler.level * 3;
