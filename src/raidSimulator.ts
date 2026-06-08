@@ -1,6 +1,28 @@
 import { ComputerParts, ComputerSpecs } from './types';
 import { HardwareSimulator } from './hardwareSimulator';
 
+/** originalMapData MINING_AMPLIFIER_SPEC 과 동기화 */
+const MINING_POWER_PER_LEVEL = 500;
+const MINING_BASE_SPEED_FRAMES = 24;
+const MINING_MIN_SPEED_FRAMES = 8;
+
+function isMiningAmplifierUnlocked(scaUpgrades?: any): boolean {
+  if (!scaUpgrades) return false;
+  return !!(scaUpgrades.miningAmplifierUnlock || (Number(scaUpgrades.miningAmplifier) || 0) > 0);
+}
+
+function calcMiningPower(scaUpgrades?: any): number {
+  if (!isMiningAmplifierUnlocked(scaUpgrades)) return 0;
+  return (Number(scaUpgrades!.miningAmplifier) || 0) * MINING_POWER_PER_LEVEL;
+}
+
+function calcMiningSpeedMult(scaUpgrades?: any): number {
+  if (!isMiningAmplifierUnlocked(scaUpgrades)) return 1;
+  const lv = Number(scaUpgrades!.miningAmplifierSpeed) || 0;
+  const frames = Math.max(MINING_MIN_SPEED_FRAMES, MINING_BASE_SPEED_FRAMES - lv);
+  return MINING_BASE_SPEED_FRAMES / frames;
+}
+
 /**
  * 레이드 참여 플레이어 상태 정보
  */
@@ -15,6 +37,7 @@ export interface RaidPlayer {
   isDead: boolean;           // 유닛 사망 상태 여부
   dpsContribution: number;   // 실시간 초당 DPS 기여량
   miningPower: number;       // 채굴증폭기에 의한 채굴력
+  miningSpeedMult: number;   // 채굴증폭기 공속 배율
 }
 
 /**
@@ -61,7 +84,8 @@ export class RaidRoomState {
 
     // 하드웨어 사양 사전 계산
     const specs = HardwareSimulator.calculateComputerSpecs(parts, scaUpgrades);
-    const miningPower = scaUpgrades ? (Number(scaUpgrades.miningAmplifier) || 0) * 500 : 0;
+    const miningPower = calcMiningPower(scaUpgrades);
+    const miningSpeedMult = calcMiningSpeedMult(scaUpgrades);
 
     const newPlayer: RaidPlayer = {
       socketId,
@@ -74,6 +98,7 @@ export class RaidRoomState {
       isDead: false,
       dpsContribution: 0,
       miningPower,
+      miningSpeedMult,
     };
 
     // 실시간 DPS 기여도 계산 (초당 공격 횟수 * 데미지 * 유닛수 * 채굴증폭기 배율)
@@ -136,9 +161,9 @@ export class RaidRoomState {
     const shotsPerSec = 1 / attackSpeedSec;
     const baseDps = Math.round(shotsPerSec * unitDamage * unitLimit);
     
-    // 채굴증폭기(Mining Power)에 의한 데미지 증폭 (10,000 채굴력 당 +100% 데미지)
-    const ampMult = 1 + (player.miningPower / 10000);
-    return Math.round(baseDps * ampMult);
+    const ampMult = player.miningPower > 0 ? 1 + (player.miningPower / 10000) : 1;
+    const speedMult = player.miningSpeedMult || 1;
+    return Math.round(baseDps * ampMult * speedMult);
   }
 
   /**

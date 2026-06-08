@@ -258,6 +258,19 @@
   /** 환생 미네랄 SCA 가격: +10원당 500 SCA 코인 고정 */
   const REBIRTH_MINERAL_SCA_PER_10 = 500;
 
+  /** 파티 보스 채굴증폭기 — v1.2.4~ (채굴력 상한 65,000 = +500 × 130) */
+  const MINING_AMPLIFIER_SPEC = {
+    unlockCost: 5000,
+    powerUpgradeCost: 5000,
+    speedUpgradeCost: 5000,
+    powerPerLevel: 500,
+    maxPowerLevels: 130,
+    maxSpeedLevels: 16,
+    baseSpeedFrames: 24,
+    minSpeedFrames: 8,
+    framesPerSpeedLevel: 1,
+  };
+
   const SCA_SHOP_ITEMS = [
     { id: 'rebirthMineral500', name: '환생 시작 미네랄 +500', mineralBonus: 500, maxPurchases: 2000 },
     { id: 'rebirthMineralMax200', name: '환생 미네랄 +200', mineralBonus: 200, maxPurchases: 5000 },
@@ -268,7 +281,9 @@
     { id: 'upgradeProb01', name: '강화 확률 +0.1%', cost: 30000, maxPurchases: 10 },
     { id: 'downloadSpeed10', name: '다운로드 속도 +10%', cost: 35000, maxPurchases: 10 },
     { id: 'gpuGradeUp', name: 'GPU 등급 상승', cost: 40000, maxPurchases: 3 },
-    { id: 'miningAmplifier', name: '채굴증폭기 강화 (채굴력 +500)', cost: 5000, maxPurchases: 130 },
+    { id: 'miningAmplifierUnlock', name: '채굴증폭기 구축', cost: MINING_AMPLIFIER_SPEC.unlockCost, maxPurchases: 1, shopGroup: 'mining' },
+    { id: 'miningAmplifier', name: '채굴증폭기 공격력 +500', cost: MINING_AMPLIFIER_SPEC.powerUpgradeCost, maxPurchases: MINING_AMPLIFIER_SPEC.maxPowerLevels, shopGroup: 'mining', requiresMining: true },
+    { id: 'miningAmplifierSpeed', name: '채굴증폭기 공속 강화', cost: MINING_AMPLIFIER_SPEC.speedUpgradeCost, maxPurchases: MINING_AMPLIFIER_SPEC.maxSpeedLevels, shopGroup: 'mining', requiresMining: true },
   ];
 
   function getScaShopItemCost(item) {
@@ -287,10 +302,56 @@
       const to = GPU_GRADE_NAMES[cur + 1];
       return `GPU 등급: ${from} → ${to}`;
     }
+    if (item.id === 'miningAmplifierUnlock') {
+      return isMiningAmplifierUnlocked(scaUpgrades) ? '채굴증폭기 (구축 완료)' : '채굴증폭기 구축';
+    }
     if (item.id === 'miningAmplifier') {
-      return `채굴증폭기 강화 (현재 채굴력: ${getMiningPower(scaUpgrades).toLocaleString()})`;
+      return `채굴증폭기 공격력 (채굴력 ${getMiningPower(scaUpgrades).toLocaleString()})`;
+    }
+    if (item.id === 'miningAmplifierSpeed') {
+      const frames = getMiningAttackFrames(scaUpgrades);
+      return `채굴증폭기 공속 (${frames}f · ×${getMiningSpeedMultiplier(scaUpgrades).toFixed(2)})`;
     }
     return item.name;
+  }
+
+  function getScaShopItemHint(item, scaUpgrades) {
+    if (!item) return '';
+    if (item.id === 'miningAmplifierUnlock') {
+      return isMiningAmplifierUnlocked(scaUpgrades) ? '레이드 채굴봇 활성화됨' : '파티 보스 레이드 채굴봇 해금';
+    }
+    if (item.id === 'miningAmplifier') {
+      if (!isMiningAmplifierUnlocked(scaUpgrades)) return '구축 후 구매 가능';
+      return `+${MINING_AMPLIFIER_SPEC.powerPerLevel} 채굴력 · 10,000당 레이드 DPS +100%`;
+    }
+    if (item.id === 'miningAmplifierSpeed') {
+      if (!isMiningAmplifierUnlocked(scaUpgrades)) return '구축 후 구매 가능';
+      const bought = (scaUpgrades && scaUpgrades.miningAmplifierSpeed) || 0;
+      if (bought >= MINING_AMPLIFIER_SPEC.maxSpeedLevels) {
+        return `최고 공속 ${getMiningAttackFrames(scaUpgrades)}f`;
+      }
+      const nextFrames = Math.max(
+        MINING_AMPLIFIER_SPEC.minSpeedFrames,
+        getMiningAttackFrames(scaUpgrades) - MINING_AMPLIFIER_SPEC.framesPerSpeedLevel
+      );
+      return `공속 −${MINING_AMPLIFIER_SPEC.framesPerSpeedLevel}f (다음 ${nextFrames}f)`;
+    }
+    return '';
+  }
+
+  function isMiningAmplifierUnlocked(scaUpgrades) {
+    const u = scaUpgrades || {};
+    return !!(u.miningAmplifierUnlock || (u.miningAmplifier || 0) > 0);
+  }
+
+  function canPurchaseScaShopItem(item, scaUpgrades) {
+    if (!item) return false;
+    const bought = (scaUpgrades && scaUpgrades[item.id]) || 0;
+    if (bought >= item.maxPurchases) return false;
+    if (item.id === 'gpuGradeUp' && !canPurchaseGpuGradeUp(scaUpgrades)) return false;
+    if (item.id === 'miningAmplifierUnlock') return !isMiningAmplifierUnlocked(scaUpgrades);
+    if (item.requiresMining && !isMiningAmplifierUnlocked(scaUpgrades)) return false;
+    return true;
   }
 
   /** gameIndex N 해금용 — mineralCost(원) + 저장공간 */
@@ -1149,8 +1210,23 @@ function getPartLevel(part) {
   }
 
   function getMiningPower(scaUpgrades) {
+    if (!isMiningAmplifierUnlocked(scaUpgrades)) return 0;
     const u = scaUpgrades || {};
-    return (u.miningAmplifier || 0) * 500;
+    return (u.miningAmplifier || 0) * MINING_AMPLIFIER_SPEC.powerPerLevel;
+  }
+
+  function getMiningAttackFrames(scaUpgrades) {
+    if (!isMiningAmplifierUnlocked(scaUpgrades)) return MINING_AMPLIFIER_SPEC.baseSpeedFrames;
+    const lv = (scaUpgrades && scaUpgrades.miningAmplifierSpeed) || 0;
+    return Math.max(
+      MINING_AMPLIFIER_SPEC.minSpeedFrames,
+      MINING_AMPLIFIER_SPEC.baseSpeedFrames - lv * MINING_AMPLIFIER_SPEC.framesPerSpeedLevel
+    );
+  }
+
+  function getMiningSpeedMultiplier(scaUpgrades) {
+    const frames = getMiningAttackFrames(scaUpgrades);
+    return MINING_AMPLIFIER_SPEC.baseSpeedFrames / Math.max(1, frames);
   }
 
   const RAID_CUMULATIVE_REWARDS = {
@@ -1226,7 +1302,8 @@ function getPartLevel(part) {
     calcHuntIncomePerTick, calcWorkIncomePerTick, calcOptimalWorkUnits, toDownloadTargetSnapshot,
     getCpuSummonDpsFactor, calcUnitDamageForIncome, calcIncomeDamageMultiplier,
     createIntelCpu11InventoryItem,
-    getMiningPower, RAID_CUMULATIVE_REWARDS, setScaUpgradesRef,
+    getMiningPower, getMiningAttackFrames, getMiningSpeedMultiplier, isMiningAmplifierUnlocked, canPurchaseScaShopItem, getScaShopItemHint, MINING_AMPLIFIER_SPEC,
+    RAID_CUMULATIVE_REWARDS, setScaUpgradesRef,
     OVERCLOCK_LAB_SPECS, OVERCLOCK_LAB_RESPAWN_SEC,
     calcUnitDps, calcMaxOverclockLabLevel, calcOverclockLabNetDps,
   };

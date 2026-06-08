@@ -833,6 +833,13 @@
       const handlePurchaseScaItem = (item) => {
         const bought = scaUpgrades[item.id] || 0;
         if (bought >= item.maxPurchases) { alert('최대 구매 횟수 도달'); return; }
+        if (!OMG.canPurchaseScaShopItem(item, scaUpgrades)) {
+          if (item.id === 'miningAmplifierUnlock') alert('이미 채굴증폭기를 구축했습니다.');
+          else if (item.requiresMining) alert('먼저 채굴증폭기를 구축해야 합니다.');
+          else if (item.id === 'gpuGradeUp') alert('GPU 등급이 이미 하이엔드입니다.');
+          else alert('현재 구매할 수 없습니다.');
+          return;
+        }
         if (item.mineralBonus) {
           const currentTotal = OMG.calcRebirthStartMinerals(scaUpgrades);
           if (currentTotal >= OMG.REBIRTH_MINERAL_CAP) {
@@ -842,24 +849,48 @@
         }
         const cost = OMG.getScaShopItemCost(item);
         if (scaCoins < cost) { alert(`SCA 코인 부족 (필요 ${cost.toLocaleString()})`); return; }
-        if (item.id === 'gpuGradeUp' && !OMG.canPurchaseGpuGradeUp(scaUpgrades)) {
-          alert('GPU 등급이 이미 하이엔드입니다.');
-          return;
-        }
         setScaCoins((prev) => prev - cost);
         setScaUpgrades((prev) => {
           const next = { ...prev, [item.id]: bought + 1 };
           if (item.id === 'gpuGradeUp') {
             next.gpuGradeLevel = OMG.getGpuGradeLevel(prev) + 1;
           }
+          if (item.id === 'miningAmplifierUnlock') {
+            next.miningAmplifierUnlock = 1;
+          }
           return next;
         });
         if (item.id === 'gpuGradeUp') {
           const g = OMG.getGpuGradeLevel(scaUpgrades) + 1;
           pushToast(`GPU 등급 → ${OMG.GPU_GRADE_NAMES[g]}`, 'success', 2500);
+        } else if (item.id === 'miningAmplifierUnlock') {
+          pushToast('채굴증폭기 구축 완료 · 레이드 채굴봇 활성화', 'success', 2500);
+        } else if (item.id === 'miningAmplifier') {
+          const power = (bought + 1) * OMG.MINING_AMPLIFIER_SPEC.powerPerLevel;
+          pushToast(`채굴력 +${OMG.MINING_AMPLIFIER_SPEC.powerPerLevel} (현재 ${power.toLocaleString()})`, 'success', 2500);
+        } else if (item.id === 'miningAmplifierSpeed') {
+          const frames = OMG.getMiningAttackFrames({ ...scaUpgrades, miningAmplifierSpeed: bought + 1, miningAmplifierUnlock: scaUpgrades.miningAmplifierUnlock || (scaUpgrades.miningAmplifier || 0) > 0 ? 1 : 0 });
+          pushToast(`채굴증폭기 공속 강화 (${frames}f)`, 'success', 2500);
         } else if (item.mineralBonus) {
           pushToast(`환생 미네랄 +${item.mineralBonus}`, 'success', 2500);
         }
+      };
+
+      const renderScaShopButton = (item) => {
+        const bought = scaUpgrades[item.id] || 0;
+        const canBuy = OMG.canPurchaseScaShopItem(item, scaUpgrades);
+        const soldOut = !canBuy && bought >= item.maxPurchases;
+        const cost = OMG.getScaShopItemCost(item);
+        const affordable = scaCoins >= cost;
+        const hint = OMG.getScaShopItemHint(item, scaUpgrades);
+        return (
+          <button key={item.id} type="button" onClick={() => handlePurchaseScaItem(item)} disabled={!canBuy || !affordable} className={`p-2 bg-slate-950 border rounded text-xs font-mono text-left ${!canBuy || !affordable ? 'border-slate-900 opacity-40' : 'border-slate-800 hover:border-cyan-500/40'}`}>
+            <div>{OMG.getScaShopItemDisplayName(item, scaUpgrades)}</div>
+            {hint ? <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">{hint}</div> : null}
+            <div className="text-cyan-400">{cost.toLocaleString()} SCA</div>
+            <div className="text-slate-500 mt-1">{soldOut ? '완료' : `${bought}/${item.maxPurchases}`}</div>
+          </button>
+        );
       };
 
 
@@ -908,11 +939,15 @@
       };
 
       const handleSellComponent = (itemId) => {
-        const part = inventory.find(p => p.id === itemId);
+        const curInv = gameStateRef.current.inventory || inventory;
+        const part = curInv.find(p => p.id === itemId);
         if (!part) return;
         const sellM = OMG.getShopSellPriceMinerals(part.type, part.level, part);
-        setMinerals((prev) => prev + sellM);
-        setInventory((prev) => prev.filter(p => p.id !== itemId));
+        const nextMinerals = (gameStateRef.current.minerals ?? minerals) + sellM;
+        const nextInv = curInv.filter(p => p.id !== itemId);
+        gameStateRef.current.minerals = nextMinerals;
+        setMinerals(nextMinerals);
+        flushInventoryUi(nextInv, { force: true });
         setCombatLogs((prev) => [...prev.slice(-7), `판매 +${OMG.formatMineral(sellM)}`]);
       };
 
@@ -1004,10 +1039,13 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
 
             // 2. 보관 장비 스왑 장착 핸들러
       const handleEquipComponent = (itemId) => {
-        const partToEquip = inventory.find(p => p.id === itemId);
+        // AUTO 중에는 gameStateRef.inventory가 최신(강화 반영). React inventory는 UI 스로틀로 지연될 수 있음.
+        const curInv = gameStateRef.current.inventory || inventory;
+        const partToEquip = curInv.find(p => p.id === itemId);
         if (!partToEquip) return;
 
         const type = partToEquip.type;
+        let nextInv = curInv.filter(p => p.id !== itemId);
 
         // 메인 부품 스와핑 처리
         if (type === 'cpu') {
@@ -1017,22 +1055,21 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             level: partToEquip.level,
             ddrGeneration: OMG.getCpuRequiredDdrGeneration(partToEquip),
           });
-          // 인벤토리 목록에서 장착된 것 빼고 기존 장착 부품 반입
-          setInventory(prev => prev.filter(p => p.id !== itemId).concat({
+          nextInv = nextInv.concat({
             id: `inv-cpu-${Math.random().toString(36).substring(2, 7)}`,
             type: 'cpu',
             level: currentEquipped.level,
             manufacturer: currentEquipped.manufacturer,
             ddrGeneration: currentEquipped.ddrGeneration
-          }));
+          });
         } else if (type === 'gpu') {
           const currentEquipped = { ...gpu };
           setGpu({ level: partToEquip.level });
-          setInventory(prev => prev.filter(p => p.id !== itemId).concat({
+          nextInv = nextInv.concat({
             id: `inv-gpu-${Math.random().toString(36).substring(2, 7)}`,
             type: 'gpu',
             level: currentEquipped.level
-          }));
+          });
         } else if (type === 'ram') {
           const currentEquipped = { ...ram };
           setRam({
@@ -1043,7 +1080,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             ramVariant: partToEquip.ramVariant || 'standard',
             ramOcStep: partToEquip.ramOcStep,
           });
-          setInventory(prev => prev.filter(p => p.id !== itemId).concat({
+          nextInv = nextInv.concat({
             id: `inv-ram-${Math.random().toString(36).substring(2, 7)}`,
             type: 'ram',
             level: currentEquipped.level,
@@ -1052,7 +1089,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             ddrGeneration: currentEquipped.ddrGeneration,
             ramVariant: currentEquipped.ramVariant,
             ramOcStep: currentEquipped.ramOcStep,
-          }));
+          });
         } else if (type === 'cooler') {
           const currentEquipped = { ...cooler };
           setCooler(OMG.normalizeEquippedCooler({
@@ -1060,13 +1097,13 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             coolingCapacity: partToEquip.coolingCapacity,
             coolerKind: partToEquip.coolerKind || 'air',
           }));
-          setInventory(prev => prev.filter(p => p.id !== itemId).concat({
+          nextInv = nextInv.concat({
             id: `inv-cooler-${Math.random().toString(36).substring(2, 7)}`,
             type: 'cooler',
             level: currentEquipped.level,
             coolingCapacity: currentEquipped.coolingCapacity,
             coolerKind: currentEquipped.coolerKind || 'air',
-          }));
+          });
         } else if (type === 'storage') {
           const currentEquipped = { ...storage };
           setStorage(OMG.normalizeEquippedStorage({
@@ -1075,16 +1112,17 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             level: partToEquip.level,
             storageKind: partToEquip.storageKind,
           }));
-          setInventory(prev => prev.filter(p => p.id !== itemId).concat({
+          nextInv = nextInv.concat({
             id: `inv-storage-${Math.random().toString(36).substring(2, 7)}`,
             type: 'storage',
             level: currentEquipped.level,
             storageType: currentEquipped.type,
             storageKind: currentEquipped.storageKind || (currentEquipped.type === 'SSD' ? 'nvme' : 'hdd'),
             capacityGb: currentEquipped.capacityGb,
-          }));
+          });
         }
 
+        flushInventoryUi(nextInv, { force: true });
         setCombatLogs((prev) => [...prev.slice(-7), `장착 ${type.toUpperCase()} +${partToEquip.level}강`]);
       };
 
@@ -1815,21 +1853,26 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           {showScaCenter && (
             <section className="mb-4 p-4 border border-cyan-500/20 rounded-xl space-y-3">
               <p className="text-xs font-mono text-cyan-300/80">다음 환생 시작 미네랄: <strong>{OMG.calcRebirthStartMinerals(scaUpgrades).toLocaleString()}원</strong> (상한 {OMG.REBIRTH_MINERAL_CAP.toLocaleString()}원) · 환생 미네랄 <strong>+10원 = {OMG.REBIRTH_MINERAL_SCA_PER_10} SCA</strong> 고정</p>
-              <p className="text-xs font-mono text-cyan-300/70">게임 배속 {gameSpeedFrames}프레임 (x{gameSpeedMult.toFixed(2)}) · RAM 공속 {ramAttackFrames}f · 다운로드 x{OMG.calcDownloadSpeedBonus(scaUpgrades).toFixed(1)} · 채굴력 {OMG.getMiningPower(scaUpgrades).toLocaleString()}</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {OMG.SCA_SHOP_ITEMS.map(item => {
-                const bought = scaUpgrades[item.id] || 0;
-                const soldOut = bought >= item.maxPurchases || (item.id === 'gpuGradeUp' && !OMG.canPurchaseGpuGradeUp(scaUpgrades));
-                const cost = OMG.getScaShopItemCost(item);
-                const affordable = scaCoins >= cost;
-                return (
-                  <button key={item.id} onClick={() => handlePurchaseScaItem(item)} disabled={soldOut || !affordable} className={`p-2 bg-slate-950 border rounded text-xs font-mono text-left ${soldOut || !affordable ? 'border-slate-900 opacity-40' : 'border-slate-800 hover:border-cyan-500/40'}`}>
-                    <div>{OMG.getScaShopItemDisplayName(item, scaUpgrades)}</div>
-                    <div className="text-cyan-400">{cost.toLocaleString()} SCA</div>
-                    <div className="text-slate-500 mt-1">{bought}/{item.maxPurchases}</div>
-                  </button>
-                );
-              })}
+              <p className="text-xs font-mono text-cyan-300/70">게임 배속 {gameSpeedFrames}프레임 (x{gameSpeedMult.toFixed(2)}) · RAM 공속 {ramAttackFrames}f · 다운로드 x{OMG.calcDownloadSpeedBonus(scaUpgrades).toFixed(1)} · {OMG.isMiningAmplifierUnlocked(scaUpgrades) ? `채굴력 ${OMG.getMiningPower(scaUpgrades).toLocaleString()} · ${OMG.getMiningAttackFrames(scaUpgrades)}f` : '채굴증폭기 미구축'}</p>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-[11px] font-bold text-slate-400 font-mono mb-2 uppercase tracking-wider">환생 미네랄</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {OMG.SCA_SHOP_ITEMS.filter((item) => item.mineralBonus).map(renderScaShopButton)}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold text-slate-400 font-mono mb-2 uppercase tracking-wider">영구 업그레이드</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {OMG.SCA_SHOP_ITEMS.filter((item) => !item.mineralBonus && item.shopGroup !== 'mining').map(renderScaShopButton)}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold text-amber-400/90 font-mono mb-2 uppercase tracking-wider">레이드 · 채굴증폭기</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {OMG.SCA_SHOP_ITEMS.filter((item) => item.shopGroup === 'mining').map(renderScaShopButton)}
+                  </div>
+                </div>
               </div>
             </section>
           )}
