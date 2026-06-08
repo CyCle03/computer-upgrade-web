@@ -155,13 +155,13 @@
       return data;
     },
     /** 파티 사냥 SCA 타이머 시작 */
-    async startPartyHunting(tierIndex) {
+    async startPartyHunting(tierIndex, parts) {
       const token = this.getToken();
       if (!token) return null;
       const res = await fetch('/api/sca/party/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ tierIndex }),
+        body: JSON.stringify({ tierIndex, parts }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
@@ -170,13 +170,13 @@
       return data;
     },
     /** 파티 사냥 SCA 틱 지급 */
-    async claimPartyIncome(tierIndex, tickCount) {
+    async claimPartyIncome(tierIndex, tickCount, parts) {
       const token = this.getToken();
       if (!token) return null;
       const res = await fetch('/api/sca/party/income', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ tierIndex, tickCount }),
+        body: JSON.stringify({ tierIndex, tickCount, parts }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {

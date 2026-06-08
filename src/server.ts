@@ -14,6 +14,7 @@ import {
   ScaPurchaseRequest,
   ScaRebirthRequest,
   ScaPartyIncomeRequest,
+  ScaPartyStartRequest,
 } from './types';
 import { setupSocketServer } from './socketServer';
 
@@ -196,9 +197,9 @@ app.post('/api/sca/party/start', async (req: Request, res: Response) => {
   if (!(await ensureDb(res))) return;
   const userId = await requireAuth(req, res);
   if (!userId) return;
-  const tierIndex = Number((req.body ?? {}).tierIndex);
+  const { tierIndex, parts } = (req.body ?? {}) as ScaPartyStartRequest;
   try {
-    const result = await ScaIncomeService.startPartyHunting(userId, tierIndex);
+    const result = await ScaIncomeService.startPartyHunting(userId, Number(tierIndex), parts);
     if (!result.success) return res.status(400).json(result);
     return res.status(200).json(result);
   } catch (error: unknown) {
@@ -212,12 +213,13 @@ app.post('/api/sca/party/income', async (req: Request, res: Response) => {
   if (!(await ensureDb(res))) return;
   const userId = await requireAuth(req, res);
   if (!userId) return;
-  const { tierIndex, tickCount } = (req.body ?? {}) as ScaPartyIncomeRequest;
+  const { tierIndex, tickCount, parts } = (req.body ?? {}) as ScaPartyIncomeRequest;
   try {
     const result = await ScaIncomeService.claimPartyIncome(
       userId,
       Number(tierIndex),
-      Number(tickCount)
+      Number(tickCount),
+      parts
     );
     if (!result.success) return res.status(400).json(result);
     return res.status(200).json(result);

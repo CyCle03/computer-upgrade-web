@@ -23,12 +23,40 @@ export interface PartyTier {
   name: string;
   mineralPerTick: number;
   scaCoins: number;
+  minPerfScore?: number;
+  minRebirthStat?: number;
+  minMiningPower?: number;
+}
+
+export interface PartyTierAccess {
+  ok: boolean;
+  failures: string[];
 }
 
 export interface OmgBalanceApi {
   calcRebirthOutcome: (parts: RebirthParts, prevRebirthStat: number) => RebirthOutcome;
   PARTY_HUNTING_TIERS: PartyTier[];
   calcGameSpeedTickMs: (scaUpgrades: Record<string, unknown>, baseMs: number) => number;
+  calcPartyPerformanceScore: (parts: RebirthParts, scaUpgrades: Record<string, unknown>) => number;
+  getMiningPower: (scaUpgrades: Record<string, unknown>) => number;
+  canSelectPartyTier: (
+    tierIndex: number,
+    perfScore: number,
+    rebirthStat: number,
+    miningPower: number
+  ) => boolean;
+  evaluatePartyTierAccess: (
+    tierIndex: number,
+    perfScore: number,
+    rebirthStat: number,
+    miningPower: number
+  ) => PartyTierAccess;
+  resolvePartyHuntingTierIndex: (
+    tierIndex: number,
+    perfScore: number,
+    rebirthStat: number,
+    miningPower: number
+  ) => number;
 }
 
 let cached: OmgBalanceApi | null = null;
@@ -43,7 +71,7 @@ export function getOmgBalance(): OmgBalanceApi {
   vm.createContext(sandbox);
   vm.runInContext(code, sandbox);
   const omg = sandbox.OriginalMapGame as OmgBalanceApi | undefined;
-  if (!omg?.calcRebirthOutcome || !omg.PARTY_HUNTING_TIERS) {
+  if (!omg?.calcRebirthOutcome || !omg.PARTY_HUNTING_TIERS || !omg.canSelectPartyTier) {
     throw new Error('originalMapData.js OriginalMapGame 로드 실패');
   }
   cached = omg;

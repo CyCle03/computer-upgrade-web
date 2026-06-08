@@ -120,6 +120,13 @@ export interface ScaRebirthResponse {
 export interface ScaPartyIncomeRequest {
   tierIndex: number;
   tickCount: number;
+  parts?: ScaRebirthRequest['parts'];
+}
+
+/** 파티 사냥 시작 API 요청 */
+export interface ScaPartyStartRequest {
+  tierIndex: number;
+  parts?: ScaRebirthRequest['parts'];
 }
 
 /** 파티 SCA 틱 지급 API 응답 */

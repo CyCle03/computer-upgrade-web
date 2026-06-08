@@ -37,6 +37,53 @@ function clampGpuLevel(parts: RebirthParts): number {
   return Math.max(0, Math.min(999, Number(parts.gpu?.level) || 0));
 }
 
+function resolvePartyTierForUser(
+  omg: ReturnType<typeof getOmgBalance>,
+  tierIndex: number,
+  parts: RebirthParts | undefined,
+  rebirthStat: number,
+  scaUpgrades: Record<string, unknown>
+): { ok: boolean; message: string; effectiveTier: number } {
+  const tiers = omg.PARTY_HUNTING_TIERS;
+  if (!Number.isInteger(tierIndex) || tierIndex < 0 || tierIndex >= tiers.length) {
+    return { ok: false, message: '올바르지 않은 파티 티어입니다.', effectiveTier: 0 };
+  }
+  const mining = omg.getMiningPower(scaUpgrades);
+  const perf = parts ? omg.calcPartyPerformanceScore(parts, scaUpgrades) : 0;
+  if (parts && !omg.canSelectPartyTier(tierIndex, perf, rebirthStat, mining)) {
+    const access = omg.evaluatePartyTierAccess(tierIndex, perf, rebirthStat, mining);
+    return {
+      ok: false,
+      message: access.failures.join(' · '),
+      effectiveTier: omg.resolvePartyHuntingTierIndex(tierIndex, perf, rebirthStat, mining),
+    };
+  }
+  if (!parts) {
+    const tier = tiers[tierIndex];
+    const failures: string[] = [];
+    if (rebirthStat < (tier.minRebirthStat || 0)) {
+      failures.push(`환생수치 ${(tier.minRebirthStat || 0).toLocaleString()}+ 필요`);
+    }
+    if (mining < (tier.minMiningPower || 0)) {
+      failures.push(`채굴력 ${(tier.minMiningPower || 0).toLocaleString()}+ 필요`);
+    }
+    if (failures.length > 0) {
+      return { ok: false, message: failures.join(' · '), effectiveTier: 0 };
+    }
+  }
+  const effectiveTier = parts
+    ? omg.resolvePartyHuntingTierIndex(tierIndex, perf, rebirthStat, mining)
+    : tierIndex;
+  if (effectiveTier !== tierIndex) {
+    return {
+      ok: false,
+      message: '파티 티어 해금 조건을 충족하지 않습니다.',
+      effectiveTier,
+    };
+  }
+  return { ok: true, message: '', effectiveTier: tierIndex };
+}
+
 /**
  * SCA 수입·환생 — 서버 검증 후 지갑 반영.
  */
@@ -113,7 +160,8 @@ export class ScaIncomeService {
   static async claimPartyIncome(
     userId: string,
     tierIndex: number,
-    requestedTicks: number
+    requestedTicks: number,
+    parts?: RebirthParts
   ): Promise<ScaPartyIncomeResult> {
     const omg = getOmgBalance();
     const tiers = omg.PARTY_HUNTING_TIERS;
@@ -153,6 +201,19 @@ export class ScaIncomeService {
           : {};
 
       const scaUpgrades = parseScaUpgrades(state);
+      const rebirthStat = Number(state.sca_rebirthStat) || 0;
+      const tierCheck = resolvePartyTierForUser(omg, tierIndex, parts, rebirthStat, scaUpgrades);
+      if (!tierCheck.ok) {
+        await client.query('ROLLBACK');
+        return {
+          success: false,
+          message: tierCheck.message,
+          scaCoins: Number(state.sca_scaCoins) || 0,
+          grantedTicks: 0,
+          grantedSca: 0,
+        };
+      }
+
       const partyTickMs = omg.calcGameSpeedTickMs(scaUpgrades, PARTY_BASE_TICK_MS);
       const nowMs = Date.now();
       const lastClaimMs = Number(state.sca_partyLastClaimMs) || nowMs;
@@ -204,7 +265,11 @@ export class ScaIncomeService {
   }
 
   /** 파티 사냥 시작·티어 변경 시 타이머 초기화 */
-  static async startPartyHunting(userId: string, tierIndex: number): Promise<{ success: boolean; message: string }> {
+  static async startPartyHunting(
+    userId: string,
+    tierIndex: number,
+    parts?: RebirthParts
+  ): Promise<{ success: boolean; message: string }> {
     const omg = getOmgBalance();
     const tiers = omg.PARTY_HUNTING_TIERS;
     if (!Number.isInteger(tierIndex) || tierIndex < 0 || tierIndex >= tiers.length) {
@@ -223,8 +288,15 @@ export class ScaIncomeService {
         [userId]
       );
       const state: GameStatePayload = { ...(stateRes.rows[0].state as GameStatePayload) };
+      const scaUpgrades = parseScaUpgrades(state);
+      const rebirthStat = Number(state.sca_rebirthStat) || 0;
+      const tierCheck = resolvePartyTierForUser(omg, tierIndex, parts, rebirthStat, scaUpgrades);
+      if (!tierCheck.ok) {
+        await client.query('ROLLBACK');
+        return { success: false, message: tierCheck.message };
+      }
       state.sca_partyLastClaimMs = String(Date.now());
-      state.sca_partyHuntingTier = String(tierIndex);
+      state.sca_partyHuntingTier = String(tierCheck.effectiveTier);
       await client.query(
         `UPDATE game_states SET state = $2::jsonb, updated_at = CURRENT_TIMESTAMP WHERE user_id = $1`,
         [userId, JSON.stringify(state)]

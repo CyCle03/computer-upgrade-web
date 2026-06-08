@@ -619,30 +619,29 @@
     updateHuntCombatStatus(ctx, alloc);
 
     let gained = 0;
+    const hitsPerSecPerUnit = OMG.calcHitsPerSecond(ramAttackFrames, ctx.scaUpgrades || {});
     const workActive = ctx.huntCombatStatus.workActive;
-    if (workActive > 0) {
-      const workKps = OMG.calcKillsPerSecond(unitDamage, ramAttackFrames, ctx.scaUpgrades, workMob);
-      const kills = accumulateKillsFromActive(workActive, workKps, elapsedSec, 'remWorkKills', ctx);
-      if (kills > 0) {
-        const perKill = OMG.calcWorkMineralPerHitPerUnit(
+    if (workActive > 0 && hitsPerSecPerUnit > 0) {
+      const hits = accumulateKillsFromActive(workActive, hitsPerSecPerUnit, elapsedSec, 'remWorkKills', ctx);
+      if (hits > 0) {
+        const perHit = OMG.calcWorkMineralPerHitPerUnit(
           ctx.workTaskIndex,
           specs.penalties ? specs.penalties.mineralMultiplier : 1,
           ctx.rebirthIncomeMult,
           ctx.incomeBonusRate
         );
-        gained += kills * perKill;
-        ctx.stats.incomeTicks += kills;
+        gained += hits * perHit;
+        ctx.stats.incomeTicks += hits;
       }
     }
 
     const huntActive = ctx.huntCombatStatus.huntActive;
-    if (huntActive > 0) {
-      const huntKps = OMG.calcKillsPerSecond(unitDamage, ramAttackFrames, ctx.scaUpgrades, huntMob);
-      const kills = accumulateKillsFromActive(huntActive, huntKps, elapsedSec, 'remHuntKills', ctx);
-      if (kills > 0) {
-        const perKill = OMG.calcHuntMineralPerHitPerUnit(gameIndex, ctx.incomeBonusRate);
-        gained += kills * perKill;
-        ctx.stats.incomeTicks += kills;
+    if (huntActive > 0 && hitsPerSecPerUnit > 0) {
+      const hits = accumulateKillsFromActive(huntActive, hitsPerSecPerUnit, elapsedSec, 'remHuntKills', ctx);
+      if (hits > 0) {
+        const perHit = OMG.calcHuntMineralPerHitPerUnit(gameIndex, ctx.incomeBonusRate);
+        gained += hits * perHit;
+        ctx.stats.incomeTicks += hits;
       }
     }
 
@@ -657,24 +656,36 @@
       || cl.air || cl.water || st.hdd || st.nvme);
   }
 
+  /** 파티 티어 — 해금 조건 미충족 시 허용된 최고 티어로 강등 */
+  function resolvePartyTier(ctx) {
+    if (!ctx.isPartyHunting) return -1;
+    const perf = OMG.calcPartyPerformanceScore(ctx.workParts || {}, ctx.scaUpgrades || {});
+    const reb = ctx.rebirthStat || 0;
+    const mine = OMG.getMiningPower(ctx.scaUpgrades || {});
+    return OMG.resolvePartyHuntingTierIndex(ctx.partyHuntingTier, perf, reb, mine);
+  }
+
   /** elapsedMs 만큼 수입만 반영 (AUTO 간격 없음). 추가된 미네랄량 반환 */
   function applyIncomeOnly(ctx, elapsedMs) {
     if (elapsedMs <= 0) return 0;
     let gained = 0;
 
-    if (ctx.isPartyHunting && OMG.PARTY_HUNTING_TIERS[ctx.partyHuntingTier]) {
-      const tier = OMG.PARTY_HUNTING_TIERS[ctx.partyHuntingTier];
-      const partyTickMs = OMG.calcGameSpeedTickMs(ctx.scaUpgrades || {}, 3000);
-      let partyRem = (ctx.remParty || 0) + elapsedMs;
-      const partyConsumed = OMG.consumeElapsedTicks(partyRem, partyTickMs, MAX_INCOME_TICKS);
-      ctx.remParty = partyConsumed.remainderMs;
-      if (partyConsumed.ticks > 0) {
-        const m = OMG.calcPartyMineralPerTick(tier, ctx.incomeBonusRate) * partyConsumed.ticks;
-        ctx.minerals += m;
-        ctx.scaPartyTicks = (ctx.scaPartyTicks || 0) + partyConsumed.ticks;
-        ctx.scaCoinsGain = (ctx.scaCoinsGain || 0) + tier.scaCoins * partyConsumed.ticks;
-        ctx.stats.incomeTicks += partyConsumed.ticks;
-        gained += m;
+    if (ctx.isPartyHunting) {
+      const tierIdx = resolvePartyTier(ctx);
+      const tier = tierIdx >= 0 ? OMG.PARTY_HUNTING_TIERS[tierIdx] : null;
+      if (tier) {
+        const partyTickMs = OMG.calcGameSpeedTickMs(ctx.scaUpgrades || {}, 3000);
+        let partyRem = (ctx.remParty || 0) + elapsedMs;
+        const partyConsumed = OMG.consumeElapsedTicks(partyRem, partyTickMs, MAX_INCOME_TICKS);
+        ctx.remParty = partyConsumed.remainderMs;
+        if (partyConsumed.ticks > 0) {
+          const m = OMG.calcPartyMineralPerTick(tier, ctx.incomeBonusRate) * partyConsumed.ticks;
+          ctx.minerals += m;
+          ctx.scaPartyTicks = (ctx.scaPartyTicks || 0) + partyConsumed.ticks;
+          ctx.scaCoinsGain = (ctx.scaCoinsGain || 0) + tier.scaCoins * partyConsumed.ticks;
+          ctx.stats.incomeTicks += partyConsumed.ticks;
+          gained += m;
+        }
       }
     } else {
       const add = applyWorkHuntIncome(ctx, elapsedMs);
@@ -747,10 +758,12 @@
     const maxAutoTicks = (options && options.maxAutoTicks) || DEFAULT_MAX_AUTO_TICKS;
     const mineralsStart = ctx.minerals;
 
-    if (ctx.isPartyHunting && OMG.PARTY_HUNTING_TIERS[ctx.partyHuntingTier]) {
-      const tier = OMG.PARTY_HUNTING_TIERS[ctx.partyHuntingTier];
-      const partyTickMs = OMG.calcGameSpeedTickMs(ctx.scaUpgrades || {}, 3000);
-      const autoTickMs = OMG.calcAutoLoopIntervalMs(ctx.scaUpgrades || {});
+    if (ctx.isPartyHunting) {
+      const tierIdx = resolvePartyTier(ctx);
+      const tier = tierIdx >= 0 ? OMG.PARTY_HUNTING_TIERS[tierIdx] : null;
+      if (tier) {
+        const partyTickMs = OMG.calcGameSpeedTickMs(ctx.scaUpgrades || {}, 3000);
+        const autoTickMs = OMG.calcAutoLoopIntervalMs(ctx.scaUpgrades || {});
       let partyRem = (ctx.remParty || 0) + elapsedMs;
       let autoRem = (ctx.remAuto || 0) + elapsedMs;
       const partyConsumed = OMG.consumeElapsedTicks(partyRem, partyTickMs, MAX_INCOME_TICKS);
@@ -777,6 +790,7 @@
           autoTicks -= 1;
           counter += 1;
         } else break;
+      }
       }
     } else {
       const autoTickMs = OMG.calcAutoLoopIntervalMs(ctx.scaUpgrades || {});
@@ -819,6 +833,7 @@
       workTaskIndex: s.workTaskIndex,
       specs: s.specs,
       rebirthIncomeMult: s.rebirthIncomeMult,
+      rebirthStat: s.rebirthStat ?? 0,
       incomeBonusRate: s.incomeBonusRate,
       effectiveUnitLimit: s.effectiveUnitLimit,
       effectiveWorkUnits: s.effectiveWorkUnits,

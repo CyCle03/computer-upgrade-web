@@ -244,7 +244,7 @@
 
   /**
    * 작업·게임 사냥 적 스펙 (처치 시간 = GPU 공격력 vs 내구도, 공속은 RAM만).
-   * hp·shield·defense·shieldArmor — 맵 EUD 근사. 수입 = 처치 시 mineralPerUnit×유닛수.
+   * hp·shield·defense·shieldArmor — 맵 EUD 근사. 수입 = 타격마다 mineralPerUnit×유닛수.
    */
   /** 사냥 유닛 사망 후 자동 재배치 대기(원작: 즉시 부활·수동 배치 → 웹: 1초 후 자동 복귀) */
   const HUNT_UNIT_RESPAWN_MS = 1000;
@@ -277,16 +277,21 @@
     { hp: 10000000, shield: 2500000, defense: 255, shieldArmor: 50, attack: 800 },
   ];
 
+  /**
+   * 파티 사냥 티어 — 원작 UI 수입 + 맵「채굴 난이도」성능수치(5~3500) 근사.
+   * minRebirthStat: v1.1.6 파티봇 공격력(환생수치/10000) 후반 구간.
+   * minMiningPower: 채굴증폭기 2번 라인(2-2~).
+   */
   const PARTY_HUNTING_TIERS = [
-    { name: '파티 1-1', mineralPerTick: 30, scaCoins: 2 },
-    { name: '파티 1-2', mineralPerTick: 300, scaCoins: 20 },
-    { name: '파티 1-3', mineralPerTick: 3500, scaCoins: 200 },
-    { name: '파티 1-4', mineralPerTick: 50000, scaCoins: 2000 },
-    { name: '파티 1-5', mineralPerTick: 750000, scaCoins: 5000 },
-    { name: '파티 1-6', mineralPerTick: 1500000, scaCoins: 40000 },
-    { name: '파티 2-1', mineralPerTick: 1, scaCoins: 20 },
-    { name: '파티 2-2', mineralPerTick: 100, scaCoins: 500 },
-    { name: '파티 2-3', mineralPerTick: 2500, scaCoins: 7500 },
+    { name: '파티 1-1', mineralPerTick: 30, scaCoins: 2, minPerfScore: 5, minRebirthStat: 0, minMiningPower: 0 },
+    { name: '파티 1-2', mineralPerTick: 300, scaCoins: 20, minPerfScore: 20, minRebirthStat: 0, minMiningPower: 0 },
+    { name: '파티 1-3', mineralPerTick: 3500, scaCoins: 200, minPerfScore: 50, minRebirthStat: 0, minMiningPower: 0 },
+    { name: '파티 1-4', mineralPerTick: 50000, scaCoins: 2000, minPerfScore: 150, minRebirthStat: 0, minMiningPower: 0 },
+    { name: '파티 1-5', mineralPerTick: 750000, scaCoins: 5000, minPerfScore: 300, minRebirthStat: 50000, minMiningPower: 0 },
+    { name: '파티 1-6', mineralPerTick: 1500000, scaCoins: 40000, minPerfScore: 600, minRebirthStat: 200000, minMiningPower: 0 },
+    { name: '파티 2-1', mineralPerTick: 1, scaCoins: 20, minPerfScore: 1200, minRebirthStat: 100000, minMiningPower: 0 },
+    { name: '파티 2-2', mineralPerTick: 100, scaCoins: 500, minPerfScore: 2500, minRebirthStat: 500000, minMiningPower: 5000 },
+    { name: '파티 2-3', mineralPerTick: 2500, scaCoins: 7500, minPerfScore: 3500, minRebirthStat: 1000000, minMiningPower: 15000 },
   ];
 
   const GAME_SPEED_BASE = 3;
@@ -841,6 +846,12 @@
     return killSec > 0 ? 1 / killSec : 0;
   }
 
+  /** 유닛 1기당 초당 타격 횟수 — 작업·사냥 수입은 타격마다 mineralPerUnit 지급 */
+  function calcHitsPerSecond(ramAttackFrames, scaUpgrades) {
+    const interval = calcAttackIntervalSec(ramAttackFrames, scaUpgrades);
+    return interval > 0 ? 1 / interval : 0;
+  }
+
   function getWorkMobSpec(workTaskIndex) {
     return WORK_TASK_MOB_SPECS[workTaskIndex] || WORK_TASK_MOB_SPECS[0];
   }
@@ -1089,6 +1100,63 @@
   function calcPartyMineralPerTick(tier, incomeBonusRate) {
     if (!tier) return 0;
     return Math.round(tier.mineralPerTick * MINERAL_INCOME_SCALE * (1 + (incomeBonusRate || 0)));
+  }
+
+  /** 파티 티어 해금용 성능수치 — GPU(등급)·CPU·RAM·쿨러 합산 (맵 채굴 난이도 스케일) */
+  function calcPartyPerformanceScore(parts, scaUpgrades) {
+    const gpu = (parts && parts.gpu) || { level: 1 };
+    const cpu = (parts && parts.cpu) || { level: 1 };
+    const ram = (parts && parts.ram) || { level: 1 };
+    const cooler = (parts && parts.cooler) || { level: 1 };
+    const ramSlots = Math.max(1, (parts && parts.ramSlots) || 1);
+    const gpuTier = getTier('gpu', gpu, gpu.level || 1);
+    const grade = calcGpuGrade(scaUpgrades || {});
+    const gpuPerf = ((gpuTier && gpuTier.perfEntry) || 20) * (GPU_GRADE_PERF_MULT[grade] || 1);
+    const cpuTier = getTier('cpu', cpu, cpu.level || 1);
+    const cpuPerf = (cpuTier && cpuTier.perf) || 1;
+    const ramPerf = getRamPerfPerUnit(ram) * ramSlots;
+    const coolerCap = cooler.coolingCapacity || (getTier('cooler', cooler, cooler.level || 1) || {}).coolingCapacity || 500;
+    const coolerScore = Math.floor(coolerCap / 100);
+    return Math.floor(gpuPerf + cpuPerf * 0.5 + ramPerf * 0.15 + coolerScore * 0.5);
+  }
+
+  function evaluatePartyTierAccess(tierIndex, perfScore, rebirthStat, miningPower) {
+    const tier = PARTY_HUNTING_TIERS[tierIndex];
+    if (!tier) {
+      return { ok: false, failures: ['존재하지 않는 파티 티어입니다.'], tier: null };
+    }
+    const failures = [];
+    const perf = Math.max(0, perfScore || 0);
+    const reb = Math.max(0, rebirthStat || 0);
+    const mine = Math.max(0, miningPower || 0);
+    if (perf < (tier.minPerfScore || 0)) {
+      failures.push(`성능수치 ${tier.minPerfScore}+ 필요 (현재 ${perf})`);
+    }
+    if (reb < (tier.minRebirthStat || 0)) {
+      failures.push(`환생수치 ${tier.minRebirthStat.toLocaleString()}+ 필요 (현재 ${reb.toLocaleString()})`);
+    }
+    if (mine < (tier.minMiningPower || 0)) {
+      failures.push(`채굴력 ${tier.minMiningPower.toLocaleString()}+ 필요 (현재 ${mine.toLocaleString()})`);
+    }
+    return { ok: failures.length === 0, failures, tier };
+  }
+
+  function canSelectPartyTier(tierIndex, perfScore, rebirthStat, miningPower) {
+    return evaluatePartyTierAccess(tierIndex, perfScore, rebirthStat, miningPower).ok;
+  }
+
+  function getMaxUnlockedPartyTierIndex(perfScore, rebirthStat, miningPower) {
+    let maxIdx = 0;
+    for (let i = 0; i < PARTY_HUNTING_TIERS.length; i += 1) {
+      if (canSelectPartyTier(i, perfScore, rebirthStat, miningPower)) maxIdx = i;
+    }
+    return maxIdx;
+  }
+
+  function resolvePartyHuntingTierIndex(tierIndex, perfScore, rebirthStat, miningPower) {
+    const idx = Math.max(0, Math.min(PARTY_HUNTING_TIERS.length - 1, tierIndex || 0));
+    if (canSelectPartyTier(idx, perfScore, rebirthStat, miningPower)) return idx;
+    return getMaxUnlockedPartyTierIndex(perfScore, rebirthStat, miningPower);
   }
 
   function perfToGuideRamGb(perf) {
@@ -1362,9 +1430,9 @@ function getPartLevel(part) {
     const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride, scaUpgrades, unitDamage, ramAttackFrames);
     const active = activeUnitsOverride != null ? activeUnitsOverride : alloc.activeWorkUnits;
     if (!alloc.canRunWork || active <= 0) return 0;
-    const kps = calcKillsPerSecond(unitDamage, ramAttackFrames, scaUpgrades, getWorkMobSpec(workTaskIndex)) * active;
-    const perKill = calcWorkMineralPerHitPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate);
-    return Math.round(kps * perKill);
+    const hps = calcHitsPerSecond(ramAttackFrames, scaUpgrades) * active;
+    const perHit = calcWorkMineralPerHitPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate);
+    return Math.round(hps * perHit);
   }
 
   function calcHuntIncomePerSec(parts, workTaskIndex, unlockedGameIndex, unitDamage, ramAttackFrames, scaUpgrades, incomeBonusRate, isDownloading, maxUnitsOverride, workUnitsOverride, activeUnitsOverride) {
@@ -1372,9 +1440,9 @@ function getPartLevel(part) {
     const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride, scaUpgrades, unitDamage, ramAttackFrames);
     const active = activeUnitsOverride != null ? activeUnitsOverride : alloc.activeHuntingUnits;
     if (active <= 0) return 0;
-    const kps = calcKillsPerSecond(unitDamage, ramAttackFrames, scaUpgrades, getGameMobSpec(unlockedGameIndex)) * active;
-    const perKill = calcHuntMineralPerHitPerUnit(unlockedGameIndex, incomeBonusRate);
-    return Math.round(kps * perKill);
+    const hps = calcHitsPerSecond(ramAttackFrames, scaUpgrades) * active;
+    const perHit = calcHuntMineralPerHitPerUnit(unlockedGameIndex, incomeBonusRate);
+    return Math.round(hps * perHit);
   }
 
   /** @deprecated 처치 1회 시 총 지급량(표시용). 실제 수입은 calcWork/HuntIncomePerSec */
@@ -1521,7 +1589,7 @@ function getPartLevel(part) {
     calcIncomeBonus, calcProbBonus,
     REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
     calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeAttackFrames, calcAttackIntervalSec, calcIncomeEventIntervalMs,
-    calcShieldDamagePerHit, calcHpDamagePerHit, calcHitsToKillTarget, calcKillTimeSec, calcKillsPerSecond, getWorkMobSpec, getGameMobSpec, getMobAttackPerHit, mobCanCounterattack,
+    calcShieldDamagePerHit, calcHpDamagePerHit, calcHitsToKillTarget, calcKillTimeSec, calcKillsPerSecond, calcHitsPerSecond, getWorkMobSpec, getGameMobSpec, getMobAttackPerHit, mobCanCounterattack,
     consumeElapsedTicks, calcAutoLoopIntervalMs, calcManualUpgradeDelayMs,
     MINERAL_INCOME_SCALE, MINERAL_DAMAGE_INCOME_EXP,
     GPU_GRADE_UP_COSTS,
@@ -1538,7 +1606,8 @@ function getPartLevel(part) {
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
     calcHuntIncomePerTick, calcWorkIncomePerTick, calcWorkIncomePerSec, calcHuntIncomePerSec, calcWorkHuntIncomePerSec,
     calcWorkMineralPerHitPerUnit, calcHuntMineralPerHitPerUnit,
-    calcPartyMineralPerTick, calcOptimalWorkUnits, toDownloadTargetSnapshot,
+    calcPartyMineralPerTick, calcPartyPerformanceScore, evaluatePartyTierAccess, canSelectPartyTier,
+    getMaxUnlockedPartyTierIndex, resolvePartyHuntingTierIndex, calcOptimalWorkUnits, toDownloadTargetSnapshot,
     getCpuSummonDpsFactor, calcUnitDamageForIncome, calcIncomeDamageMultiplier,
     createIntelCpu11InventoryItem,
     getMiningPower, getMiningAttackFrames, getMiningSpeedMultiplier, isMiningAmplifierUnlocked, canPurchaseScaShopItem, getScaShopItemHint, MINING_AMPLIFIER_SPEC,

@@ -478,6 +478,15 @@
 
       const effectiveRamGb = useMemo(() => OMG.getRamEffectiveCapacityGb(ram, ramSlots), [ram, ramSlots]);
       const workParts = useMemo(() => ({ cpu, gpu, ram, cooler, storage, motherboard, ramSlots }), [cpu, gpu, ram, cooler, storage, motherboard, ramSlots]);
+      const partyPerfScore = useMemo(
+        () => OMG.calcPartyPerformanceScore(workParts, scaUpgrades),
+        [workParts, scaUpgrades]
+      );
+      const partyMiningPower = useMemo(() => OMG.getMiningPower(scaUpgrades), [scaUpgrades]);
+      const maxUnlockedPartyTier = useMemo(
+        () => OMG.getMaxUnlockedPartyTierIndex(partyPerfScore, rebirthStat, partyMiningPower),
+        [partyPerfScore, rebirthStat, partyMiningPower]
+      );
       const effectiveUnitLimit = useMemo(() => {
         let limit = OMG.getCpuCores(cpu);
         if (cpu.manufacturer !== motherboard.socketManufacturer) {
@@ -702,6 +711,12 @@
           setManualWorkUnits(maxWorkUnits);
         }
       }, [maxWorkUnits, manualWorkUnits]);
+
+      useEffect(() => {
+        if (partyHuntingTier > maxUnlockedPartyTier) {
+          setPartyHuntingTier(maxUnlockedPartyTier);
+        }
+      }, [partyHuntingTier, maxUnlockedPartyTier]);
 
       useEffect(() => {
         if (localStorage.getItem('sca_rebirthStatMigrated')) return;
@@ -1265,6 +1280,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           workParts,
           workTaskIndex,
           specs,
+          rebirthStat,
           rebirthIncomeMult,
           incomeBonusRate,
           effectiveUnitLimit: economyUnitLimit,
@@ -1298,7 +1314,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           overclockLabCooldown,
         };
       }, [
-        workParts, workTaskIndex, specs, rebirthIncomeMult, incomeBonusRate, economyUnitLimit, overclockLabActive,
+        workParts, workTaskIndex, specs, rebirthStat, rebirthIncomeMult, incomeBonusRate, economyUnitLimit, overclockLabActive,
         effectiveWorkUnits, unlockedGameIndex, effectiveUnlockedGameIndex, isPartyHunting, partyHuntingTier,
         isDownloading, downloadTarget, downloadStartedAt, scaUpgrades, ramAttackFrames, gpuAttackFrames,
         minerals, isUpgrading, autoBuyCpuByMfr, autoBuyGpu, autoBuyRam, autoBuyCoolerByKind,
@@ -1338,7 +1354,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           const ticks = simCtx.scaPartyTicks;
           simCtx.scaPartyTicks = 0;
           simCtx.scaCoinsGain = 0;
-          GameSync.claimPartyIncome(tierIdx, ticks)
+          GameSync.claimPartyIncome(tierIdx, ticks, { cpu, gpu, ram, cooler, storage })
             .then((data) => { if (data && data.grantedSca > 0) setScaCoins(data.scaCoins); })
             .catch(() => {});
         }
@@ -2827,26 +2843,38 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <span className="text-purple-400 text-lg mr-1.5">👥</span>
                   <span>파티 사냥터</span>
                 </h2>
-                <p className="text-xs text-slate-400">원 + SCA 코인 · 파티 ON 시 작업 수입 중단</p>
+                <p className="text-xs text-slate-400">원 + SCA 코인 · 파티 ON 시 작업 수입 중단 · 성능 {partyPerfScore.toLocaleString()} · 환생수치 {rebirthStat.toLocaleString()} · 채굴력 {partyMiningPower.toLocaleString()}</p>
                 <div className="flex flex-wrap items-center gap-2">
                   <button onClick={() => {
                     setIsPartyHunting((v) => {
                       const next = !v;
                       if (next && GameSync.getToken()) {
-                        GameSync.startPartyHunting(partyHuntingTier).catch(() => {});
+                        const parts = { cpu, gpu, ram, cooler, storage };
+                        GameSync.startPartyHunting(partyHuntingTier, parts).catch(() => {});
                       }
                       return next;
                     });
                   }} className={`text-sm px-3 py-1.5 rounded font-mono font-bold border ${isPartyHunting ? 'bg-purple-600 border-purple-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-300'}`}>{isPartyHunting ? '파티 ON' : '파티 OFF'}</button>
                 </div>
                 <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
-                  {OMG.PARTY_HUNTING_TIERS.map((tier, idx) => (
+                  {OMG.PARTY_HUNTING_TIERS.map((tier, idx) => {
+                    const access = OMG.evaluatePartyTierAccess(idx, partyPerfScore, rebirthStat, partyMiningPower);
+                    const locked = !access.ok;
+                    return (
                     <button key={tier.name} onClick={() => {
+                      if (locked) {
+                        alert(access.failures.join('\n'));
+                        return;
+                      }
                       setPartyHuntingTier(idx);
                       setIsPartyHunting(true);
-                      if (GameSync.getToken()) GameSync.startPartyHunting(idx).catch(() => {});
-                    }} disabled={!isPartyHunting} className={`p-2 rounded border text-[11px] font-mono text-left disabled:opacity-40 ${partyHuntingTier === idx && isPartyHunting ? 'border-purple-500 bg-purple-950/30' : 'border-slate-800 bg-slate-950'}`}>{tier.name}<br/>+{OMG.calcPartyMineralPerTick(tier, incomeBonusRate)}원 / +{tier.scaCoins}SCA</button>
-                  ))}
+                      if (GameSync.getToken()) {
+                        const parts = { cpu, gpu, ram, cooler, storage };
+                        GameSync.startPartyHunting(idx, parts).catch(() => {});
+                      }
+                    }} disabled={!isPartyHunting || locked} title={locked ? access.failures.join(' · ') : `성능 ${tier.minPerfScore}+ · 환생 ${tier.minRebirthStat.toLocaleString()}+ · 채굴 ${tier.minMiningPower.toLocaleString()}+`} className={`p-2 rounded border text-[11px] font-mono text-left disabled:opacity-40 ${locked ? 'border-slate-900 bg-slate-950/50 text-slate-600' : partyHuntingTier === idx && isPartyHunting ? 'border-purple-500 bg-purple-950/30' : 'border-slate-800 bg-slate-950'}`}>{tier.name}{locked ? ' 🔒' : ''}<br/>+{OMG.calcPartyMineralPerTick(tier, incomeBonusRate)}원 / +{tier.scaCoins}SCA{locked ? <span className="block text-[9px] text-rose-400/80 mt-0.5">{access.failures[0]}</span> : null}</button>
+                    );
+                  })}
                 </div>
                 {isPartyHunting && OMG.PARTY_HUNTING_TIERS[partyHuntingTier] && (
                   <p className="text-xs text-purple-300 font-mono">선택: {OMG.PARTY_HUNTING_TIERS[partyHuntingTier].name} · 3초당 +{OMG.calcPartyMineralPerTick(OMG.PARTY_HUNTING_TIERS[partyHuntingTier], incomeBonusRate)}원 +{OMG.PARTY_HUNTING_TIERS[partyHuntingTier].scaCoins}C</p>
