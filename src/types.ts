@@ -81,6 +81,56 @@ export interface AuthResponse {
  */
 export type GameStatePayload = Record<string, string>;
 
+/** SCA 상점 구매 API 요청 */
+export interface ScaPurchaseRequest {
+  itemId: string;
+}
+
+/** SCA 상점 구매 API 응답 */
+export interface ScaPurchaseResponse {
+  success: boolean;
+  message: string;
+  scaCoins: number;
+  scaUpgrades: Record<string, unknown>;
+  cost: number;
+}
+
+/** 환생 SCA 지급 API 요청 */
+export interface ScaRebirthRequest {
+  parts: {
+    cpu?: { manufacturer?: string; level?: number; ddrGeneration?: string };
+    gpu?: { level?: number };
+    ram?: { level?: number };
+    cooler?: { level?: number };
+    storage?: { level?: number };
+  };
+}
+
+/** 환생 SCA 지급 API 응답 */
+export interface ScaRebirthResponse {
+  success: boolean;
+  message: string;
+  scaCoins: number;
+  scaReward: number;
+  rebirthStat: number;
+  rebirthCount: number;
+}
+
+/** 파티 SCA 틱 지급 API 요청 */
+export interface ScaPartyIncomeRequest {
+  tierIndex: number;
+  tickCount: number;
+}
+
+/** 파티 SCA 틱 지급 API 응답 */
+export interface ScaPartyIncomeResponse {
+  success: boolean;
+  message: string;
+  scaCoins: number;
+  grantedTicks: number;
+  grantedSca: number;
+}
+
 // ============================================================================
 // 하드웨어 시뮬레이터 관련 데이터 구조 및 스펙 타입 정의
 // ============================================================================

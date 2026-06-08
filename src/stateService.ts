@@ -46,7 +46,7 @@ export class StateService {
 
   /**
    * 진행도 저장(Upsert). 'sca_'로 시작하는 문자열 키/값만 보관한다.
-   * sca_scaCoins는 서버·클라이언트 중 큰 값을 유지한다 (레이드 지급 후 stale 덮어쓰기 방지).
+   * sca_scaCoins·sca_scaUpgrades·환생 수치·파티 타이머는 서버 API만 갱신한다.
    */
   static async saveState(userId: string, state: unknown): Promise<GameStatePayload> {
     const sanitized = sanitizeState(state);
@@ -60,9 +60,20 @@ export class StateService {
         : {};
 
     const merged: GameStatePayload = { ...existing, ...sanitized };
-    const serverSca = Number(existing.sca_scaCoins) || 0;
-    const clientSca = Number(sanitized.sca_scaCoins) || 0;
-    merged.sca_scaCoins = String(Math.max(serverSca, clientSca));
+    const serverOnlyKeys = [
+      'sca_scaCoins',
+      'sca_scaUpgrades',
+      'sca_rebirthStat',
+      'sca_rebirthCount',
+      'sca_partyLastClaimMs',
+      'sca_partyHuntingTier',
+    ] as const;
+    for (const key of serverOnlyKeys) {
+      delete merged[key];
+      if (existing[key]) {
+        merged[key] = existing[key];
+      }
+    }
 
     await pool.query(
       `INSERT INTO game_states (user_id, state, updated_at)

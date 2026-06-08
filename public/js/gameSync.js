@@ -122,6 +122,77 @@
       this.setAuth(token, userId, nickname);
       return true;
     },
+    /** 환생 SCA 지급 — 서버에서 보상 계산·지갑 반영 */
+    async claimRebirth(parts) {
+      const token = this.getToken();
+      if (!token) throw new Error('로그인이 필요합니다.');
+      const res = await fetch('/api/sca/rebirth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ parts }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || '환생 SCA 지급에 실패했습니다.');
+      }
+      localStorage.setItem('sca_scaCoins', String(data.scaCoins));
+      localStorage.setItem('sca_rebirthStat', String(data.rebirthStat));
+      localStorage.setItem('sca_rebirthCount', String(data.rebirthCount));
+      window.dispatchEvent(new CustomEvent('sca_wallet_sync', { detail: { scaCoins: data.scaCoins } }));
+      return data;
+    },
+    /** 파티 사냥 SCA 타이머 시작 */
+    async startPartyHunting(tierIndex) {
+      const token = this.getToken();
+      if (!token) return null;
+      const res = await fetch('/api/sca/party/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ tierIndex }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || '파티 타이머 시작에 실패했습니다.');
+      }
+      return data;
+    },
+    /** 파티 사냥 SCA 틱 지급 */
+    async claimPartyIncome(tierIndex, tickCount) {
+      const token = this.getToken();
+      if (!token) return null;
+      const res = await fetch('/api/sca/party/income', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ tierIndex, tickCount }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || '파티 SCA 지급에 실패했습니다.');
+      }
+      if (data.grantedSca > 0) {
+        localStorage.setItem('sca_scaCoins', String(data.scaCoins));
+        window.dispatchEvent(new CustomEvent('sca_wallet_sync', { detail: { scaCoins: data.scaCoins } }));
+      }
+      return data;
+    },
+    /** SCA 상점 구매 — 서버에서 잔액 차감·업그레이드 반영 */
+    async purchaseScaItem(itemId) {
+      const token = this.getToken();
+      if (!token) throw new Error('로그인이 필요합니다.');
+      const res = await fetch('/api/sca/purchase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ itemId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'SCA 상점 구매에 실패했습니다.');
+      }
+      localStorage.setItem('sca_scaCoins', String(data.scaCoins));
+      localStorage.setItem('sca_scaUpgrades', JSON.stringify(data.scaUpgrades || {}));
+      window.dispatchEvent(new CustomEvent('sca_wallet_sync', { detail: { scaCoins: data.scaCoins } }));
+      return data;
+    },
     /** Socket.io handshake auth 페이로드 */
     getSocketAuth() {
       const token = this.getToken();
@@ -160,6 +231,10 @@
   function flushServerSync() {
     const token = GameSync.getToken();
     if (!token) return;
+    if (__scaSyncTimer) {
+      clearTimeout(__scaSyncTimer);
+      __scaSyncTimer = null;
+    }
     try {
       fetch('/api/state', {
         method: 'PUT',
@@ -181,6 +256,9 @@
     if (document.visibilityState === 'hidden') flushServerSync();
   });
 
+  GameSync.flushServerSync = flushServerSync;
+
   global.GameSync = GameSync;
   global.scheduleServerSync = scheduleServerSync;
+  global.flushServerSync = flushServerSync;
 })(window);

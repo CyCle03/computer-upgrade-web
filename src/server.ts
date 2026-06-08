@@ -7,7 +7,14 @@ import { isDbReady, testConnection } from './db';
 import { RewardService } from './rewardService';
 import { AuthService, AuthError } from './authService';
 import { StateService } from './stateService';
-import { ClaimRewardRequest } from './types';
+import { ScaShopService } from './scaShopService';
+import { ScaIncomeService } from './scaIncomeService';
+import {
+  ClaimRewardRequest,
+  ScaPurchaseRequest,
+  ScaRebirthRequest,
+  ScaPartyIncomeRequest,
+} from './types';
 import { setupSocketServer } from './socketServer';
 
 dotenv.config();
@@ -115,6 +122,114 @@ app.post('/api/account/reset', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     console.error('[AccountAPI] reset error:', error);
     return res.status(500).json({ success: false, message: '계정 초기화 중 오류가 발생했습니다.' });
+  }
+});
+
+// SCA 상점 구매 (서버 잔액 차감·업그레이드 반영)
+app.post('/api/sca/purchase', async (req: Request, res: Response) => {
+  if (!(await ensureDb(res))) return;
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+  const { itemId } = (req.body ?? {}) as ScaPurchaseRequest;
+  if (!itemId || typeof itemId !== 'string') {
+    return res.status(400).json({
+      success: false,
+      message: '상점 항목 ID(itemId)가 필요합니다.',
+      scaCoins: 0,
+      scaUpgrades: {},
+      cost: 0,
+    });
+  }
+  try {
+    const result = await ScaShopService.purchase(userId, itemId.trim());
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    return res.status(200).json(result);
+  } catch (error: unknown) {
+    console.error('[ScaAPI] purchase error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'SCA 상점 구매 처리 중 오류가 발생했습니다.',
+      scaCoins: 0,
+      scaUpgrades: {},
+      cost: 0,
+    });
+  }
+});
+
+// 환생 SCA 지급 (서버 보상 계산)
+app.post('/api/sca/rebirth', async (req: Request, res: Response) => {
+  if (!(await ensureDb(res))) return;
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+  const { parts } = (req.body ?? {}) as ScaRebirthRequest;
+  if (!parts || typeof parts !== 'object') {
+    return res.status(400).json({
+      success: false,
+      message: '환생 부품 정보(parts)가 필요합니다.',
+      scaCoins: 0,
+      scaReward: 0,
+      rebirthStat: 0,
+      rebirthCount: 0,
+    });
+  }
+  try {
+    const result = await ScaIncomeService.claimRebirth(userId, parts);
+    if (!result.success) return res.status(400).json(result);
+    return res.status(200).json(result);
+  } catch (error: unknown) {
+    console.error('[ScaAPI] rebirth error:', error);
+    return res.status(500).json({
+      success: false,
+      message: '환생 SCA 지급 중 오류가 발생했습니다.',
+      scaCoins: 0,
+      scaReward: 0,
+      rebirthStat: 0,
+      rebirthCount: 0,
+    });
+  }
+});
+
+// 파티 사냥 타이머 시작
+app.post('/api/sca/party/start', async (req: Request, res: Response) => {
+  if (!(await ensureDb(res))) return;
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+  const tierIndex = Number((req.body ?? {}).tierIndex);
+  try {
+    const result = await ScaIncomeService.startPartyHunting(userId, tierIndex);
+    if (!result.success) return res.status(400).json(result);
+    return res.status(200).json(result);
+  } catch (error: unknown) {
+    console.error('[ScaAPI] party start error:', error);
+    return res.status(500).json({ success: false, message: '파티 타이머 시작 중 오류가 발생했습니다.' });
+  }
+});
+
+// 파티 사냥 SCA 틱 지급
+app.post('/api/sca/party/income', async (req: Request, res: Response) => {
+  if (!(await ensureDb(res))) return;
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+  const { tierIndex, tickCount } = (req.body ?? {}) as ScaPartyIncomeRequest;
+  try {
+    const result = await ScaIncomeService.claimPartyIncome(
+      userId,
+      Number(tierIndex),
+      Number(tickCount)
+    );
+    if (!result.success) return res.status(400).json(result);
+    return res.status(200).json(result);
+  } catch (error: unknown) {
+    console.error('[ScaAPI] party income error:', error);
+    return res.status(500).json({
+      success: false,
+      message: '파티 SCA 지급 중 오류가 발생했습니다.',
+      scaCoins: 0,
+      grantedTicks: 0,
+      grantedSca: 0,
+    });
   }
 });
 

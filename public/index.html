@@ -52,6 +52,7 @@
     const OMG = window.OriginalMapGame;
     const GameSync = window.GameSync;
     const scheduleServerSync = window.scheduleServerSync;
+    const flushServerSync = window.flushServerSync;
 
     function App({ onLogout }) {
       // ----------------------------------------------------------------------
@@ -832,7 +833,7 @@
         return Math.min(...levels);
       };
 
-      const handlePurchaseScaItem = (item) => {
+      const handlePurchaseScaItem = async (item) => {
         const bought = scaUpgrades[item.id] || 0;
         if (bought >= item.maxPurchases) { alert('최대 구매 횟수 도달'); return; }
         if (!OMG.canPurchaseScaShopItem(item, scaUpgrades)) {
@@ -851,30 +852,27 @@
         }
         const cost = OMG.getScaShopItemCost(item, scaUpgrades);
         if (scaCoins < cost) { alert(`SCA 코인 부족 (필요 ${cost.toLocaleString()})`); return; }
-        setScaCoins((prev) => prev - cost);
-        setScaUpgrades((prev) => {
-          const next = { ...prev, [item.id]: bought + 1 };
+        try {
+          const data = await GameSync.purchaseScaItem(item.id);
+          setScaCoins(data.scaCoins);
+          setScaUpgrades(data.scaUpgrades || {});
+          const nextBought = (data.scaUpgrades && data.scaUpgrades[item.id]) || bought + 1;
           if (item.id === 'gpuGradeUp') {
-            next.gpuGradeLevel = OMG.getGpuGradeLevel(prev) + 1;
+            const g = OMG.getGpuGradeLevel(data.scaUpgrades || {});
+            pushToast(`GPU 등급 → ${OMG.GPU_GRADE_NAMES[g]}`, 'success', 2500);
+          } else if (item.id === 'miningAmplifierUnlock') {
+            pushToast('채굴증폭기 구축 완료 · 레이드 채굴봇 활성화', 'success', 2500);
+          } else if (item.id === 'miningAmplifier') {
+            const power = nextBought * OMG.MINING_AMPLIFIER_SPEC.powerPerLevel;
+            pushToast(`채굴력 +${OMG.MINING_AMPLIFIER_SPEC.powerPerLevel} (현재 ${power.toLocaleString()})`, 'success', 2500);
+          } else if (item.id === 'miningAmplifierSpeed') {
+            const frames = OMG.getMiningAttackFrames(data.scaUpgrades || {});
+            pushToast(`채굴증폭기 공속 강화 (${frames}f)`, 'success', 2500);
+          } else if (item.mineralBonus) {
+            pushToast(`환생 미네랄 +${item.mineralBonus}`, 'success', 2500);
           }
-          if (item.id === 'miningAmplifierUnlock') {
-            next.miningAmplifierUnlock = 1;
-          }
-          return next;
-        });
-        if (item.id === 'gpuGradeUp') {
-          const g = OMG.getGpuGradeLevel(scaUpgrades) + 1;
-          pushToast(`GPU 등급 → ${OMG.GPU_GRADE_NAMES[g]}`, 'success', 2500);
-        } else if (item.id === 'miningAmplifierUnlock') {
-          pushToast('채굴증폭기 구축 완료 · 레이드 채굴봇 활성화', 'success', 2500);
-        } else if (item.id === 'miningAmplifier') {
-          const power = (bought + 1) * OMG.MINING_AMPLIFIER_SPEC.powerPerLevel;
-          pushToast(`채굴력 +${OMG.MINING_AMPLIFIER_SPEC.powerPerLevel} (현재 ${power.toLocaleString()})`, 'success', 2500);
-        } else if (item.id === 'miningAmplifierSpeed') {
-          const frames = OMG.getMiningAttackFrames({ ...scaUpgrades, miningAmplifierSpeed: bought + 1, miningAmplifierUnlock: scaUpgrades.miningAmplifierUnlock || (scaUpgrades.miningAmplifier || 0) > 0 ? 1 : 0 });
-          pushToast(`채굴증폭기 공속 강화 (${frames}f)`, 'success', 2500);
-        } else if (item.mineralBonus) {
-          pushToast(`환생 미네랄 +${item.mineralBonus}`, 'success', 2500);
+        } catch (err) {
+          alert(err.message || 'SCA 상점 구매에 실패했습니다.');
         }
       };
 
@@ -995,7 +993,7 @@
         }, OMG.calcManualUpgradeDelayMs());
       };
 
-      const handleRebirth = () => {
+      const handleRebirth = async () => {
         if (gpu.level < 10) { alert('GPU 10강 필요'); return; }
         if (isDownloading) { alert('게임 다운로드 중에는 환생할 수 없습니다. (v1.0.6)'); return; }
         // download state cleared on rebirth below via setIsDownloading(false)
@@ -1003,9 +1001,20 @@
         const parts = { cpu, gpu, ram, cooler, storage };
         const outcome = OMG.calcRebirthOutcome(parts, rebirthStat);
         const startMinerals = OMG.calcRebirthStartMinerals(scaUpgrades);
-        setScaCoins((prev) => prev + outcome.scaReward);
-        setRebirthStat(outcome.correctedStat);
-        setRebirthCount((prev) => prev + 1);
+        if (!GameSync.getToken()) {
+          alert('환생 SCA 지급을 위해 로그인이 필요합니다.');
+          return;
+        }
+        let rebirthData;
+        try {
+          rebirthData = await GameSync.claimRebirth(parts);
+        } catch (err) {
+          alert(err.message || '환생 SCA 지급에 실패했습니다.');
+          return;
+        }
+        setScaCoins(rebirthData.scaCoins);
+        setRebirthStat(rebirthData.rebirthStat);
+        setRebirthCount(rebirthData.rebirthCount);
         setMinerals(startMinerals);
 setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setGpu({ level: 1 });
@@ -1029,7 +1038,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setDownloadProgress(0);
         setIsPartyHunting(false);
         setAutoTargetLevels(defaultAutoTargets);
-        pushToast(`환생 완료 · SCA +${outcome.scaReward.toLocaleString()}`, 'success', 3500);
+        pushToast(`환생 완료 · SCA +${rebirthData.scaReward.toLocaleString()}`, 'success', 3500);
       };
 
       const handlePurchaseMotherboard = (board) => {
@@ -1231,8 +1240,14 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         gameStateRef.current.minerals = simCtx.minerals;
         scheduleInventoryUi(simCtx.inventory, opts);
         setMinerals(simCtx.minerals);
-        if (simCtx.scaCoinsGain) {
-          setScaCoins((p) => p + simCtx.scaCoinsGain);
+        if (simCtx.scaPartyTicks > 0 && GameSync.getToken()) {
+          const tierIdx = simCtx.partyHuntingTier;
+          const ticks = simCtx.scaPartyTicks;
+          simCtx.scaPartyTicks = 0;
+          simCtx.scaCoinsGain = 0;
+          GameSync.claimPartyIncome(tierIdx, ticks)
+            .then((data) => { if (data && data.grantedSca > 0) setScaCoins(data.scaCoins); })
+            .catch(() => {});
         }
         if (simCtx.autoFlagsDirty) {
           setAutoBuyCpuByMfr({ ...simCtx.autoBuyCpuByMfr });
@@ -1731,8 +1746,6 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             const total = Number(txResult.currentTotalCoins) || 0;
             setScaCoins(total);
             localStorage.setItem('sca_scaCoins', String(total));
-            if (typeof flushServerSync === 'function') flushServerSync();
-            else scheduleServerSync();
             pushToast(`레이드 ${clearedFloor}층 · SCA +${txResult.claimedCoins.toLocaleString()} (잔액 ${total.toLocaleString()})`, 'success', 3500);
             setRewardMessage(`돌파 성공. ${clearedFloor}층 마일스톤 보상 SCA 코인 +${txResult.claimedCoins} 지급 완료. (잔액 ${total.toLocaleString()})`);
             setTimeout(() => setRewardMessage(null), 4000);
@@ -2664,11 +2677,23 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 </h2>
                 <p className="text-xs text-slate-400">원 + SCA 코인 · 파티 ON 시 작업 수입 중단</p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button onClick={() => setIsPartyHunting(v => !v)} className={`text-sm px-3 py-1.5 rounded font-mono font-bold border ${isPartyHunting ? 'bg-purple-600 border-purple-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-300'}`}>{isPartyHunting ? '파티 ON' : '파티 OFF'}</button>
+                  <button onClick={() => {
+                    setIsPartyHunting((v) => {
+                      const next = !v;
+                      if (next && GameSync.getToken()) {
+                        GameSync.startPartyHunting(partyHuntingTier).catch(() => {});
+                      }
+                      return next;
+                    });
+                  }} className={`text-sm px-3 py-1.5 rounded font-mono font-bold border ${isPartyHunting ? 'bg-purple-600 border-purple-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-300'}`}>{isPartyHunting ? '파티 ON' : '파티 OFF'}</button>
                 </div>
                 <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
                   {OMG.PARTY_HUNTING_TIERS.map((tier, idx) => (
-                    <button key={tier.name} onClick={() => { setPartyHuntingTier(idx); setIsPartyHunting(true); }} disabled={!isPartyHunting} className={`p-2 rounded border text-[11px] font-mono text-left disabled:opacity-40 ${partyHuntingTier === idx && isPartyHunting ? 'border-purple-500 bg-purple-950/30' : 'border-slate-800 bg-slate-950'}`}>{tier.name}<br/>+{OMG.calcPartyMineralPerTick(tier, incomeBonusRate)}원 / +{tier.scaCoins}SCA</button>
+                    <button key={tier.name} onClick={() => {
+                      setPartyHuntingTier(idx);
+                      setIsPartyHunting(true);
+                      if (GameSync.getToken()) GameSync.startPartyHunting(idx).catch(() => {});
+                    }} disabled={!isPartyHunting} className={`p-2 rounded border text-[11px] font-mono text-left disabled:opacity-40 ${partyHuntingTier === idx && isPartyHunting ? 'border-purple-500 bg-purple-950/30' : 'border-slate-800 bg-slate-950'}`}>{tier.name}<br/>+{OMG.calcPartyMineralPerTick(tier, incomeBonusRate)}원 / +{tier.scaCoins}SCA</button>
                   ))}
                 </div>
                 {isPartyHunting && OMG.PARTY_HUNTING_TIERS[partyHuntingTier] && (
