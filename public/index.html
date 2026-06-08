@@ -714,7 +714,7 @@
           if (isPartyHunting) {
             const tier = OMG.PARTY_HUNTING_TIERS[partyHuntingTier];
             if (!tier) return;
-            const mEarn = Math.round(tier.mineralPerTick * (1 + incomeBonusRate));
+            const mEarn = OMG.calcPartyMineralPerTick(tier, incomeBonusRate);
             newLog = `[${time}] 👥 파티 :: ${tier.name} +${mEarn}원 +${tier.scaCoins}C`;
           } else {
             const workEarn = OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate, economyUnitLimit, effectiveWorkUnits);
@@ -847,7 +847,7 @@
             return;
           }
         }
-        const cost = OMG.getScaShopItemCost(item);
+        const cost = OMG.getScaShopItemCost(item, scaUpgrades);
         if (scaCoins < cost) { alert(`SCA 코인 부족 (필요 ${cost.toLocaleString()})`); return; }
         setScaCoins((prev) => prev - cost);
         setScaUpgrades((prev) => {
@@ -880,7 +880,7 @@
         const bought = scaUpgrades[item.id] || 0;
         const canBuy = OMG.canPurchaseScaShopItem(item, scaUpgrades);
         const soldOut = !canBuy && bought >= item.maxPurchases;
-        const cost = OMG.getScaShopItemCost(item);
+        const cost = OMG.getScaShopItemCost(item, scaUpgrades);
         const affordable = scaCoins >= cost;
         const hint = OMG.getScaShopItemHint(item, scaUpgrades);
         return (
@@ -2634,11 +2634,11 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 </div>
                 <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
                   {OMG.PARTY_HUNTING_TIERS.map((tier, idx) => (
-                    <button key={tier.name} onClick={() => { setPartyHuntingTier(idx); setIsPartyHunting(true); }} disabled={!isPartyHunting} className={`p-2 rounded border text-[11px] font-mono text-left disabled:opacity-40 ${partyHuntingTier === idx && isPartyHunting ? 'border-purple-500 bg-purple-950/30' : 'border-slate-800 bg-slate-950'}`}>{tier.name}<br/>+{tier.mineralPerTick}원 / +{tier.scaCoins}SCA</button>
+                    <button key={tier.name} onClick={() => { setPartyHuntingTier(idx); setIsPartyHunting(true); }} disabled={!isPartyHunting} className={`p-2 rounded border text-[11px] font-mono text-left disabled:opacity-40 ${partyHuntingTier === idx && isPartyHunting ? 'border-purple-500 bg-purple-950/30' : 'border-slate-800 bg-slate-950'}`}>{tier.name}<br/>+{OMG.calcPartyMineralPerTick(tier, incomeBonusRate)}원 / +{tier.scaCoins}SCA</button>
                   ))}
                 </div>
                 {isPartyHunting && OMG.PARTY_HUNTING_TIERS[partyHuntingTier] && (
-                  <p className="text-xs text-purple-300 font-mono">선택: {OMG.PARTY_HUNTING_TIERS[partyHuntingTier].name} · 3초당 +{OMG.PARTY_HUNTING_TIERS[partyHuntingTier].mineralPerTick}원 +{OMG.PARTY_HUNTING_TIERS[partyHuntingTier].scaCoins}C</p>
+                  <p className="text-xs text-purple-300 font-mono">선택: {OMG.PARTY_HUNTING_TIERS[partyHuntingTier].name} · 3초당 +{OMG.calcPartyMineralPerTick(OMG.PARTY_HUNTING_TIERS[partyHuntingTier], incomeBonusRate)}원 +{OMG.PARTY_HUNTING_TIERS[partyHuntingTier].scaCoins}C</p>
                 )}
               </div>
 

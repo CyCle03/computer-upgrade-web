@@ -452,7 +452,7 @@
       const partyConsumed = OMG.consumeElapsedTicks(partyRem, partyTickMs, MAX_INCOME_TICKS);
       ctx.remParty = partyConsumed.remainderMs;
       if (partyConsumed.ticks > 0) {
-        const m = Math.round(tier.mineralPerTick * (1 + (ctx.incomeBonusRate || 0))) * partyConsumed.ticks;
+        const m = OMG.calcPartyMineralPerTick(tier, ctx.incomeBonusRate) * partyConsumed.ticks;
         ctx.minerals += m;
         ctx.scaCoinsGain = (ctx.scaCoinsGain || 0) + tier.scaCoins * partyConsumed.ticks;
         ctx.stats.incomeTicks += partyConsumed.ticks;
@@ -555,7 +555,7 @@
 
       while ((partyTicks > 0 || autoTicks > 0) && (partyTicks + autoTicks) < MAX_INCOME_TICKS * 2) {
         if (partyTicks > 0 && (autoTicks === 0 || counter >= partyEvery)) {
-          const m = Math.round(tier.mineralPerTick * (1 + (ctx.incomeBonusRate || 0)));
+          const m = OMG.calcPartyMineralPerTick(tier, ctx.incomeBonusRate);
           ctx.minerals += m;
           ctx.scaCoinsGain = (ctx.scaCoinsGain || 0) + tier.scaCoins;
           ctx.stats.incomeTicks += 1;

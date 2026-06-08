@@ -51,11 +51,11 @@ async function runTests(): Promise<boolean> {
     console.log('[Test 2단계] 순차 보상 수령 및 차분 계산 테스트');
     console.log('--------------------------------------------------');
 
-    // 시나리오 1: 오늘 첫 판에 50층 클리어 (보상 10~50층 총 5회 분량 = 50 코인 지급 예정)
+    // 시나리오 1: 오늘 첫 판에 50층 클리어 (누적표 50층 = 15,000 코인)
     console.log('[Request] 50층 클리어 보상 요청...');
     const res1 = await RewardService.claimRewardWithTx(testUserId, 50);
     console.log(`[Response] 성공여부: ${res1.success}, 메시지: "${res1.message}", 지급코인: ${res1.claimedCoins}, 최고층수: ${res1.newHighestFloor}, 총잔액: ${res1.currentTotalCoins}`);
-    if (res1.success && res1.claimedCoins === 50 && res1.currentTotalCoins === 50) {
+    if (res1.success && res1.claimedCoins === 15000 && res1.currentTotalCoins === 15000) {
       console.log('=> [PASSED] 50층 최초 보상 지급 성공');
     } else {
       console.error('=> [FAILED] 50층 최초 보상 지급 실패');
@@ -73,11 +73,11 @@ async function runTests(): Promise<boolean> {
       passedAll = false;
     }
 
-    // 시나리오 3: 80층 클리어 보상 요청 (차분 지급 - 60, 70, 80층 3회 분량 = 30 코인 추가 지급 예정)
+    // 시나리오 3: 80층 클리어 보상 요청 (차분 40,000 − 15,000 = 25,000 코인)
     console.log('\n[Request] 80층 클리어 보상 요청 (추가 진행)...');
     const res3 = await RewardService.claimRewardWithTx(testUserId, 80);
     console.log(`[Response] 성공여부: ${res3.success}, message: "${res3.message}", 지급코인: ${res3.claimedCoins}, 최고층수: ${res3.newHighestFloor}, 총잔액: ${res3.currentTotalCoins}`);
-    if (res3.success && res3.claimedCoins === 30 && res3.currentTotalCoins === 80) {
+    if (res3.success && res3.claimedCoins === 25000 && res3.currentTotalCoins === 40000) {
       console.log('=> [PASSED] 추가 층수 차분 보상 정상 지급 완료');
     } else {
       console.error('=> [FAILED] 추가 층수 차분 보상 지급 오류');
@@ -100,7 +100,7 @@ async function runTests(): Promise<boolean> {
     console.log('--------------------------------------------------');
     console.log('[Action] 동일 유저가 100층 클리어 보상을 동시에 5회 요청함 (Promise.all)');
     console.log('[Info] 기존 최고 수령 층수는 80층입니다. 100층 요청 시 단 1번만 성공하여');
-    console.log('[Info] 90, 100층 분량인 20 코인이 단 한 번만 지급되고, 총 잔고는 100 코인이 되어야 함.');
+    console.log('[Info] 80,000 − 40,000 = 40,000 코인이 단 한 번만 지급되고, 총 잔고는 80,000 코인이 되어야 함.');
 
     // 5개 요청 동시 발송
     const promises = [
@@ -130,7 +130,7 @@ async function runTests(): Promise<boolean> {
     console.log(`\n[Test Result] 총 성공 횟수: ${successCount}회, 실패 횟수: ${failCount}회`);
     
     // 최종 검증
-    if (successCount === 1 && failCount === 4 && finalCoins === 100) {
+    if (successCount === 1 && failCount === 4 && finalCoins === 80000) {
       console.log('=> [PASSED] Race Condition 방지 테스트 완벽 성공! 중복 수령 방지됨.');
     } else {
       console.error('=> [FAILED] Race Condition 방지 테스트 실패! 중복 지급 의심.');

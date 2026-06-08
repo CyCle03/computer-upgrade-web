@@ -258,11 +258,21 @@
   /** 환생 미네랄 SCA 가격: +10원당 500 SCA 코인 고정 */
   const REBIRTH_MINERAL_SCA_PER_10 = 500;
 
-  /** 파티 보스 채굴증폭기 — v1.2.4~ (채굴력 상한 65,000 = +500 × 130) */
+  /**
+   * 미네랄 수입 밸런스 — 후반 공격력·배속 폭증으로 SCA 상점이 무의미해지는 것을 완화.
+   * calcWork/HuntIncomePerTick·파티 사냥에 MINERAL_INCOME_SCALE 적용.
+   */
+  const MINERAL_INCOME_SCALE = 0.28;
+  const MINERAL_DAMAGE_INCOME_EXP = 0.5;
+
+  /** GPU 등급 상승 비용 (엔트리→메인→퍼포→하이엔드) */
+  const GPU_GRADE_UP_COSTS = [120000, 600000, 2500000];
+
+  /** 파티 보스 채굴증폭기 — 최종 컨텐츠 (채굴력 상한 65,000 = +500 × 130) */
   const MINING_AMPLIFIER_SPEC = {
-    unlockCost: 5000,
-    powerUpgradeCost: 5000,
-    speedUpgradeCost: 5000,
+    unlockCost: 10000000,
+    powerUpgradeCost: 1500000,
+    speedUpgradeCost: 2500000,
     powerPerLevel: 500,
     maxPowerLevels: 130,
     maxSpeedLevels: 16,
@@ -280,15 +290,40 @@
     { id: 'gameSpeed1', name: '게임 배속 +1프레임', cost: 25000, maxPurchases: 12 },
     { id: 'upgradeProb01', name: '강화 확률 +0.1%', cost: 30000, maxPurchases: 10 },
     { id: 'downloadSpeed10', name: '다운로드 속도 +10%', cost: 35000, maxPurchases: 10 },
-    { id: 'gpuGradeUp', name: 'GPU 등급 상승', cost: 40000, maxPurchases: 3 },
+    { id: 'gpuGradeUp', name: 'GPU 등급 상승', maxPurchases: 3 },
     { id: 'miningAmplifierUnlock', name: '채굴증폭기 구축', cost: MINING_AMPLIFIER_SPEC.unlockCost, maxPurchases: 1, shopGroup: 'mining' },
-    { id: 'miningAmplifier', name: '채굴증폭기 공격력 +500', cost: MINING_AMPLIFIER_SPEC.powerUpgradeCost, maxPurchases: MINING_AMPLIFIER_SPEC.maxPowerLevels, shopGroup: 'mining', requiresMining: true },
-    { id: 'miningAmplifierSpeed', name: '채굴증폭기 공속 강화', cost: MINING_AMPLIFIER_SPEC.speedUpgradeCost, maxPurchases: MINING_AMPLIFIER_SPEC.maxSpeedLevels, shopGroup: 'mining', requiresMining: true },
+    { id: 'miningAmplifier', name: '채굴증폭기 공격력 +500', maxPurchases: MINING_AMPLIFIER_SPEC.maxPowerLevels, shopGroup: 'mining', requiresMining: true },
+    { id: 'miningAmplifierSpeed', name: '채굴증폭기 공속 강화', maxPurchases: MINING_AMPLIFIER_SPEC.maxSpeedLevels, shopGroup: 'mining', requiresMining: true },
   ];
 
-  function getScaShopItemCost(item) {
+  function getGpuGradeUpCost(scaUpgrades) {
+    const level = getGpuGradeLevel(scaUpgrades || {});
+    const costs = GPU_GRADE_UP_COSTS;
+    if (level >= costs.length) return 0;
+    return costs[level];
+  }
+
+  function getMiningAmplifierPowerCost() {
+    return MINING_AMPLIFIER_SPEC.powerUpgradeCost;
+  }
+
+  function getMiningAmplifierSpeedCost() {
+    return MINING_AMPLIFIER_SPEC.speedUpgradeCost;
+  }
+
+  function getScaShopItemCost(item, scaUpgrades) {
     if (item && item.mineralBonus) {
       return Math.floor((item.mineralBonus / 10) * REBIRTH_MINERAL_SCA_PER_10);
+    }
+    const u = scaUpgrades || {};
+    if (item && item.id === 'gpuGradeUp') {
+      return getGpuGradeUpCost(u);
+    }
+    if (item && item.id === 'miningAmplifier') {
+      return getMiningAmplifierPowerCost(u.miningAmplifier || 0);
+    }
+    if (item && item.id === 'miningAmplifierSpeed') {
+      return getMiningAmplifierSpeedCost(u.miningAmplifierSpeed || 0);
     }
     return item && item.cost != null ? item.cost : 0;
   }
@@ -318,7 +353,7 @@
   function getScaShopItemHint(item, scaUpgrades) {
     if (!item) return '';
     if (item.id === 'miningAmplifierUnlock') {
-      return isMiningAmplifierUnlocked(scaUpgrades) ? '레이드 채굴봇 활성화됨' : '파티 보스 레이드 채굴봇 해금';
+      return isMiningAmplifierUnlocked(scaUpgrades) ? '레이드 채굴봇 활성화됨' : '최종 컨텐츠 · 레이드 채굴봇 해금';
     }
     if (item.id === 'miningAmplifier') {
       if (!isMiningAmplifierUnlocked(scaUpgrades)) return '구축 후 구매 가능';
@@ -920,7 +955,14 @@
   }
 
   function calcIncomeDamageMultiplier(parts, scaUpgrades) {
-    return Math.max(1, calcUnitDamageForIncome(parts, scaUpgrades) / INCOME_REF_UNIT_DAMAGE);
+    const raw = calcUnitDamageForIncome(parts, scaUpgrades) / INCOME_REF_UNIT_DAMAGE;
+    return Math.max(1, Math.pow(Math.max(1, raw), MINERAL_DAMAGE_INCOME_EXP));
+  }
+
+  /** 파티 사냥 틱당 미네랄 (MINERAL_INCOME_SCALE 반영) */
+  function calcPartyMineralPerTick(tier, incomeBonusRate) {
+    if (!tier) return 0;
+    return Math.round(tier.mineralPerTick * MINERAL_INCOME_SCALE * (1 + (incomeBonusRate || 0)));
   }
 
   function perfToGuideRamGb(perf) {
@@ -1164,7 +1206,7 @@ function getPartLevel(part) {
     if (!game || alloc.activeHuntingUnits <= 0) return 0;
     const bonus = 1 + (incomeBonusRate || 0);
     const dmgMult = calcIncomeDamageMultiplier(parts, _scaUpgradesRef);
-    return Math.round(game.mineralPerUnit * alloc.activeHuntingUnits * bonus * dmgMult);
+    return Math.round(game.mineralPerUnit * alloc.activeHuntingUnits * bonus * dmgMult * MINERAL_INCOME_SCALE);
   }
 
   function calcWorkIncomePerTick(parts, workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, workUnitsOverride) {
@@ -1174,7 +1216,7 @@ function getPartLevel(part) {
     const dmgMult = calcIncomeDamageMultiplier(parts, _scaUpgradesRef);
     return Math.round(
       task.mineralPerUnit * alloc.activeWorkUnits *
-      (mineralMultiplier || 1) * (rebirthIncomeMult || 1) * (1 + (incomeBonusRate || 0)) * dmgMult
+      (mineralMultiplier || 1) * (rebirthIncomeMult || 1) * (1 + (incomeBonusRate || 0)) * dmgMult * MINERAL_INCOME_SCALE
     );
   }
 
@@ -1289,7 +1331,10 @@ function getPartLevel(part) {
     calcIncomeBonus, calcProbBonus,
     REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
     calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeEventIntervalMs, consumeElapsedTicks, calcAutoLoopIntervalMs, calcManualUpgradeDelayMs,
-    REBIRTH_MINERAL_SCA_PER_10, getScaShopItemCost, getScaShopItemDisplayName, getGpuGradeLevel, canPurchaseGpuGradeUp, calcGpuGrade, calcGpuAttackFrames, calcGpuBenchmarkMultiplier,
+    MINERAL_INCOME_SCALE, MINERAL_DAMAGE_INCOME_EXP,
+    GPU_GRADE_UP_COSTS,
+    REBIRTH_MINERAL_SCA_PER_10, getScaShopItemCost, getGpuGradeUpCost, getMiningAmplifierPowerCost, getMiningAmplifierSpeedCost,
+    getScaShopItemDisplayName, getGpuGradeLevel, canPurchaseGpuGradeUp, calcGpuGrade, calcGpuAttackFrames, calcGpuBenchmarkMultiplier,
     normalizeEquippedStorage, normalizeEquippedCooler, getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
     RAM_SLOT_UPGRADES, DEFAULT_RAM_SLOTS, getRamSlotCount, getRamEffectiveCapacityGb, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase,
     SHOP_PURCHASABLE_LEVELS, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, getPurchasableLevels, getPurchasableMaxLevel, isPurchasableLevel, countRamInInventory, canPurchaseRam, buildInventoryPart,
@@ -1299,7 +1344,7 @@ function getPartLevel(part) {
     getWorkTask, getGameHunt, getEffectiveUnlockedGameIndex, getDownloadTargetMeta,
     getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
-    calcHuntIncomePerTick, calcWorkIncomePerTick, calcOptimalWorkUnits, toDownloadTargetSnapshot,
+    calcHuntIncomePerTick, calcWorkIncomePerTick, calcPartyMineralPerTick, calcOptimalWorkUnits, toDownloadTargetSnapshot,
     getCpuSummonDpsFactor, calcUnitDamageForIncome, calcIncomeDamageMultiplier,
     createIntelCpu11InventoryItem,
     getMiningPower, getMiningAttackFrames, getMiningSpeedMultiplier, isMiningAmplifierUnlocked, canPurchaseScaShopItem, getScaShopItemHint, MINING_AMPLIFIER_SPEC,

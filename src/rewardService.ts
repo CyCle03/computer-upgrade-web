@@ -1,10 +1,7 @@
 import { pool } from './db';
 import { ClaimRewardResponse } from './types';
 
-// 10층당 지급할 기본 SCA 코인 수
-const COIN_PER_MILESTONE = 5000;
-
-// 각 마일스톤 도달 시의 누적 보상 도표 (10층 ~ 100층)
+// 각 마일스톤 도달 시의 누적 보상 도표 (10층 ~ 100층, 차분 지급)
 const RAID_CUMULATIVE_REWARDS: Record<number, number> = {
   0: 0,
   10: 1000,
