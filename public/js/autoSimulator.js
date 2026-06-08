@@ -405,31 +405,248 @@
     }
   }
 
-  function calcWorkHuntIncomePerTick(ctx) {
+  function getIncomeCombatCtx(ctx) {
+    const unitDamage = (ctx.specs && ctx.specs.unitDamage) || OMG.calcUnitDamageForIncome(ctx.workParts, ctx.scaUpgrades);
+    const ramAttackFrames = ctx.ramAttackFrames != null
+      ? ctx.ramAttackFrames
+      : OMG.calcRamAttackFrames(ctx.workParts && ctx.workParts.ram);
+    return { unitDamage, ramAttackFrames };
+  }
+
+  function createHuntUnit(maxHp, maxShield) {
+    return {
+      hp: maxHp,
+      shield: maxShield,
+      maxHp,
+      maxShield,
+      respawnMs: 0,
+      mobAtkRemMs: 0,
+    };
+  }
+
+  function ensureHuntUnitPools(ctx) {
+    if (!ctx.huntUnitPools) ctx.huntUnitPools = { work: [], hunt: [] };
+    if (!ctx.huntUnitPools.work) ctx.huntUnitPools.work = [];
+    if (!ctx.huntUnitPools.hunt) ctx.huntUnitPools.hunt = [];
+  }
+
+  function huntCombatSignature(ctx, alloc) {
+    const s = ctx.specs || {};
+    return [
+      ctx.workTaskIndex,
+      alloc.activeWorkUnits,
+      alloc.activeHuntingUnits,
+      s.unitHp,
+      s.unitShield,
+      s.unitDefense,
+      ctx.effectiveUnlockedGameIndex != null ? ctx.effectiveUnlockedGameIndex : ctx.unlockedGameIndex,
+    ].join(':');
+  }
+
+  function syncHuntUnitPool(pool, count, maxHp, maxShield) {
+    while (pool.length < count) pool.push(createHuntUnit(maxHp, maxShield));
+    while (pool.length > count) pool.pop();
+    for (let i = 0; i < pool.length; i += 1) {
+      const u = pool[i];
+      u.maxHp = maxHp;
+      u.maxShield = maxShield;
+      if (u.respawnMs <= 0 && u.hp > 0) {
+        u.hp = Math.min(u.hp, maxHp);
+        u.shield = Math.min(u.shield, maxShield);
+      }
+    }
+  }
+
+  function countFightingUnits(pool) {
+    return pool.filter((u) => u.respawnMs <= 0 && u.hp > 0).length;
+  }
+
+  function countRespawningUnits(pool) {
+    return pool.filter((u) => u.respawnMs > 0).length;
+  }
+
+  function tickUnitRespawns(pool, elapsedMs) {
+    for (let i = 0; i < pool.length; i += 1) {
+      const u = pool[i];
+      if (u.respawnMs <= 0) continue;
+      u.respawnMs = Math.max(0, u.respawnMs - elapsedMs);
+      if (u.respawnMs === 0) {
+        u.hp = u.maxHp;
+        u.shield = u.maxShield;
+        u.mobAtkRemMs = 0;
+      }
+    }
+  }
+
+  function applyMobHitToUnit(unit, mobSpec, playerDefense) {
+    const dmg = OMG.getMobAttackPerHit(mobSpec);
+    if (unit.shield > 0) {
+      unit.shield = Math.max(0, unit.shield - OMG.calcShieldDamagePerHit(dmg, mobSpec.shieldArmor));
+    } else {
+      unit.hp = Math.max(0, unit.hp - OMG.calcHpDamagePerHit(dmg, playerDefense));
+    }
+    if (unit.hp <= 0 && unit.shield <= 0) {
+      unit.hp = 0;
+      unit.respawnMs = OMG.HUNT_UNIT_RESPAWN_MS;
+      unit.mobAtkRemMs = 0;
+      return true;
+    }
+    return false;
+  }
+
+  function tickMobCounterattacks(pool, mobSpec, playerDefense, attackIntervalMs, elapsedMs) {
+    if (!OMG.mobCanCounterattack(mobSpec)) return 0;
+    let deaths = 0;
+    for (let i = 0; i < pool.length; i += 1) {
+      const u = pool[i];
+      if (u.respawnMs > 0 || u.hp <= 0) continue;
+      u.mobAtkRemMs = (u.mobAtkRemMs || 0) + elapsedMs;
+      while (u.mobAtkRemMs >= attackIntervalMs) {
+        u.mobAtkRemMs -= attackIntervalMs;
+        if (applyMobHitToUnit(u, mobSpec, playerDefense)) deaths += 1;
+      }
+    }
+    return deaths;
+  }
+
+  function tickHpDecay(pool, hpDecayRate, elapsedSec) {
+    if (!hpDecayRate || hpDecayRate <= 0 || elapsedSec <= 0) return 0;
+    let deaths = 0;
+    for (let i = 0; i < pool.length; i += 1) {
+      const u = pool[i];
+      if (u.respawnMs > 0 || u.hp <= 0) continue;
+      u.hp = Math.max(0, u.hp - u.maxHp * hpDecayRate * elapsedSec);
+      if (u.hp <= 0) {
+        u.respawnMs = OMG.HUNT_UNIT_RESPAWN_MS;
+        deaths += 1;
+      }
+    }
+    return deaths;
+  }
+
+  function updateHuntCombatStatus(ctx, alloc) {
+    const workPool = ctx.huntUnitPools.work;
+    const huntPool = ctx.huntUnitPools.hunt;
+    ctx.huntCombatStatus = {
+      workTotal: alloc.activeWorkUnits,
+      workActive: alloc.canRunWork ? countFightingUnits(workPool) : 0,
+      workRespawning: alloc.canRunWork ? countRespawningUnits(workPool) : 0,
+      huntTotal: alloc.activeHuntingUnits,
+      huntActive: ctx.isDownloading ? 0 : countFightingUnits(huntPool),
+      huntRespawning: ctx.isDownloading ? 0 : countRespawningUnits(huntPool),
+    };
+  }
+
+  function accumulateKillsFromActive(activeUnits, kps, elapsedSec, remKey, ctx) {
+    if (activeUnits <= 0 || kps <= 0) return 0;
+    ctx[remKey] = (ctx[remKey] || 0) + kps * elapsedSec;
+    const whole = Math.floor(ctx[remKey]);
+    if (whole > 0) ctx[remKey] -= whole;
+    return whole;
+  }
+
+  /** 처치 수입 + 몬스터 반격·사망·1초 리스폰 후 자동 재투입 */
+  function applyWorkHuntIncome(ctx, elapsedMs) {
+    if (elapsedMs <= 0) return 0;
     OMG.setScaUpgradesRef(ctx.scaUpgrades || {});
-    const workEarn = OMG.calcWorkIncomePerTick(
+    const { unitDamage, ramAttackFrames } = getIncomeCombatCtx(ctx);
+    const alloc = OMG.calcRamAllocation(
       ctx.workParts,
       ctx.workTaskIndex,
-      ctx.specs.penalties.mineralMultiplier,
-      ctx.rebirthIncomeMult,
-      ctx.incomeBonusRate,
       ctx.effectiveUnitLimit,
-      ctx.effectiveWorkUnits
+      ctx.effectiveWorkUnits,
+      ctx.scaUpgrades || {},
+      unitDamage,
+      ramAttackFrames
     );
-    let total = workEarn > 0 ? workEarn : 0;
-    if (!ctx.isDownloading) {
-      const huntEarn = OMG.calcHuntIncomePerTick(
-        ctx.workParts,
-        ctx.workTaskIndex,
-        OMG.getEffectiveUnlockedGameIndex(ctx.unlockedGameIndex),
-        ctx.incomeBonusRate,
-        false,
-        ctx.effectiveUnitLimit,
-        ctx.effectiveWorkUnits
-      );
-      if (huntEarn > 0) total += huntEarn;
+    const specs = ctx.specs || {};
+    const playerDefense = specs.unitDefense || 0;
+    const maxHp = Math.max(1, specs.unitHp || 100);
+    const maxShield = Math.max(0, specs.unitShield || 0);
+    const attackIntervalMs = OMG.calcIncomeEventIntervalMs(ctx.scaUpgrades || {}, ramAttackFrames);
+    const elapsedSec = elapsedMs / 1000;
+    const hpDecayRate = (specs.penalties && specs.penalties.hpDecayRate) || 0;
+
+    ensureHuntUnitPools(ctx);
+    const sig = huntCombatSignature(ctx, alloc);
+    if (ctx.huntCombatSig !== sig) {
+      ctx.huntCombatSig = sig;
+      ctx.huntUnitPools.work = [];
+      ctx.huntUnitPools.hunt = [];
+      ctx.remWorkKills = 0;
+      ctx.remHuntKills = 0;
     }
-    return total;
+
+    if (alloc.canRunWork && alloc.activeWorkUnits > 0) {
+      syncHuntUnitPool(ctx.huntUnitPools.work, alloc.activeWorkUnits, maxHp, maxShield);
+    } else {
+      ctx.huntUnitPools.work = [];
+    }
+
+    if (!ctx.isDownloading && alloc.activeHuntingUnits > 0) {
+      syncHuntUnitPool(ctx.huntUnitPools.hunt, alloc.activeHuntingUnits, maxHp, maxShield);
+    } else {
+      ctx.huntUnitPools.hunt = [];
+    }
+
+    tickUnitRespawns(ctx.huntUnitPools.work, elapsedMs);
+    tickUnitRespawns(ctx.huntUnitPools.hunt, elapsedMs);
+    tickHpDecay(ctx.huntUnitPools.work, hpDecayRate, elapsedSec);
+    tickHpDecay(ctx.huntUnitPools.hunt, hpDecayRate, elapsedSec);
+
+    const workMob = OMG.getWorkMobSpec(ctx.workTaskIndex);
+    const gameIndex = ctx.effectiveUnlockedGameIndex != null
+      ? ctx.effectiveUnlockedGameIndex
+      : OMG.getEffectiveUnlockedGameIndex(ctx.unlockedGameIndex);
+    const huntMob = OMG.getGameMobSpec(gameIndex);
+
+    const workDeaths = alloc.canRunWork
+      ? tickMobCounterattacks(ctx.huntUnitPools.work, workMob, playerDefense, attackIntervalMs, elapsedMs)
+      : 0;
+    const huntDeaths = !ctx.isDownloading
+      ? tickMobCounterattacks(ctx.huntUnitPools.hunt, huntMob, playerDefense, attackIntervalMs, elapsedMs)
+      : 0;
+
+    if (workDeaths > 0 || huntDeaths > 0) {
+      if (!ctx.logs) ctx.logs = [];
+      const parts = [];
+      if (workDeaths > 0) parts.push(`작업 ${workDeaths}기 전멸`);
+      if (huntDeaths > 0) parts.push(`사냥 ${huntDeaths}기 전멸`);
+      ctx.logs.push(`⚠️ ${parts.join(' · ')} → ${OMG.HUNT_UNIT_RESPAWN_MS / 1000}초 후 자동 재배치`);
+      if (ctx.logs.length > 8) ctx.logs.shift();
+    }
+
+    updateHuntCombatStatus(ctx, alloc);
+
+    let gained = 0;
+    const workActive = ctx.huntCombatStatus.workActive;
+    if (workActive > 0) {
+      const workKps = OMG.calcKillsPerSecond(unitDamage, ramAttackFrames, ctx.scaUpgrades, workMob);
+      const kills = accumulateKillsFromActive(workActive, workKps, elapsedSec, 'remWorkKills', ctx);
+      if (kills > 0) {
+        const perKill = OMG.calcWorkMineralPerHitPerUnit(
+          ctx.workTaskIndex,
+          specs.penalties ? specs.penalties.mineralMultiplier : 1,
+          ctx.rebirthIncomeMult,
+          ctx.incomeBonusRate
+        );
+        gained += kills * perKill;
+        ctx.stats.incomeTicks += kills;
+      }
+    }
+
+    const huntActive = ctx.huntCombatStatus.huntActive;
+    if (huntActive > 0) {
+      const huntKps = OMG.calcKillsPerSecond(unitDamage, ramAttackFrames, ctx.scaUpgrades, huntMob);
+      const kills = accumulateKillsFromActive(huntActive, huntKps, elapsedSec, 'remHuntKills', ctx);
+      if (kills > 0) {
+        const perKill = OMG.calcHuntMineralPerHitPerUnit(gameIndex, ctx.incomeBonusRate);
+        gained += kills * perKill;
+        ctx.stats.incomeTicks += kills;
+      }
+    }
+
+    return gained;
   }
 
   function hasActiveAuto(ctx) {
@@ -460,18 +677,10 @@
         gained += m;
       }
     } else {
-      const incomeTickMs = OMG.calcIncomeEventIntervalMs(ctx.scaUpgrades || {}, ctx.ramAttackFrames);
-      let incomeRem = (ctx.remWorkHunt || 0) + elapsedMs;
-      const incomeConsumed = OMG.consumeElapsedTicks(incomeRem, incomeTickMs, MAX_INCOME_TICKS);
-      ctx.remWorkHunt = incomeConsumed.remainderMs;
-      if (incomeConsumed.ticks > 0) {
-        const perIncome = calcWorkHuntIncomePerTick(ctx);
-        if (perIncome > 0) {
-          const add = perIncome * incomeConsumed.ticks;
-          ctx.minerals += add;
-          ctx.stats.incomeTicks += incomeConsumed.ticks;
-          gained += add;
-        }
+      const add = applyWorkHuntIncome(ctx, elapsedMs);
+      if (add > 0) {
+        ctx.minerals += add;
+        gained += add;
       }
     }
     return gained;
@@ -570,41 +779,17 @@
         } else break;
       }
     } else {
-      const incomeTickMs = OMG.calcIncomeEventIntervalMs(ctx.scaUpgrades || {}, ctx.ramAttackFrames);
       const autoTickMs = OMG.calcAutoLoopIntervalMs(ctx.scaUpgrades || {});
-      let incomeRem = (ctx.remWorkHunt || 0) + elapsedMs;
+      const incomeAdd = applyWorkHuntIncome(ctx, elapsedMs);
+      if (incomeAdd > 0) ctx.minerals += incomeAdd;
+
       let autoRem = (ctx.remAuto || 0) + elapsedMs;
-      const incomeConsumed = OMG.consumeElapsedTicks(incomeRem, incomeTickMs, MAX_INCOME_TICKS);
       const autoConsumed = OMG.consumeElapsedTicks(autoRem, autoTickMs, MAX_INCOME_TICKS);
-      ctx.remWorkHunt = incomeConsumed.remainderMs;
       ctx.remAuto = autoConsumed.remainderMs;
-
-      let incomeTicks = incomeConsumed.ticks;
       let autoTicks = Math.min(autoConsumed.ticks, maxAutoTicks);
-      const perIncome = calcWorkHuntIncomePerTick(ctx);
-      const incomeEvery = Math.max(1, Math.round(incomeTickMs / autoTickMs));
-      let counter = 0;
-      let guard = 0;
-
-      while ((incomeTicks > 0 || autoTicks > 0) && guard++ < MAX_INCOME_TICKS * 2) {
-        const shouldIncome = incomeTicks > 0 && perIncome > 0
-          && (autoTicks === 0 || counter >= incomeEvery);
-        if (shouldIncome) {
-          ctx.minerals += perIncome;
-          ctx.stats.incomeTicks += 1;
-          incomeTicks -= 1;
-          counter = 0;
-        } else if (autoTicks > 0) {
-          simulateOneAutoStep(ctx);
-          autoTicks -= 1;
-          counter += 1;
-        } else if (incomeTicks > 0) {
-          ctx.minerals += perIncome;
-          ctx.stats.incomeTicks += 1;
-          incomeTicks -= 1;
-        } else {
-          break;
-        }
+      while (autoTicks > 0) {
+        simulateOneAutoStep(ctx);
+        autoTicks -= 1;
       }
     }
 
@@ -643,8 +828,13 @@
       partyHuntingTier: s.partyHuntingTier,
       isUpgrading: s.isUpgrading,
       remWorkHunt: 0,
+      remWorkKills: s.remWorkKills || 0,
+      remHuntKills: s.remHuntKills || 0,
       remAuto: 0,
       remParty: 0,
+      huntUnitPools: JSON.parse(JSON.stringify(s.huntUnitPools || { work: [], hunt: [] })),
+      huntCombatSig: s.huntCombatSig || '',
+      huntCombatStatus: s.huntCombatStatus ? { ...s.huntCombatStatus } : null,
       scaCoinsGain: 0,
       scaPartyTicks: 0,
       logs: [],

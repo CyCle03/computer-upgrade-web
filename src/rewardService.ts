@@ -126,14 +126,14 @@ export class RewardService {
       const baseReward = (RAID_CUMULATIVE_REWARDS[currentFloor] || 0) - (RAID_CUMULATIVE_REWARDS[highestClaimedFloor] || 0);
       const coinsToReward = Math.floor(baseReward * statMult);
 
-      // 8. [재화 누적] permanent_currencies(감사용) + game_states.sca_scaCoins(실제 지갑) 동시 반영
-      await client.query(`
-        UPDATE permanent_currencies
-        SET sca_coins = sca_coins + $1
-        WHERE user_id = $2
-      `, [coinsToReward, userId]);
-
       const newWalletSca = walletScaBefore + coinsToReward;
+
+      // 8. permanent_currencies·game_states 지갑을 동일한 절대 잔액으로 유지 (합산 병합 버그 방지)
+      await client.query(`
+        INSERT INTO permanent_currencies (user_id, sca_coins)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id) DO UPDATE SET sca_coins = $2
+      `, [userId, newWalletSca]);
       await client.query(`
         UPDATE game_states
         SET state = jsonb_set(COALESCE(state, '{}'::jsonb), '{sca_scaCoins}', to_jsonb($1::text))

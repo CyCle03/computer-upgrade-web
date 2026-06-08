@@ -5,7 +5,16 @@
  */
 (function (global) {
   const AUTH_TOKEN_KEY = 'sca_authToken';
-  const SYNC_EXCLUDE = new Set([AUTH_TOKEN_KEY]);
+  /** 서버 API만 갱신 — PUT 동기화 페이로드에서 제외 */
+  const SERVER_ONLY_STATE_KEYS = new Set([
+    'sca_scaCoins',
+    'sca_scaUpgrades',
+    'sca_rebirthStat',
+    'sca_rebirthCount',
+    'sca_partyLastClaimMs',
+    'sca_partyHuntingTier',
+  ]);
+  const SYNC_EXCLUDE = new Set([AUTH_TOKEN_KEY, ...SERVER_ONLY_STATE_KEYS]);
 
   const GameSync = {
     getToken() {
@@ -40,11 +49,18 @@
     },
     restoreState(state) {
       if (!state || typeof state !== 'object') return;
+      // 서버 → 로컬: 지갑·업그레이드 등 서버 전용 키 포함 전체 복원
       Object.keys(state).forEach((key) => {
-        if (key.startsWith('sca_') && !SYNC_EXCLUDE.has(key) && typeof state[key] === 'string') {
+        if (key.startsWith('sca_') && key !== AUTH_TOKEN_KEY && typeof state[key] === 'string') {
           localStorage.setItem(key, state[key]);
         }
       });
+      if (typeof state.sca_scaCoins === 'string') {
+        const n = Number(state.sca_scaCoins);
+        if (!Number.isNaN(n)) {
+          window.dispatchEvent(new CustomEvent('sca_wallet_sync', { detail: { scaCoins: n } }));
+        }
+      }
     },
     async _authRequest(path, username, password) {
       const res = await fetch(path, {
@@ -85,9 +101,6 @@
           body: JSON.stringify({ state: this.collectState() }),
         });
         const data = await res.json().catch(() => ({}));
-        if (res.ok && data.success && data.state && data.state.sca_scaCoins != null) {
-          localStorage.setItem('sca_scaCoins', String(data.state.sca_scaCoins));
-        }
         return res.ok;
       } catch (e) {
         return false;
@@ -205,26 +218,20 @@
   let __scaSyncTimer = null;
   let __scaLastSync = 0;
 
-  function emitWalletSync() {
-    const v = localStorage.getItem('sca_scaCoins');
-    if (v == null) return;
-    window.dispatchEvent(new CustomEvent('sca_wallet_sync', { detail: { scaCoins: Number(v) || 0 } }));
-  }
-
   function scheduleServerSync() {
     if (!GameSync.getToken()) return;
     const now = Date.now();
     if (now - __scaLastSync >= SYNC_MAX_WAIT_MS) {
       if (__scaSyncTimer) { clearTimeout(__scaSyncTimer); __scaSyncTimer = null; }
       __scaLastSync = now;
-      GameSync.saveToServer().then((ok) => { if (ok) emitWalletSync(); });
+      GameSync.saveToServer();
       return;
     }
     if (__scaSyncTimer) clearTimeout(__scaSyncTimer);
     __scaSyncTimer = setTimeout(() => {
       __scaSyncTimer = null;
       __scaLastSync = Date.now();
-      GameSync.saveToServer().then((ok) => { if (ok) emitWalletSync(); });
+      GameSync.saveToServer();
     }, SYNC_DEBOUNCE_MS);
   }
 
@@ -241,11 +248,6 @@
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ state: GameSync.collectState() }),
         keepalive: true,
-      }).then((res) => res.json().catch(() => ({}))).then((data) => {
-        if (data.success && data.state && data.state.sca_scaCoins != null) {
-          localStorage.setItem('sca_scaCoins', String(data.state.sca_scaCoins));
-          emitWalletSync();
-        }
       });
       __scaLastSync = Date.now();
     } catch (e) { /* best-effort */ }

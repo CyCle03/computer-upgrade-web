@@ -210,6 +210,10 @@
       const wallClockRef = useRef({ lastMs: Date.now() });
       const hiddenAtRef = useRef(null);
       const tickRemainderRef = useRef({ workHunt: 0, party: 0, auto: 0 });
+      const [huntCombatStatus, setHuntCombatStatus] = useState({
+        workTotal: 0, workActive: 0, workRespawning: 0,
+        huntTotal: 0, huntActive: 0, huntRespawning: 0,
+      });
       const [activeUpgradingPart, setActiveUpgradingPart] = useState(null);
       const [rebirthCount, setRebirthCount] = useState(() => {
         const saved = localStorage.getItem('sca_rebirthCount');
@@ -317,10 +321,19 @@
       // 3. 사냥터 및 다운로드 진행 상태 정의
       // ----------------------------------------------------------------------
       const [workTaskIndex, setWorkTaskIndex] = useState(() => {
+        const LEGACY_5_TO_11 = [0, 4, 5, 7, 10];
+        const maxIdx = OMG.WORK_TASKS.length - 1;
         const saved = localStorage.getItem('sca_workTaskIndex');
-        if (saved !== null) return parseInt(saved, 10);
+        if (saved !== null) {
+          let idx = parseInt(saved, 10);
+          if (!localStorage.getItem('sca_workTask11Migrated') && idx >= 0 && idx <= 4) {
+            idx = LEGACY_5_TO_11[idx] ?? idx;
+            localStorage.setItem('sca_workTask11Migrated', '1');
+          }
+          return Math.max(0, Math.min(maxIdx, Number.isFinite(idx) ? idx : 0));
+        }
         const legacy = localStorage.getItem('sca_huntingGround');
-        if (legacy) { try { return JSON.parse(legacy).groundIndex ?? 0; } catch (e) {} }
+        if (legacy) { try { return Math.min(maxIdx, JSON.parse(legacy).groundIndex ?? 0); } catch (e) {} }
         return 0;
       });
       const [workUnitMode, setWorkUnitMode] = useState(() => localStorage.getItem('sca_workUnitMode') || 'auto');
@@ -446,11 +459,6 @@
       /** 연구소 공격에 차출된 1기를 제외한 작업·사냥 가용 유닛 상한 */
       const overclockLabActive = scaUpgrades.overclockLabBuilt === true;
       const economyUnitLimit = Math.max(0, effectiveUnitLimit - (overclockLabActive ? 1 : 0));
-      const workSpecStatus = useMemo(
-        () => OMG.evaluateWorkTaskSpec(workParts, workTaskIndex),
-        [workParts, workTaskIndex]
-      );
-      const maxWorkUnits = workSpecStatus.activeWorkUnits || 0;
       const workMineralMultiplier = useMemo(() => {
         const cpuHeatDemand = OMG.getCpuCoolingRequired(cpu);
         return cpuHeatDemand > cooler.coolingCapacity ? 0.5 : 1.0;
@@ -499,22 +507,23 @@
           unitLimit = Math.max(1, Math.floor(unitLimit * 0.5));
         }
 
-        // E. RAM 분배: 작업 점유 후 잔여 RAM ÷ CPU 등급별 사냥 RAM·기 (코어 상한)
+        // E. GPU 공격력×CPU (공속은 RAM만)
+        const unitDamage = Math.round(OMG.getGpuAttackPower(gpu, scaUpgrades) * getSummonUnit(cpu.level).dpsFactor);
+
+        // F. RAM 분배: 작업 점유 후 잔여 RAM ÷ CPU 등급별 사냥 RAM·기 (코어 상한)
+        const _workCap = OMG.evaluateWorkTaskCapacity(workParts, workTaskIndex);
         const _workUnitsForSpecs = workUnitMode === 'auto'
-          ? OMG.calcOptimalWorkUnits(workParts, workTaskIndex, effectiveUnlockedGameIndex, economyUnitLimit, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading)
-          : Math.min(Math.max(0, manualWorkUnits), workSpecStatus.activeWorkUnits || 0);
-        const ramAllocation = OMG.calcRamAllocation(workParts, workTaskIndex, economyUnitLimit, _workUnitsForSpecs, scaUpgrades);
+          ? OMG.calcOptimalWorkUnits(workParts, workTaskIndex, effectiveUnlockedGameIndex, economyUnitLimit, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading, unitDamage, ramAttackFrames, scaUpgrades)
+          : Math.min(Math.max(0, manualWorkUnits), _workCap.activeWorkUnits || 0);
+        const ramAllocation = OMG.calcRamAllocation(workParts, workTaskIndex, economyUnitLimit, _workUnitsForSpecs, scaUpgrades, unitDamage, ramAttackFrames);
         const maxHuntingUnits = ramAllocation.activeHuntingUnits;
 
-        // F. 유닛 체력 및 메인보드 고정 실드
+        // G. 유닛 체력 및 메인보드 고정 실드
         const unitHp = 100 * cpu.level;
         const unitShield = motherboard.shieldIncrease;
 
-        // G. 공격 주기 — 장착 RAM 클럭(MHz) 기준
+        // H. 공격 주기 — 장착 RAM 공격 딜레이만
         const attackSpeedSec = Math.max(0.1, Math.round((ramAttackFrames / 24) * 100) / 100);
-
-        // H. 데미지 (GPU 기하급수 및 CPU 소환수 등급 결합 시너지 성장)
-        const unitDamage = Math.round(OMG.getGpuAttackPower(gpu, scaUpgrades) * getSummonUnit(cpu.level).dpsFactor);
 
         // I. 방어력
         let unitDefense = cooler.level * 3;
@@ -558,11 +567,26 @@
             mineralMultiplier
           }
         };
-      }, [cpu, gpu, ram, cooler, motherboard, storage, scaUpgrades, gpuAttackFrames, ramAttackFrames, gpuGrade, workParts, workTaskIndex, economyUnitLimit, workUnitMode, manualWorkUnits, workSpecStatus, effectiveUnlockedGameIndex, rebirthIncomeMult, incomeBonusRate, isDownloading]);
+      }, [cpu, gpu, ram, cooler, motherboard, storage, scaUpgrades, gpuAttackFrames, ramAttackFrames, gpuGrade, workParts, workTaskIndex, economyUnitLimit, workUnitMode, manualWorkUnits, effectiveUnlockedGameIndex, rebirthIncomeMult, incomeBonusRate, isDownloading]);
+
+      const workClearStatus = useMemo(
+        () => OMG.canClearWorkTask(workParts, workTaskIndex, specs.unitDamage, ramAttackFrames, scaUpgrades),
+        [workParts, workTaskIndex, specs.unitDamage, ramAttackFrames, scaUpgrades]
+      );
+      const maxWorkUnits = workClearStatus.ok ? workClearStatus.activeWorkUnits : 0;
+      const clearableWorkCount = useMemo(
+        () => OMG.countClearableWorkTasks(workParts, specs.unitDamage, ramAttackFrames, scaUpgrades),
+        [workParts, specs.unitDamage, ramAttackFrames, scaUpgrades]
+      );
+
+      const overclockLabUnitDps = useMemo(
+        () => OMG.calcOverclockLabUnitDps(specs.unitDamage, ram, scaUpgrades),
+        [specs.unitDamage, ram, scaUpgrades]
+      );
 
       const overclockLabFarmLevelBySpec = useMemo(
-        () => OMG.calcMaxOverclockLabLevel(OMG.calcUnitDps(specs.unitDamage, specs.attackSpeedSec)),
-        [specs.unitDamage, specs.attackSpeedSec]
+        () => OMG.calcMaxOverclockLabLevel(overclockLabUnitDps),
+        [overclockLabUnitDps]
       );
 
       /** 스펙(차출 1기 DPS)으로 자동 결정되는 파밍 연구소 레벨 */
@@ -574,39 +598,75 @@
         : null;
 
       const effectiveWorkUnits = useMemo(() => {
-        if (!workSpecStatus.ok || maxWorkUnits <= 0) return 0;
+        if (!workClearStatus.ok || maxWorkUnits <= 0) return 0;
         if (workUnitMode === 'auto') {
           return OMG.calcOptimalWorkUnits(
             workParts, workTaskIndex, effectiveUnlockedGameIndex, economyUnitLimit,
-            workMineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading
+            workMineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading,
+            specs.unitDamage, ramAttackFrames, scaUpgrades
           );
         }
         return Math.min(Math.max(0, manualWorkUnits), maxWorkUnits);
-      }, [workParts, workTaskIndex, workUnitMode, manualWorkUnits, maxWorkUnits, workSpecStatus.ok, unlockedGameIndex, economyUnitLimit, workMineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading]);
+      }, [workParts, workTaskIndex, workUnitMode, manualWorkUnits, maxWorkUnits, workClearStatus.ok, unlockedGameIndex, economyUnitLimit, workMineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading, specs.unitDamage, ramAttackFrames, scaUpgrades]);
 
       const ramAlloc = useMemo(
-        () => OMG.calcRamAllocation(workParts, workTaskIndex, economyUnitLimit, effectiveWorkUnits),
-        [workParts, workTaskIndex, economyUnitLimit, effectiveWorkUnits]
+        () => OMG.calcRamAllocation(workParts, workTaskIndex, economyUnitLimit, effectiveWorkUnits, scaUpgrades, specs.unitDamage, ramAttackFrames),
+        [workParts, workTaskIndex, economyUnitLimit, effectiveWorkUnits, scaUpgrades, specs.unitDamage, ramAttackFrames]
       );
 
+      const incomeAttackFrames = useMemo(
+        () => OMG.calcIncomeAttackFrames(scaUpgrades, ramAttackFrames),
+        [scaUpgrades, ramAttackFrames]
+      );
       const incomeEventMs = useMemo(
         () => OMG.calcIncomeEventIntervalMs(scaUpgrades, ramAttackFrames),
         [scaUpgrades, ramAttackFrames]
       );
-      const workIncomePerSec = useMemo(() => {
-        const perTick = OMG.calcWorkIncomePerTick(
-          workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult,
-          incomeBonusRate, economyUnitLimit, effectiveWorkUnits
-        );
-        return incomeEventMs > 0 ? Math.round((perTick * 1000) / incomeEventMs) : 0;
-      }, [workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate, economyUnitLimit, effectiveWorkUnits, incomeEventMs]);
-      const huntIncomePerSec = useMemo(() => {
-        const perTick = OMG.calcHuntIncomePerTick(
-          workParts, workTaskIndex, effectiveUnlockedGameIndex, incomeBonusRate, isDownloading,
-          economyUnitLimit, effectiveWorkUnits
-        );
-        return incomeEventMs > 0 ? Math.round((perTick * 1000) / incomeEventMs) : 0;
-      }, [workParts, workTaskIndex, effectiveUnlockedGameIndex, incomeBonusRate, isDownloading, economyUnitLimit, effectiveWorkUnits, incomeEventMs]);
+      const workPerHitPerUnit = useMemo(
+        () => OMG.calcWorkMineralPerHitPerUnit(workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate),
+        [workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate]
+      );
+      const huntPerHitPerUnit = useMemo(
+        () => OMG.calcHuntMineralPerHitPerUnit(effectiveUnlockedGameIndex, incomeBonusRate),
+        [effectiveUnlockedGameIndex, incomeBonusRate]
+      );
+      const workMobSpec = useMemo(() => OMG.getWorkMobSpec(workTaskIndex), [workTaskIndex]);
+      const huntMobSpec = useMemo(() => OMG.getGameMobSpec(effectiveUnlockedGameIndex), [effectiveUnlockedGameIndex]);
+      const workHitsToKill = useMemo(
+        () => OMG.calcHitsToKillTarget(workMobSpec, specs.unitDamage),
+        [workMobSpec, specs.unitDamage]
+      );
+      const huntHitsToKill = useMemo(
+        () => OMG.calcHitsToKillTarget(huntMobSpec, specs.unitDamage),
+        [huntMobSpec, specs.unitDamage]
+      );
+      const workKillTimeSec = useMemo(
+        () => OMG.calcKillTimeSec(specs.unitDamage, ramAttackFrames, scaUpgrades, workMobSpec),
+        [specs.unitDamage, ramAttackFrames, scaUpgrades, workMobSpec]
+      );
+      const huntKillTimeSec = useMemo(
+        () => OMG.calcKillTimeSec(specs.unitDamage, ramAttackFrames, scaUpgrades, huntMobSpec),
+        [specs.unitDamage, ramAttackFrames, scaUpgrades, huntMobSpec]
+      );
+      const workActiveForIncome = huntCombatStatus.workTotal > 0 ? huntCombatStatus.workActive : effectiveWorkUnits;
+      const huntActiveForIncome = huntCombatStatus.huntTotal > 0
+        ? huntCombatStatus.huntActive
+        : (isDownloading ? 0 : specs.maxHuntingUnits);
+      const workIncomePerSec = useMemo(
+        () => OMG.calcWorkIncomePerSec(
+          workParts, workTaskIndex, specs.unitDamage, ramAttackFrames, scaUpgrades,
+          specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate,
+          economyUnitLimit, effectiveWorkUnits, workActiveForIncome
+        ),
+        [workParts, workTaskIndex, specs.unitDamage, ramAttackFrames, scaUpgrades, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate, economyUnitLimit, effectiveWorkUnits, workActiveForIncome]
+      );
+      const huntIncomePerSec = useMemo(
+        () => OMG.calcHuntIncomePerSec(
+          workParts, workTaskIndex, effectiveUnlockedGameIndex, specs.unitDamage, ramAttackFrames, scaUpgrades,
+          incomeBonusRate, isDownloading, economyUnitLimit, effectiveWorkUnits, huntActiveForIncome
+        ),
+        [workParts, workTaskIndex, effectiveUnlockedGameIndex, specs.unitDamage, ramAttackFrames, scaUpgrades, incomeBonusRate, isDownloading, economyUnitLimit, effectiveWorkUnits, huntActiveForIncome]
+      );
 
       useEffect(() => {
         if (manualWorkUnits > maxWorkUnits) {
@@ -650,15 +710,17 @@
       }, []);
 
       useEffect(() => {
-        if (OMG.canSelectWorkTask(workParts, workTaskIndex)) return;
+        const ud = specs.unitDamage;
+        const rf = ramAttackFrames;
+        if (OMG.canSelectWorkTask(workParts, workTaskIndex, ud, rf, scaUpgrades)) return;
         for (let i = workTaskIndex - 1; i >= 0; i--) {
-          if (OMG.canSelectWorkTask(workParts, i)) {
+          if (OMG.canSelectWorkTask(workParts, i, ud, rf, scaUpgrades)) {
             setWorkTaskIndex(i);
             return;
           }
         }
         setWorkTaskIndex(0);
-      }, [workParts, workTaskIndex, cpu.level, gpu.level, ram.level, ram.capacityGb, ramSlots, motherboard.shieldIncrease]);
+      }, [workParts, workTaskIndex, specs.unitDamage, ramAttackFrames, scaUpgrades, cpu.level, gpu.level, ram.level, ram.capacityGb, ramSlots]);
 
       useEffect(() => {
         const normalized = OMG.normalizeGameProgress(unlockedGameIndex, downloadTarget);
@@ -676,11 +738,9 @@
       // ----------------------------------------------------------------------
       useEffect(() => {
         localStorage.setItem('sca_minerals', minerals.toString());
-        localStorage.setItem('sca_scaCoins', scaCoins.toString());
         localStorage.setItem('sca_rebirthCount', rebirthCount.toString());
         localStorage.setItem('sca_rebirthStat', rebirthStat.toString());
         localStorage.setItem('sca_autoTargetLevels', JSON.stringify(autoTargetLevels));
-        localStorage.setItem('sca_scaUpgrades', JSON.stringify(scaUpgrades));
         localStorage.setItem('sca_partyHuntingTier', String(partyHuntingTier));
         localStorage.setItem('sca_cpu', JSON.stringify(cpu));
         localStorage.setItem('sca_gpu', JSON.stringify(gpu));
@@ -705,7 +765,13 @@
         localStorage.setItem('sca_autoBuyStorageByKind', JSON.stringify(autoBuyStorageByKind));
         // 로컬 저장과 함께 로그인 계정의 서버 진행도도 디바운스 동기화
         scheduleServerSync();
-      }, [minerals, scaCoins, rebirthCount, rebirthStat, autoTargetLevels, scaUpgrades, partyHuntingTier, cpu, gpu, ram, cooler, motherboard, storage, workTaskIndex, workUnitMode, manualWorkUnits, unlockedGameIndex, downloadTarget, inventory, autoBuyCpuByMfr, autoBuyGpu, autoBuyRam, autoBuyCoolerByKind, autoBuyStorageByKind]);
+      }, [minerals, rebirthCount, rebirthStat, autoTargetLevels, partyHuntingTier, cpu, gpu, ram, cooler, motherboard, storage, workTaskIndex, workUnitMode, manualWorkUnits, unlockedGameIndex, downloadTarget, inventory, autoBuyCpuByMfr, autoBuyGpu, autoBuyRam, autoBuyCoolerByKind, autoBuyStorageByKind]);
+
+      // SCA 지갑·상점 업그레이드는 서버 API 전용 — 로컬만 저장 (서버 PUT 트리거 안 함)
+      useEffect(() => {
+        localStorage.setItem('sca_scaCoins', scaCoins.toString());
+        localStorage.setItem('sca_scaUpgrades', JSON.stringify(scaUpgrades));
+      }, [scaCoins, scaUpgrades]);
 
       // ----------------------------------------------------------------------
       // 6.6. 가상 사냥터 실시간 전투 매트릭스 로그 생성기 (스타1 콘솔 싱크)
@@ -720,10 +786,8 @@
             const mEarn = OMG.calcPartyMineralPerTick(tier, incomeBonusRate);
             newLog = `[${time}] 👥 파티 :: ${tier.name} +${mEarn}원 +${tier.scaCoins}C`;
           } else {
-            const workEarn = OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate, economyUnitLimit, effectiveWorkUnits);
-            const huntEarn = OMG.calcHuntIncomePerTick(workParts, workTaskIndex, effectiveUnlockedGameIndex, incomeBonusRate, isDownloading, economyUnitLimit, effectiveWorkUnits);
             const gameName = activeGame ? activeGame.name : '게임 없음';
-            newLog = `[${time}] 💼작업 +${workEarn}원 · 🎮${gameName} ${specs.maxHuntingUnits}기 +${huntEarn}원`;
+            newLog = `[${time}] 💼작업 ${effectiveWorkUnits}기 처치 +${workPerHitPerUnit}원/기 · 🎮${gameName} ${specs.maxHuntingUnits}기 +${huntPerHitPerUnit}원/기 · 합산 초당 ~${(workIncomePerSec + (isDownloading ? 0 : huntIncomePerSec)).toLocaleString()}원`;
           }
           setCombatLogs(prev => {
             const nextLogs = [...prev, newLog];
@@ -1290,6 +1354,14 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             setAutoFeed((prev) => [{ kind: 'system', message: line, ts: Date.now() }, ...prev].slice(0, 12));
           });
         }
+        if (simCtx.huntUnitPools) gameStateRef.current.huntUnitPools = simCtx.huntUnitPools;
+        if (simCtx.huntCombatSig) gameStateRef.current.huntCombatSig = simCtx.huntCombatSig;
+        if (simCtx.remWorkKills != null) gameStateRef.current.remWorkKills = simCtx.remWorkKills;
+        if (simCtx.remHuntKills != null) gameStateRef.current.remHuntKills = simCtx.remHuntKills;
+        if (simCtx.huntCombatStatus) {
+          gameStateRef.current.huntCombatStatus = simCtx.huntCombatStatus;
+          setHuntCombatStatus(simCtx.huntCombatStatus);
+        }
       };
 
       const runIdleSimulation = (elapsedMs, options = {}) => {
@@ -1297,6 +1369,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         if (!Sim || elapsedMs <= 0) return null;
         const simCtx = Sim.snapshotFromGameState(gameStateRef.current);
         simCtx.remWorkHunt = tickRemainderRef.current.workHunt;
+        simCtx.remWorkKills = gameStateRef.current.remWorkKills || 0;
+        simCtx.remHuntKills = gameStateRef.current.remHuntKills || 0;
         simCtx.remAuto = tickRemainderRef.current.auto;
         simCtx.remParty = tickRemainderRef.current.party;
         if (options.catchUp) {
@@ -1421,7 +1495,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
 
           // [오버클럭 연구소] 차출 1기 — 스펙에 맞는 최고 레벨 건물 자동 파밍
           if (s.scaUpgrades && s.scaUpgrades.overclockLabBuilt) {
-            const labUnitDps = OMG.calcUnitDps(s.specs.unitDamage, s.specs.attackSpeedSec);
+            const labRam = (s.workParts && s.workParts.ram) || null;
+            const labUnitDps = OMG.calcOverclockLabUnitDps(s.specs.unitDamage, labRam, s.scaUpgrades || {});
             const farmLvl = OMG.calcMaxOverclockLabLevel(labUnitDps);
             const spec = OMG.OVERCLOCK_LAB_SPECS[farmLvl];
             if (spec) {
@@ -1950,6 +2025,35 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 </strong></div>
               </div>
 
+              {/* 원작 맵: 오버클럭 연구소 1~4레벨 건물명 + 내구도 표기 */}
+              <div className="border border-slate-900 rounded-lg overflow-hidden text-[10px] font-mono">
+                <div className="px-2 py-1.5 bg-slate-900/80 text-slate-400 text-[10px]">건물 스펙 (원작: 레벨별 연구소 트리거명)</div>
+                <div className="grid grid-cols-5 gap-px bg-slate-900 text-center">
+                  <div className="bg-slate-950 p-1.5 text-slate-500">레벨</div>
+                  <div className="bg-slate-950 p-1.5 text-slate-500">HP</div>
+                  <div className="bg-slate-950 p-1.5 text-slate-500">실드</div>
+                  <div className="bg-slate-950 p-1.5 text-slate-500">방어</div>
+                  <div className="bg-slate-950 p-1.5 text-slate-500">필요 DPS</div>
+                  {[1, 2, 3, 4].map((lv) => {
+                    const b = OMG.OVERCLOCK_LAB_SPECS[lv];
+                    const active = effectiveOverclockLabLevel === lv;
+                    return (
+                      <React.Fragment key={lv}>
+                        <div className={`bg-slate-950 p-1.5 text-left ${active ? 'text-emerald-300 font-bold' : 'text-slate-400'}`}>
+                          Lv.{lv}{active ? ' ◀' : ''}
+                          <span className="block text-[9px] text-slate-600">연구소 {lv}레벨</span>
+                        </div>
+                        <div className={`bg-slate-950 p-1.5 ${active ? 'text-rose-300' : 'text-slate-300'}`}>{b.hp.toLocaleString()}</div>
+                        <div className={`bg-slate-950 p-1.5 ${active ? 'text-cyan-300' : 'text-slate-300'}`}>{b.shield.toLocaleString()}</div>
+                        <div className={`bg-slate-950 p-1.5 ${active ? 'text-amber-300' : 'text-slate-300'}`}>{b.defense}</div>
+                        <div className={`bg-slate-950 p-1.5 ${active ? 'text-cyan-200' : 'text-slate-400'}`}>{b.minDps > 0 ? `≥${b.minDps.toLocaleString()}` : '—'}</div>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+                <p className="px-2 py-1 text-[9px] text-slate-600">파괴 시 OC 파츠 30% · 재생 {OMG.OVERCLOCK_LAB_RESPAWN_SEC}초 · 순DPS = 차출 1기 DPS − 방어력</p>
+              </div>
+
               {/* 연구소 건물 공격/파괴 패널 */}
               <div className="border border-slate-900 p-3 rounded-lg bg-slate-950/40 space-y-2">
                 <div className="flex justify-between items-center text-xs">
@@ -1991,7 +2095,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
 
                     <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono">
                       <span>방어력: {OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.defense}</span>
-                      <span>차출 1기 DPS: <strong className="text-cyan-400">{OMG.calcUnitDps(specs.unitDamage, specs.attackSpeedSec).toLocaleString()}</strong></span>
+                      <span>차출 1기 DPS: <strong className="text-cyan-400">{overclockLabUnitDps.toLocaleString()}</strong></span>
                     </div>
                     <button
                       type="button"
@@ -2004,7 +2108,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 ) : (
                   <div className="flex flex-col items-center justify-center py-4 bg-slate-950/80 rounded border border-dashed border-slate-900">
                     <p className="text-[11px] text-slate-500 mb-2 text-center leading-relaxed">
-                      작업·사냥 유닛 <strong className="text-emerald-400">1기</strong>를 차출해 연구소 건물을 공격합니다.<br />
+                      작업·사냥 유닛 <strong className="text-emerald-400">1기</strong>를 차출해 연구소 건물을 공격합니다. (건물 반격 없음)<br />
                       건물을 파괴하면 오버클럭 조율 파츠를 획득할 수 있습니다. (미네랄 불필요)
                     </p>
                     <button 
@@ -2582,27 +2686,34 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <span className="text-emerald-400 text-lg mr-1.5">💼</span>
                   <span>작업 사냥터</span>
                 </h2>
-                <p className="text-xs text-slate-400">작업(Work)과 게임 사냥(Gaming)은 <strong className="text-emerald-400">동시 진행</strong> · 작업 티어는 <strong className="text-amber-400">GPU·RAM·CPU(코어)</strong> 스펙 충족 필요</p>
+                <p className="text-xs text-slate-400">작업(Work)과 게임 사냥(Gaming)은 <strong className="text-emerald-400">동시 진행</strong> · 작업 목록은 원작처럼 모두 표시, <strong className="text-amber-400">실제 파괴 가능</strong>할 때만 선택 (GPU·공속·건물 내구 종합 · 1기 {OMG.WORK_PRACTICAL_CLEAR_KILL_SEC}초 이내)</p>
+                <p className="text-[10px] text-slate-500 font-mono">
+                  GPU 공격 {specs.unitDamage} · RAM {incomeAttackFrames}f({incomeEventMs}ms/타격) · 배속 {gameSpeedMult.toFixed(2)}×
+                  · 작업 건물 반격 없음 · HP{workMobSpec.hp}{workMobSpec.shield ? `+실드${workMobSpec.shield}` : ''}{workMobSpec.defense ? ` 방${workMobSpec.defense}` : ''} → {workHitsToKill}타격/{workKillTimeSec.toFixed(1)}초/파괴
+                  · 게임 몬스터 공{OMG.getMobAttackPerHit(huntMobSpec)} HP{huntMobSpec.hp}{huntMobSpec.shield ? `+실드${huntMobSpec.shield}` : ''} → {huntHitsToKill}타격/{huntKillTimeSec.toFixed(1)}초/처치
+                  · 게임 사냥 유닛 HP{specs.unitHp}+실드{specs.unitShield} 방{specs.unitDefense} · 몬스터 반격 사망 시 {OMG.HUNT_UNIT_RESPAWN_MS / 1000}초 후 자동 재배치
+                </p>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="p-4 bg-slate-950/60 rounded border border-emerald-900/40 space-y-3">
-                    <span className="text-xs text-emerald-400 font-mono uppercase font-bold">💼 작업 (Work)</span>
+                    <span className="text-xs text-emerald-400 font-mono uppercase font-bold">💼 작업 (Work) · 실행 가능 {clearableWorkCount}/{OMG.WORK_TASKS.length}</span>
                     <div className="flex flex-wrap gap-2">
                       {OMG.WORK_TASKS.map((task) => {
-                        const selectable = OMG.canSelectWorkTask(workParts, task.taskIndex);
+                        const clear = OMG.canClearWorkTask(workParts, task.taskIndex, specs.unitDamage, ramAttackFrames, scaUpgrades);
+                        const selectable = clear.ok;
                         const active = workTaskIndex === task.taskIndex;
-                        const req = `GPU${task.requiredGpuLevel} RAM${task.requiredRamLevel} CPU${task.requiredCpuCores}${task.requiredShield ? ' 실드'+task.requiredShield : ''}`;
-                        const reason = OMG.getWorkTaskSpecReason(workParts, task.taskIndex);
+                        const reason = OMG.getWorkTaskSpecReason(workParts, task.taskIndex, specs.unitDamage, ramAttackFrames, scaUpgrades);
                         return (
                           <button
                             key={task.name}
                             type="button"
                             disabled={!selectable}
                             onClick={() => selectable && setWorkTaskIndex(task.taskIndex)}
-                            title={selectable ? `${req} · RAM ${task.requiredRamGb}GB · 틱당 ${task.mineralPerUnit}원` : reason}
+                            title={selectable ? `1기 ${clear.killSec.toFixed(1)}초/파괴 · RAM ${task.requiredRamGb}GB+ · 타격당 ${task.mineralPerUnit}원` : reason}
                             className={`text-xs px-2 py-1 rounded font-mono border ${active ? 'bg-emerald-600 border-emerald-500 text-white' : selectable ? 'bg-slate-900 border-slate-700 text-slate-300 hover:border-emerald-500/40' : 'bg-slate-950 border-slate-800 text-slate-600 opacity-50 cursor-not-allowed'}`}
                           >
-                            {active ? '▶ ' : ''}{task.name}
-                            <span className="block text-[10px] opacity-80">{req}</span>
+                            {active ? '▶ ' : ''}{task.taskIndex + 1}. {task.name}
+                            <span className="block text-[10px] text-emerald-400/90">+{task.mineralPerUnit.toLocaleString()}원/타격·기{workTaskIndex === task.taskIndex && workPerHitPerUnit !== task.mineralPerUnit ? ` (실제 ${workPerHitPerUnit}원)` : ''}</span>
+                            <span className="block text-[10px] opacity-70">{selectable ? `${clear.killSec.toFixed(1)}초/기 · RAM ${task.requiredRamGb}GB` : (clear.failures[0] || '처치 불가')}</span>
                           </button>
                         );
                       })}
@@ -2617,9 +2728,17 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       <button type="button" onClick={() => { setWorkUnitMode('manual'); setManualWorkUnits(effectiveWorkUnits); }} className={`px-2 py-0.5 rounded border text-xs font-mono ${workUnitMode === 'manual' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300' : 'border-slate-700 text-slate-400'}`}>수동</button>
                     </div>
                     <p className="text-xs text-slate-400">
-                      틱당 <strong className="text-emerald-400">{OMG.calcWorkIncomePerTick(workParts, workTaskIndex, specs.penalties.mineralMultiplier, rebirthIncomeMult, incomeBonusRate, economyUnitLimit, effectiveWorkUnits).toLocaleString()}원</strong>
-                      <span className="text-slate-500"> (초당 약 {workIncomePerSec.toLocaleString()}원)</span>
-                      {isPartyHunting ? ' · 파티 ON — 작업 중단' : ramAlloc.canRunWork ? (workUnitMode === 'auto' ? ` · 자동 ${effectiveWorkUnits}기` : ` · ${effectiveWorkUnits}기`) : workSpecStatus.failures.length ? ` · ${workSpecStatus.failures[0]}` : ' · 스펙 부족'}
+                      처치당 <strong className="text-emerald-400">{workPerHitPerUnit.toLocaleString()}원/기</strong>
+                      <span className="text-slate-500"> · 초당 약 <strong className="text-emerald-400">{workIncomePerSec.toLocaleString()}원</strong></span>
+                      {isPartyHunting ? ' · 파티 ON — 작업 중단' : ramAlloc.canRunWork ? (
+                        <>
+                          {' · 교전 '}
+                          <strong className="text-emerald-400">{workActiveForIncome}</strong>/{effectiveWorkUnits}기
+                          {huntCombatStatus.workRespawning > 0 ? (
+                            <span className="text-amber-400/90"> · 리스폰 {huntCombatStatus.workRespawning}기</span>
+                          ) : null}
+                        </>
+                      ) : workClearStatus.failures.length ? ` · ${workClearStatus.failures[0]}` : ' · 처치 불가'}
                     </p>
                   </div>
                   <div className="p-4 bg-slate-950/60 rounded border border-cyan-900/40 space-y-3">
@@ -2632,7 +2751,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         return (
                           <div key={g.gameIndex} className={`text-[10px] font-mono px-2 py-1 rounded border ${hunting ? 'border-cyan-500/50 bg-cyan-950/30 text-cyan-200' : unlocked ? 'border-emerald-900/40 bg-slate-900/60 text-slate-300' : 'border-slate-800 bg-slate-950/40 text-slate-600'}`}>
                             {unlocked ? '✓' : '🔒'} {g.name}
-                            <span className="text-slate-500"> · {g.mineralPerUnit.toLocaleString()}원/기</span>
+                            <span className="text-emerald-500/90"> · +{g.mineralPerUnit.toLocaleString()}원/타격·기{hunting && huntPerHitPerUnit !== g.mineralPerUnit ? ` (실제 ${huntPerHitPerUnit})` : ''}</span>
                             {hunting ? <span className="text-cyan-400"> · 사냥</span> : null}
                           </div>
                         );
@@ -2641,8 +2760,12 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     <p className="text-xs text-slate-400">
                       배치 <strong className="text-cyan-400">{specs.maxHuntingUnits}기</strong>
                       (RAM 잔여 {specs.huntRamFree}GB / CPU {specs.cpuHuntRamPerUnit}GB·기 · 코어 {specs.ramAllocation.maxByCpu} · GPU참고 {specs.gpuRamPerUnit}GB·기)
-                      · 틱당 <strong className="text-cyan-400">{OMG.calcHuntIncomePerTick(workParts, workTaskIndex, effectiveUnlockedGameIndex, incomeBonusRate, isDownloading, economyUnitLimit, effectiveWorkUnits).toLocaleString()}원</strong>
-                      <span className="text-slate-500"> (초당 약 {huntIncomePerSec.toLocaleString()}원)</span>
+                      · 교전 <strong className="text-cyan-400">{huntActiveForIncome}</strong>/{specs.maxHuntingUnits}기
+                      {huntCombatStatus.huntRespawning > 0 ? (
+                        <span className="text-amber-400/90"> · 리스폰 {huntCombatStatus.huntRespawning}기</span>
+                      ) : null}
+                      · 처치당 <strong className="text-cyan-400">{huntPerHitPerUnit.toLocaleString()}원/기</strong>
+                      <span className="text-slate-500"> · 초당 약 <strong className="text-cyan-400">{isDownloading ? 0 : huntIncomePerSec.toLocaleString()}원</strong></span>
                     </p>
                     {downloadTarget ? (
                       <>
@@ -2754,6 +2877,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <div className="flex flex-col items-center justify-center py-10 space-y-6">
                     <p className="text-slate-400 font-mono text-center">
                       레이드 대기실에 진입했습니다. 버스 방 번호: <strong className="text-cyan-400">carry-room-100</strong><br />
+                      <span className="text-slate-500">보스는 반격하지 않습니다 · 합산 DPS로 층당 30초 내 격파</span><br />
                       모든 인원이 준비 완료 버튼을 누르면 실시간 100층 시뮬레이션 전투에 돌입합니다.
                     </p>
 

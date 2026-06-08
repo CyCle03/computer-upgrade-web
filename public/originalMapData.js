@@ -204,13 +204,22 @@
     { name: 'AMD X670E', socketManufacturer: 'AMD', supportedDdrGeneration: 'DDR5', shieldIncrease: 8000, cost: 25000000000 },
   ];
 
-    /** 작업(Work) — mineralPerUnit + GPU/RAM/CPU/실드 스펙 게이트 */
+  /**
+   * 작업(Work) 11단계 — 원작 맵 UI 순서·[NGB] RAM 요구.
+   * requiredRamGb/ramPerUnitGb만 배치에 사용. requiredGpuLevel 등은 참고용(선택 잠금에 미사용).
+   */
   const WORK_TASKS = [
     { name: '간단한 문서작업', taskIndex: 0, ramPerUnitGb: 1, mineralPerUnit: 1, requiredRamGb: 1, requiredGpuLevel: 1, requiredRamLevel: 1, requiredCpuCores: 1, requiredShield: 0 },
-    { name: '2D/3D 그래픽 작업', taskIndex: 1, ramPerUnitGb: 1, mineralPerUnit: 10, requiredRamGb: 4, requiredGpuLevel: 2, requiredRamLevel: 2, requiredCpuCores: 1, requiredShield: 0 },
-    { name: '간단한 AI 작업', taskIndex: 2, ramPerUnitGb: 2, mineralPerUnit: 30, requiredRamGb: 4, requiredGpuLevel: 3, requiredRamLevel: 3, requiredCpuCores: 2, requiredShield: 0 },
-    { name: '3D 그래픽 / 전문 편집', taskIndex: 3, ramPerUnitGb: 4, mineralPerUnit: 100, requiredRamGb: 8, requiredGpuLevel: 4, requiredRamLevel: 5, requiredCpuCores: 4, requiredShield: 30 },
-    { name: '고사양 AI / 렌더링', taskIndex: 4, ramPerUnitGb: 8, mineralPerUnit: 500, requiredRamGb: 16, requiredGpuLevel: 6, requiredRamLevel: 7, requiredCpuCores: 6, requiredShield: 100 },
+    { name: 'PPT 제작', taskIndex: 1, ramPerUnitGb: 1, mineralPerUnit: 2, requiredRamGb: 1, requiredGpuLevel: 1, requiredRamLevel: 1, requiredCpuCores: 1, requiredShield: 0 },
+    { name: '포토샵', taskIndex: 2, ramPerUnitGb: 1, mineralPerUnit: 5, requiredRamGb: 2, requiredGpuLevel: 1, requiredRamLevel: 2, requiredCpuCores: 1, requiredShield: 0 },
+    { name: '간단한 편집', taskIndex: 3, ramPerUnitGb: 1, mineralPerUnit: 8, requiredRamGb: 4, requiredGpuLevel: 2, requiredRamLevel: 2, requiredCpuCores: 1, requiredShield: 0 },
+    { name: '2D 그래픽 작업', taskIndex: 4, ramPerUnitGb: 1, mineralPerUnit: 10, requiredRamGb: 4, requiredGpuLevel: 2, requiredRamLevel: 3, requiredCpuCores: 1, requiredShield: 0 },
+    { name: '간단한 AI 작업', taskIndex: 5, ramPerUnitGb: 2, mineralPerUnit: 30, requiredRamGb: 4, requiredGpuLevel: 3, requiredRamLevel: 3, requiredCpuCores: 2, requiredShield: 0 },
+    { name: '3D 그래픽 작업', taskIndex: 6, ramPerUnitGb: 2, mineralPerUnit: 50, requiredRamGb: 8, requiredGpuLevel: 3, requiredRamLevel: 4, requiredCpuCores: 2, requiredShield: 0 },
+    { name: '전문 편집', taskIndex: 7, ramPerUnitGb: 4, mineralPerUnit: 100, requiredRamGb: 8, requiredGpuLevel: 4, requiredRamLevel: 5, requiredCpuCores: 4, requiredShield: 30 },
+    { name: '고사양 AI 작업', taskIndex: 8, ramPerUnitGb: 4, mineralPerUnit: 200, requiredRamGb: 16, requiredGpuLevel: 5, requiredRamLevel: 6, requiredCpuCores: 4, requiredShield: 50 },
+    { name: '초고사양 그래픽작업', taskIndex: 9, ramPerUnitGb: 8, mineralPerUnit: 350, requiredRamGb: 16, requiredGpuLevel: 6, requiredRamLevel: 7, requiredCpuCores: 6, requiredShield: 80 },
+    { name: '대규모 렌더링 작업', taskIndex: 10, ramPerUnitGb: 8, mineralPerUnit: 500, requiredRamGb: 16, requiredGpuLevel: 6, requiredRamLevel: 7, requiredCpuCores: 6, requiredShield: 100 },
   ];
 
   /** 게임 사냥(Gaming) — 다운로드 해금 · CPU 코어 = 유닛 수 · 작업과 동시 */
@@ -232,6 +241,41 @@
     tierIndex: t.taskIndex,
     ramPerUnitGb: t.ramPerUnitGb,
   }));
+
+  /**
+   * 작업·게임 사냥 적 스펙 (처치 시간 = GPU 공격력 vs 내구도, 공속은 RAM만).
+   * hp·shield·defense·shieldArmor — 맵 EUD 근사. 수입 = 처치 시 mineralPerUnit×유닛수.
+   */
+  /** 사냥 유닛 사망 후 자동 재배치 대기(원작: 즉시 부활·수동 배치 → 웹: 1초 후 자동 복귀) */
+  const HUNT_UNIT_RESPAWN_MS = 1000;
+  /** 1기 기준 건물 파괴가 이 시간(초) 이내일 때만 작업 선택 가능 (웹 편의 잠금) */
+  const WORK_PRACTICAL_CLEAR_KILL_SEC = 120;
+
+  /** 작업 건물 — HP·방어만, 반격(attack) 없음 */
+  const WORK_TASK_MOB_SPECS = [
+    { hp: 1, shield: 0, defense: 0, shieldArmor: 0, attack: 0 },
+    { hp: 2, shield: 0, defense: 0, shieldArmor: 0, attack: 0 },
+    { hp: 5, shield: 0, defense: 0, shieldArmor: 0, attack: 0 },
+    { hp: 8, shield: 0, defense: 0, shieldArmor: 0, attack: 0 },
+    { hp: 10, shield: 0, defense: 0, shieldArmor: 0, attack: 0 },
+    { hp: 30, shield: 0, defense: 2, shieldArmor: 0, attack: 0 },
+    { hp: 50, shield: 0, defense: 3, shieldArmor: 0, attack: 0 },
+    { hp: 100, shield: 30, defense: 5, shieldArmor: 0, attack: 0 },
+    { hp: 200, shield: 50, defense: 10, shieldArmor: 0, attack: 0 },
+    { hp: 350, shield: 80, defense: 12, shieldArmor: 3, attack: 0 },
+    { hp: 500, shield: 100, defense: 15, shieldArmor: 5, attack: 0 },
+  ];
+
+  const GAME_HUNT_MOB_SPECS = [
+    { hp: 2, shield: 0, defense: 0, shieldArmor: 0, attack: 1 },
+    { hp: 200, shield: 0, defense: 0, shieldArmor: 0, attack: 5 },
+    { hp: 200, shield: 0, defense: 0, shieldArmor: 0, attack: 5 },
+    { hp: 5000, shield: 1000, defense: 10, shieldArmor: 0, attack: 25 },
+    { hp: 20000, shield: 5000, defense: 25, shieldArmor: 5, attack: 60 },
+    { hp: 60000, shield: 15000, defense: 50, shieldArmor: 10, attack: 120 },
+    { hp: 500000, shield: 100000, defense: 100, shieldArmor: 20, attack: 300 },
+    { hp: 10000000, shield: 2500000, defense: 255, shieldArmor: 50, attack: 800 },
+  ];
 
   const PARTY_HUNTING_TIERS = [
     { name: '파티 1-1', mineralPerTick: 30, scaCoins: 2 },
@@ -259,8 +303,7 @@
   const REBIRTH_MINERAL_SCA_PER_10 = 500;
 
   /**
-   * 미네랄 수입 밸런스 — 후반 공격력·배속 폭증으로 SCA 상점이 무의미해지는 것을 완화.
-   * calcWork/HuntIncomePerTick·파티 사냥에 MINERAL_INCOME_SCALE 적용.
+   * 파티 사냥 미네랄만 후반 완화용 스케일. 작업·게임 사냥은 원작대로 타격당 mineralPerUnit×유닛수.
    */
   const MINERAL_INCOME_SCALE = 0.28;
   const MINERAL_DAMAGE_INCOME_EXP = 0.5;
@@ -746,14 +789,97 @@
     return Math.max(50, Math.round(base / calcGameSpeedMultiplier(scaUpgrades)));
   }
 
-  /**
-   * 작업·사냥 수입 이벤트 간격(ms) — 장착 RAM 공속(프레임) + SCA 배속.
-   * 24fps 기준 공격 주기 / gameSpeedMult.
-   */
+  /** 타격 주기(프레임) — 장착 RAM 공격 딜레이만 (GPU는 공격력만) */
+  function calcIncomeAttackFrames(scaUpgrades, ramAttackFrames) {
+    return Math.max(1, ramAttackFrames != null ? ramAttackFrames : calcRamAttackFrames(null));
+  }
+
+  /** RAM 공속 기준 타격 간격(초) */
+  function calcAttackIntervalSec(ramAttackFrames, scaUpgrades) {
+    const frames = calcIncomeAttackFrames(scaUpgrades, ramAttackFrames);
+    return frames / 24 / calcGameSpeedMultiplier(scaUpgrades);
+  }
+
+  /** 타격 1회 간격(ms) — 처치 시간 계산용, GPU 무관 */
   function calcIncomeEventIntervalMs(scaUpgrades, ramAttackFrames) {
-    const frames = Math.max(1, ramAttackFrames || calcRamAttackFrames(null));
-    const secPerEvent = frames / 24 / calcGameSpeedMultiplier(scaUpgrades);
-    return Math.max(50, Math.round(secPerEvent * 1000));
+    return Math.max(50, Math.round(calcAttackIntervalSec(ramAttackFrames, scaUpgrades) * 1000));
+  }
+
+  function calcShieldDamagePerHit(attack, shieldArmor) {
+    return Math.max(1, attack - (shieldArmor || 0));
+  }
+
+  function calcHpDamagePerHit(attack, defense) {
+    return Math.max(1, attack - (defense || 0));
+  }
+
+  /** 적 실드·HP·방어·실드방어를 반영한 처치까지 타격 횟수 */
+  function calcHitsToKillTarget(target, unitDamage) {
+    const dmg = Math.max(1, unitDamage || 1);
+    let shield = Math.max(0, (target && target.shield) || 0);
+    let hp = Math.max(1, (target && target.hp) || 1);
+    let hits = 0;
+    const cap = 200000;
+    while ((shield > 0 || hp > 0) && hits < cap) {
+      hits++;
+      if (shield > 0) {
+        shield = Math.max(0, shield - calcShieldDamagePerHit(dmg, target.shieldArmor));
+      } else {
+        hp = Math.max(0, hp - calcHpDamagePerHit(dmg, target.defense));
+      }
+    }
+    return Math.max(1, hits);
+  }
+
+  function calcKillTimeSec(unitDamage, ramAttackFrames, scaUpgrades, target) {
+    const hits = calcHitsToKillTarget(target, unitDamage);
+    return hits * calcAttackIntervalSec(ramAttackFrames, scaUpgrades);
+  }
+
+  function calcKillsPerSecond(unitDamage, ramAttackFrames, scaUpgrades, target) {
+    const killSec = calcKillTimeSec(unitDamage, ramAttackFrames, scaUpgrades, target);
+    return killSec > 0 ? 1 / killSec : 0;
+  }
+
+  function getWorkMobSpec(workTaskIndex) {
+    return WORK_TASK_MOB_SPECS[workTaskIndex] || WORK_TASK_MOB_SPECS[0];
+  }
+
+  function getGameMobSpec(unlockedGameIndex) {
+    const gi = getEffectiveUnlockedGameIndex(unlockedGameIndex);
+    return GAME_HUNT_MOB_SPECS[gi] || GAME_HUNT_MOB_SPECS[0];
+  }
+
+  function getMobAttackPerHit(mobSpec) {
+    if (mobSpec && mobSpec.attack != null) return Math.max(0, mobSpec.attack);
+    const hp = (mobSpec && mobSpec.hp) || 1;
+    return Math.max(1, Math.round(Math.pow(hp, 0.4)));
+  }
+
+  function mobCanCounterattack(mobSpec) {
+    return getMobAttackPerHit(mobSpec) > 0;
+  }
+
+  /** 타격 1회·유닛 1기당 작업 미네랄 (표시용·원작 mineralPerUnit) */
+  function calcWorkMineralPerHitPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate) {
+    const task = getWorkTask(workTaskIndex);
+    if (!task) return 0;
+    return Math.max(
+      0,
+      Math.round(
+        task.mineralPerUnit *
+        (mineralMultiplier || 1) *
+        (rebirthIncomeMult || 1) *
+        (1 + (incomeBonusRate || 0))
+      )
+    );
+  }
+
+  /** 타격 1회·유닛 1기당 게임 사냥 미네랄 */
+  function calcHuntMineralPerHitPerUnit(unlockedGameIndex, incomeBonusRate) {
+    const game = getGameHunt(getEffectiveUnlockedGameIndex(unlockedGameIndex));
+    if (!game) return 0;
+    return Math.max(0, Math.round(game.mineralPerUnit * (1 + (incomeBonusRate || 0))));
   }
 
   /**
@@ -946,7 +1072,7 @@
     return CPU_SUMMON_DPS_FACTORS[lv - 1] || lv * 5;
   }
 
-  /** 1기 타격 데미지(GPU×CPU) — RAM 공속은 calcIncomeEventIntervalMs 에서 별도 반영 */
+  /** 1기 타격 데미지(GPU 공격력×CPU 소환 배율) — 공속은 RAM만 */
   function calcUnitDamageForIncome(parts, scaUpgrades) {
     const gpu = parts && parts.gpu;
     const cpu = parts && parts.cpu;
@@ -1023,62 +1149,93 @@ function getPartLevel(part) {
     return Math.max(1, (part && part.level) || 1);
   }
 
+  function resolveWorkCombat(parts, scaUpgrades, unitDamage, ramAttackFrames) {
+    return {
+      unitDamage: unitDamage != null ? unitDamage : calcUnitDamageForIncome(parts, scaUpgrades),
+      ramAttackFrames: ramAttackFrames != null ? ramAttackFrames : calcRamAttackFrames(parts && parts.ram),
+    };
+  }
+
   /**
-   * 작업 티어 스펙 검사 — CPU 코어, RAM 용량·강, GPU 강, (고티어) 메인보드 실드
+   * 작업 배치 용량 — 원작 [NGB] RAM·유닛당 RAM·CPU 코어 (등급 게이트 없음)
    */
-  function evaluateWorkTaskSpec(parts, taskIndex) {
+  function evaluateWorkTaskCapacity(parts, taskIndex) {
     const task = getWorkTask(taskIndex);
     const cpu = (parts && parts.cpu) || { level: 1 };
-    const gpu = (parts && parts.gpu) || { level: 1 };
     const ram = (parts && parts.ram) || { level: 1, capacityGb: 1 };
-    const motherboard = (parts && parts.motherboard) || { shieldIncrease: 0 };
-
-    const gpuLevel = getPartLevel(gpu);
-    const ramLevel = getPartLevel(ram);
     const ramSlots = (parts && parts.ramSlots) != null ? parts.ramSlots : DEFAULT_RAM_SLOTS;
     const ramGb = getRamEffectiveCapacityGb(ram, ramSlots);
     const cpuCores = getCpuCores(cpu);
-    const shield = motherboard.shieldIncrease || 0;
     const minRamGb = task.requiredRamGb || task.ramPerUnitGb || 1;
+    const ramPerUnit = task.ramPerUnitGb || 1;
 
     const failures = [];
-    if (gpuLevel < task.requiredGpuLevel) {
-      failures.push(`GPU ${task.requiredGpuLevel}강 필요 (현재 ${gpuLevel}강)`);
-    }
-    if (ramLevel < task.requiredRamLevel) {
-      failures.push(`RAM ${task.requiredRamLevel}강 필요 (현재 ${ramLevel}강)`);
-    }
-    if (cpuCores < task.requiredCpuCores) {
-      failures.push(`CPU 코어 ${task.requiredCpuCores} 필요 (현재 ${cpuCores})`);
-    }
     if (ramGb < minRamGb) {
       failures.push(`RAM ${minRamGb}GB 필요 (현재 ${ramGb}GB)`);
     }
-    if ((task.requiredShield || 0) > 0 && shield < task.requiredShield) {
-      failures.push(`고정 실드 ${task.requiredShield} 필요 (현재 ${shield})`);
-    }
-
-    const ramPerUnit = task.ramPerUnitGb || 1;
     const maxWorkByRam = Math.floor(ramGb / ramPerUnit);
     const activeWorkUnits = Math.max(0, Math.min(cpuCores, maxWorkByRam));
+    if (activeWorkUnits < 1) {
+      failures.push(`작업 유닛 배치 불가 (${ramPerUnit}GB/기 · 코어 ${cpuCores})`);
+    }
 
     return {
       ok: failures.length === 0,
       failures,
       task,
-      gpuLevel,
-      ramLevel,
       ramGb,
       cpuCores,
-      shield,
       activeWorkUnits,
       ramPerUnit,
     };
   }
 
-  function getWorkTaskSpecReason(parts, taskIndex) {
-    const ev = evaluateWorkTaskSpec(parts, taskIndex);
-    return ev.ok ? '' : ev.failures.join(' · ');
+  /** @deprecated evaluateWorkTaskCapacity 별칭 */
+  function evaluateWorkTaskSpec(parts, taskIndex) {
+    return evaluateWorkTaskCapacity(parts, taskIndex);
+  }
+
+  /**
+   * 건물 실제 파괴 가능 여부 — GPU 공격·RAM 공속·건물 내구 vs 1기 파괴 시간
+   */
+  function canClearWorkTask(parts, taskIndex, unitDamage, ramAttackFrames, scaUpgrades) {
+    const idx = Math.max(0, Math.min(WORK_TASKS.length - 1, taskIndex || 0));
+    const cap = evaluateWorkTaskCapacity(parts, idx);
+    const combat = resolveWorkCombat(parts, scaUpgrades, unitDamage, ramAttackFrames);
+    const mob = getWorkMobSpec(idx);
+    const killSec = calcKillTimeSec(combat.unitDamage, combat.ramAttackFrames, scaUpgrades, mob);
+    const kps = calcKillsPerSecond(combat.unitDamage, combat.ramAttackFrames, scaUpgrades, mob);
+
+    const failures = cap.failures.slice();
+    if (cap.ok && (combat.unitDamage <= 0 || kps <= 0)) {
+      failures.push('공격력 부족 — 건물 파괴 불가');
+    }
+    if (cap.ok && kps > 0 && killSec > WORK_PRACTICAL_CLEAR_KILL_SEC) {
+      failures.push(`1기 파괴 ${killSec.toFixed(0)}초 — GPU·공속 강화 필요 (기준 ${WORK_PRACTICAL_CLEAR_KILL_SEC}초)`);
+    }
+
+    return {
+      ok: failures.length === 0,
+      failures,
+      task: cap.task,
+      activeWorkUnits: cap.activeWorkUnits,
+      killSec,
+      killsPerSec: kps,
+      unitDamage: combat.unitDamage,
+    };
+  }
+
+  function getWorkTaskSpecReason(parts, taskIndex, unitDamage, ramAttackFrames, scaUpgrades) {
+    const clear = canClearWorkTask(parts, taskIndex, unitDamage, ramAttackFrames, scaUpgrades);
+    return clear.ok ? '' : clear.failures.join(' · ');
+  }
+
+  function countClearableWorkTasks(parts, unitDamage, ramAttackFrames, scaUpgrades) {
+    let n = 0;
+    for (let i = 0; i < WORK_TASKS.length; i += 1) {
+      if (canClearWorkTask(parts, i, unitDamage, ramAttackFrames, scaUpgrades).ok) n += 1;
+    }
+    return n;
   }
 
     function getWorkTask(taskIndex) {
@@ -1103,17 +1260,17 @@ function getPartLevel(part) {
   }
 
   /** RAM: 작업 점유 후 남은 용량으로 사냥 유닛 수 계산 (작업·게임 동시) */
-  function calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride, scaUpgrades) {
+  function calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride, scaUpgrades, unitDamage, ramAttackFrames) {
     const ramSlots = (parts && parts.ramSlots) != null ? parts.ramSlots : DEFAULT_RAM_SLOTS;
     const totalRam = getRamEffectiveCapacityGb(parts && parts.ram, ramSlots);
     const maxByCpu = maxUnitsOverride != null ? maxUnitsOverride : getCpuCores(parts && parts.cpu);
-    const workSpec = evaluateWorkTaskSpec(parts, workTaskIndex);
-    const work = workSpec.task;
-    const maxWorkUnits = workSpec.ok ? workSpec.activeWorkUnits : 0;
+    const clear = canClearWorkTask(parts, workTaskIndex, unitDamage, ramAttackFrames, scaUpgrades);
+    const work = clear.task || getWorkTask(workTaskIndex);
+    const maxWorkUnits = clear.ok ? clear.activeWorkUnits : 0;
     const activeWorkUnits = workUnitsOverride != null
       ? Math.max(0, Math.min(workUnitsOverride, maxWorkUnits))
       : maxWorkUnits;
-    const workRamUsed = workSpec.ok
+    const workRamUsed = clear.ok
       ? activeWorkUnits * (work.ramPerUnitGb || 1)
       : (work.requiredRamGb || 0);
     const huntRamFree = Math.max(0, totalRam - workRamUsed);
@@ -1134,14 +1291,16 @@ function getPartLevel(part) {
       activeHuntingUnits,
       activeWorkUnits,
       maxWorkUnits,
-      canRunWork: workSpec.ok && activeWorkUnits > 0,
-      workSpecOk: workSpec.ok,
-      workSpecFailures: workSpec.failures,
+      canRunWork: clear.ok && activeWorkUnits > 0,
+      workSpecOk: clear.ok,
+      workSpecFailures: clear.failures,
+      workKillSec: clear.killSec,
     };
   }
 
-  function canSelectWorkTask(parts, taskIndex) {
-    return evaluateWorkTaskSpec(parts, taskIndex).ok;
+  /** 원작처럼 목록은 모두 표시, 실제 선택은 처치 가능할 때만 */
+  function canSelectWorkTask(parts, taskIndex, unitDamage, ramAttackFrames, scaUpgrades) {
+    return canClearWorkTask(parts, taskIndex, unitDamage, ramAttackFrames, scaUpgrades).ok;
   }
 
   function toDownloadTargetSnapshot(target) {
@@ -1199,38 +1358,57 @@ function getPartLevel(part) {
     return { ok: true, reason: '', mineralCost: cost, storageUsedGb: usedGb, storageFreeGb: freeGb, storageCapacityGb: storageGb };
   }
 
+  function calcWorkIncomePerSec(parts, workTaskIndex, unitDamage, ramAttackFrames, scaUpgrades, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, workUnitsOverride, activeUnitsOverride) {
+    const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride);
+    const active = activeUnitsOverride != null ? activeUnitsOverride : alloc.activeWorkUnits;
+    if (!alloc.canRunWork || active <= 0) return 0;
+    const kps = calcKillsPerSecond(unitDamage, ramAttackFrames, scaUpgrades, getWorkMobSpec(workTaskIndex)) * active;
+    const perKill = calcWorkMineralPerHitPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate);
+    return Math.round(kps * perKill);
+  }
+
+  function calcHuntIncomePerSec(parts, workTaskIndex, unlockedGameIndex, unitDamage, ramAttackFrames, scaUpgrades, incomeBonusRate, isDownloading, maxUnitsOverride, workUnitsOverride, activeUnitsOverride) {
+    if (isDownloading) return 0;
+    const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride);
+    const active = activeUnitsOverride != null ? activeUnitsOverride : alloc.activeHuntingUnits;
+    if (active <= 0) return 0;
+    const kps = calcKillsPerSecond(unitDamage, ramAttackFrames, scaUpgrades, getGameMobSpec(unlockedGameIndex)) * active;
+    const perKill = calcHuntMineralPerHitPerUnit(unlockedGameIndex, incomeBonusRate);
+    return Math.round(kps * perKill);
+  }
+
+  /** @deprecated 처치 1회 시 총 지급량(표시용). 실제 수입은 calcWork/HuntIncomePerSec */
   function calcHuntIncomePerTick(parts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, maxUnitsOverride, workUnitsOverride) {
     if (isDownloading) return 0;
     const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride);
-    const game = getGameHunt(getEffectiveUnlockedGameIndex(unlockedGameIndex));
-    if (!game || alloc.activeHuntingUnits <= 0) return 0;
-    const bonus = 1 + (incomeBonusRate || 0);
-    const dmgMult = calcIncomeDamageMultiplier(parts, _scaUpgradesRef);
-    return Math.round(game.mineralPerUnit * alloc.activeHuntingUnits * bonus * dmgMult * MINERAL_INCOME_SCALE);
+    if (alloc.activeHuntingUnits <= 0) return 0;
+    const perUnit = calcHuntMineralPerHitPerUnit(unlockedGameIndex, incomeBonusRate);
+    return perUnit * alloc.activeHuntingUnits;
   }
 
   function calcWorkIncomePerTick(parts, workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, workUnitsOverride) {
     const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride);
     if (!alloc.canRunWork || alloc.activeWorkUnits <= 0) return 0;
-    const task = getWorkTask(workTaskIndex);
-    const dmgMult = calcIncomeDamageMultiplier(parts, _scaUpgradesRef);
-    return Math.round(
-      task.mineralPerUnit * alloc.activeWorkUnits *
-      (mineralMultiplier || 1) * (rebirthIncomeMult || 1) * (1 + (incomeBonusRate || 0)) * dmgMult * MINERAL_INCOME_SCALE
-    );
+    const perUnit = calcWorkMineralPerHitPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate);
+    return perUnit * alloc.activeWorkUnits;
   }
 
-  /** 작업·사냥 합산 틱 수입이 최대가 되도록 작업 유닛 수 탐색 */
-  function calcOptimalWorkUnits(parts, workTaskIndex, unlockedGameIndex, maxUnitsOverride, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading) {
-    const spec = evaluateWorkTaskSpec(parts, workTaskIndex);
-    const maxW = spec.ok ? spec.activeWorkUnits : 0;
+  function calcWorkHuntIncomePerSec(parts, workTaskIndex, unlockedGameIndex, unitDamage, ramAttackFrames, scaUpgrades, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading, maxUnitsOverride, workUnitsOverride, activeWorkOverride, activeHuntOverride) {
+    return calcWorkIncomePerSec(parts, workTaskIndex, unitDamage, ramAttackFrames, scaUpgrades, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, workUnitsOverride, activeWorkOverride)
+      + calcHuntIncomePerSec(parts, workTaskIndex, unlockedGameIndex, unitDamage, ramAttackFrames, scaUpgrades, incomeBonusRate, isDownloading, maxUnitsOverride, workUnitsOverride, activeHuntOverride);
+  }
+
+  /** 작업·사냥 합산 초당 수입이 최대가 되도록 작업 유닛 수 탐색 */
+  function calcOptimalWorkUnits(parts, workTaskIndex, unlockedGameIndex, maxUnitsOverride, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading, unitDamage, ramAttackFrames, scaUpgrades) {
+    const clear = canClearWorkTask(parts, workTaskIndex, unitDamage, ramAttackFrames, scaUpgrades);
+    const maxW = clear.ok ? clear.activeWorkUnits : 0;
     if (maxW <= 0) return 0;
+    const dmg = unitDamage != null ? unitDamage : calcUnitDamageForIncome(parts, scaUpgrades);
+    const ramF = ramAttackFrames != null ? ramAttackFrames : calcRamAttackFrames(parts && parts.ram);
     let bestUnits = 0;
     let bestTotal = -1;
     for (let w = 0; w <= maxW; w++) {
-      const workInc = calcWorkIncomePerTick(parts, workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, w);
-      const huntInc = calcHuntIncomePerTick(parts, workTaskIndex, unlockedGameIndex, incomeBonusRate, isDownloading, maxUnitsOverride, w);
-      const total = workInc + huntInc;
+      const total = calcWorkHuntIncomePerSec(parts, workTaskIndex, unlockedGameIndex, dmg, ramF, scaUpgrades, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading, maxUnitsOverride, w);
       if (total > bestTotal) {
         bestTotal = total;
         bestUnits = w;
@@ -1289,14 +1467,26 @@ function getPartLevel(part) {
    * 오버클럭 연구소 건물 스펙.
    * defense = 방어력(초당 net DPS = unitDps − defense)
    * minDps  = 해당 레벨 파밍에 필요한 차출 1기 DPS (엔트리→하이엔드 구간)
+   * 하이엔드 풀스펙 기준 Lv.4 파밍 약 15~25초/회 목표로 내구도 조정 (구버전 대비 ~5배 완화)
    */
   const OVERCLOCK_LAB_SPECS = {
-    1: { hp: 2000000, shield: 1000000, defense: 10, minDps: 0 },
-    2: { hp: 20000000, shield: 10000000, defense: 50, minDps: 5000 },
-    3: { hp: 100000000, shield: 50000000, defense: 150, minDps: 50000 },
-    4: { hp: 500000000, shield: 250000000, defense: 500, minDps: 150000 },
+    1: { hp: 400000, shield: 200000, defense: 5, minDps: 0 },
+    2: { hp: 4000000, shield: 2000000, defense: 25, minDps: 5000 },
+    3: { hp: 20000000, shield: 10000000, defense: 80, minDps: 50000 },
+    4: { hp: 80000000, shield: 40000000, defense: 150, minDps: 150000 },
   };
   const OVERCLOCK_LAB_RESPAWN_SEC = 1;
+
+  /** 연구소 차출 1기 공속 — RAM만 (GPU는 공격력만) */
+  function calcOverclockLabAttackSpeedSec(ram, scaUpgrades) {
+    const ramFrames = calcRamAttackFrames(ram);
+    return Math.max(0.1, Math.round((ramFrames / 24) * 100) / 100);
+  }
+
+  function calcOverclockLabUnitDps(unitDamage, ram, scaUpgrades) {
+    const sec = calcOverclockLabAttackSpeedSec(ram, scaUpgrades);
+    return calcUnitDps(unitDamage, sec);
+  }
 
   function calcUnitDps(unitDamage, attackSpeedSec) {
     const sec = Math.max(0.1, attackSpeedSec || 1);
@@ -1319,18 +1509,20 @@ function getPartLevel(part) {
   }
 
   global.OriginalMapGame = {
-    MINERAL_PER_COIN, MANWON_MINERALS, parseSheetPrice, REBIRTH_MINERAL_CAP,
+    MINERAL_PER_COIN, MANWON_MINERALS, parseSheetPrice, REBIRTH_MINERAL_CAP, HUNT_UNIT_RESPAWN_MS,
     GAME_SPEED_BASE, GAME_SPEED_MAX, GAME_SPEED_FRAME_REF,
     GPU_GRADE_NAMES, GPU_GRADE_ATTACK_FRAMES, GPU_GRADE_BENCHMARK_MULTIPLIERS, DOWNLOAD_BASE_MB,
     INTEL_CPU, AMD_CPU, GPU, RAM, COOLER_AIR, COOLER_WATER, HDD, NVME,
-    MOTHERBOARDS, WORK_TASKS, GAME_HUNTING, WORK_HUNTING_GROUNDS, PARTY_HUNTING_TIERS, SCA_SHOP_ITEMS, DOWNLOAD_TARGETS, GPU_GRADE_PERF_MULT,
+    MOTHERBOARDS, WORK_TASKS, GAME_HUNTING, WORK_HUNTING_GROUNDS, WORK_TASK_MOB_SPECS, GAME_HUNT_MOB_SPECS, PARTY_HUNTING_TIERS, SCA_SHOP_ITEMS, DOWNLOAD_TARGETS, GPU_GRADE_PERF_MULT, WORK_PRACTICAL_CLEAR_KILL_SEC,
     getPartTable, getMaxLevel, getTier, getUpgradeCost, getUpgradeProbability, auditUpgradeProbTable, getPartName,
     applyTierStats, getCpuCoolingRequired, getCpuCores, convertMineralsToCoins,
     calcRebirthPerformanceScore, calcRebirthStatGain, calcRebirthScaReward,
     calcRebirthStartMinerals, calcRebirthIncomeMultiplier,
     calcIncomeBonus, calcProbBonus,
     REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
-    calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeEventIntervalMs, consumeElapsedTicks, calcAutoLoopIntervalMs, calcManualUpgradeDelayMs,
+    calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeAttackFrames, calcAttackIntervalSec, calcIncomeEventIntervalMs,
+    calcShieldDamagePerHit, calcHpDamagePerHit, calcHitsToKillTarget, calcKillTimeSec, calcKillsPerSecond, getWorkMobSpec, getGameMobSpec, getMobAttackPerHit, mobCanCounterattack,
+    consumeElapsedTicks, calcAutoLoopIntervalMs, calcManualUpgradeDelayMs,
     MINERAL_INCOME_SCALE, MINERAL_DAMAGE_INCOME_EXP,
     GPU_GRADE_UP_COSTS,
     REBIRTH_MINERAL_SCA_PER_10, getScaShopItemCost, getGpuGradeUpCost, getMiningAmplifierPowerCost, getMiningAmplifierSpeedCost,
@@ -1342,14 +1534,17 @@ function getPartLevel(part) {
     getRamCapacityGb, getRamEffectiveCapacityGb, getRamSlotCount, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase, getStorageCapacityGb, getGpuRamPerUnit, getGpuDisplayName, getGpuModelName, getGpuAttackPower, calcRamAttackFrames, getRamTierRow, getRamStandardTable, getRamMaxLevel, getRamPerfPerUnit, applyRamOverclock, getGpuTierAttack, getCpuRequiredDdrGeneration, getCpuHuntRamPerUnitGb,
     calcStorageUsedGb, getStorageFreeGb,
     getWorkTask, getGameHunt, getEffectiveUnlockedGameIndex, getDownloadTargetMeta,
-    getPartLevel, evaluateWorkTaskSpec, getWorkTaskSpecReason,
+    getPartLevel, evaluateWorkTaskSpec, evaluateWorkTaskCapacity, canClearWorkTask, getWorkTaskSpecReason, countClearableWorkTasks,
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
-    calcHuntIncomePerTick, calcWorkIncomePerTick, calcPartyMineralPerTick, calcOptimalWorkUnits, toDownloadTargetSnapshot,
+    calcHuntIncomePerTick, calcWorkIncomePerTick, calcWorkIncomePerSec, calcHuntIncomePerSec, calcWorkHuntIncomePerSec,
+    calcWorkMineralPerHitPerUnit, calcHuntMineralPerHitPerUnit,
+    calcPartyMineralPerTick, calcOptimalWorkUnits, toDownloadTargetSnapshot,
     getCpuSummonDpsFactor, calcUnitDamageForIncome, calcIncomeDamageMultiplier,
     createIntelCpu11InventoryItem,
     getMiningPower, getMiningAttackFrames, getMiningSpeedMultiplier, isMiningAmplifierUnlocked, canPurchaseScaShopItem, getScaShopItemHint, MINING_AMPLIFIER_SPEC,
     RAID_CUMULATIVE_REWARDS, setScaUpgradesRef,
     OVERCLOCK_LAB_SPECS, OVERCLOCK_LAB_RESPAWN_SEC,
-    calcUnitDps, calcMaxOverclockLabLevel, calcOverclockLabNetDps,
+    calcUnitDps, calcOverclockLabAttackSpeedSec, calcOverclockLabUnitDps,
+    calcMaxOverclockLabLevel, calcOverclockLabNetDps,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

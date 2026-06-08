@@ -96,6 +96,30 @@ def extract_stat_runs(text: str, label: str, limit: int = 30) -> list[str]:
     return hits[:limit]
 
 
+def extract_regex_unique(text: str, pattern: str, min_len: int = 4, max_len: int = 200, limit: int = 200) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for m in re.finditer(pattern, text):
+        line = clean(m.group())
+        if not line or len(line) < min_len or len(line) > max_len or line in seen:
+            continue
+        if not is_readable_line(line):
+            continue
+        seen.add(line)
+        out.append(line)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def extract_block_after(text: str, marker: str, max_len: int = 4000) -> str:
+    idx = text.find(marker)
+    if idx < 0:
+        return ""
+    block = text[idx : idx + max_len]
+    return clean(re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "\n", block))
+
+
 def main() -> None:
     scx_name, raw, text = load_text()
     all_lines = unique_lines(text)

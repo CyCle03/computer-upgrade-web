@@ -7,7 +7,7 @@ import { GameStatePayload } from './types';
 export class StateService {
   /**
    * 저장된 진행도 조회. 없으면 빈 객체 반환.
-   * 레이드 보상이 permanent_currencies에만 쌓인 구버전 데이터는 sca_scaCoins로 1회 병합한다.
+   * permanent_currencies와 game_states 지갑이 어긋나면 max로 맞춘다 (합산 시 2배 버그 방지).
    */
   static async getState(userId: string): Promise<GameStatePayload> {
     const res = await pool.query(
@@ -23,16 +23,26 @@ export class StateService {
       `SELECT sca_coins FROM permanent_currencies WHERE user_id = $1`,
       [userId]
     );
-    const orphanedRaidSca = Number(currRes.rows[0]?.sca_coins) || 0;
-    if (orphanedRaidSca <= 0) {
+    const permSca = Number(currRes.rows[0]?.sca_coins) || 0;
+    const walletSca = Number(state.sca_scaCoins) || 0;
+    if (permSca <= 0) {
       return state;
     }
 
-    const walletSca = Number(state.sca_scaCoins) || 0;
-    const merged = walletSca + orphanedRaidSca;
+    // 합산(wallet+perm)은 동기화된 잔액을 2배로 불려 구매 차감이 되돌아가는 버그 유발 → max로 정리
+    const merged = Math.max(walletSca, permSca);
+    if (merged === walletSca && merged === permSca) {
+      return state;
+    }
+
     state.sca_scaCoins = String(merged);
 
-    await pool.query(`UPDATE permanent_currencies SET sca_coins = 0 WHERE user_id = $1`, [userId]);
+    await pool.query(
+      `INSERT INTO permanent_currencies (user_id, sca_coins)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id) DO UPDATE SET sca_coins = $2`,
+      [userId, merged]
+    );
     await pool.query(
       `INSERT INTO game_states (user_id, state, updated_at)
        VALUES ($1, $2::jsonb, CURRENT_TIMESTAMP)
