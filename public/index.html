@@ -352,6 +352,8 @@
       // 4. 실시간 소켓 멀티플레이 레이드 상태 정의
       // ----------------------------------------------------------------------
       const [isRaidOpen, setIsRaidOpen] = useState(false);
+      const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+      const [isResettingAccount, setIsResettingAccount] = useState(false);
       const [socket, setSocket] = useState(null);
       const [raidState, setRaidState] = useState(null);
       const [rewardMessage, setRewardMessage] = useState(null);
@@ -1779,6 +1781,30 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         }
       };
 
+      const handleAccountReset = async () => {
+        if (isResettingAccount) return;
+        const msg1 =
+          '계정의 모든 진행도(부품·미네랄·SCA·환생·레이드 기록 등)가 삭제됩니다.\n' +
+          '닉네임과 로그인 정보는 유지됩니다.\n\n계속할까요?';
+        if (!confirm(msg1)) return;
+        if (!confirm('정말 초기화합니다. 이 작업은 되돌릴 수 없습니다.')) return;
+        setIsResettingAccount(true);
+        try {
+          if (socket) {
+            socket.disconnect();
+            setSocket(null);
+            setRaidState(null);
+            setIsRaidOpen(false);
+          }
+          await GameSync.resetAccount();
+          setIsSettingsOpen(false);
+          window.location.reload();
+        } catch (err) {
+          alert(err.message || '계정 초기화에 실패했습니다.');
+          setIsResettingAccount(false);
+        }
+      };
+
       return (
         <div className="container mx-auto p-4 max-w-7xl">
           
@@ -1793,9 +1819,17 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               <div>
                 <h1 className="text-sm text-slate-400 uppercase tracking-widest font-semibold">복원 제어 터미널</h1>
                 <p className="text-xs text-emerald-500 font-mono">환생 {rebirthCount}회 · 환생수치 {rebirthStat.toLocaleString()} · 수입 x{rebirthIncomeMult.toFixed(2)} · 배속 {gameSpeedFrames}f</p>
-                <p className="text-sm text-slate-400 font-mono mt-0.5 flex items-center gap-2">
+                <p className="text-sm text-slate-400 font-mono mt-0.5 flex items-center gap-2 flex-wrap">
                   <span>👤 {nickname}</span>
                   <button
+                    type="button"
+                    onClick={() => setIsSettingsOpen(true)}
+                    className="px-2 py-0.5 text-xs border border-slate-600 rounded text-slate-300 hover:bg-slate-800"
+                  >
+                    ⚙️ 설정
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => { if (onLogout) onLogout(); }}
                     className="px-2 py-0.5 text-xs border border-rose-500/40 rounded text-rose-300 hover:bg-rose-500/10"
                   >
@@ -2865,6 +2899,42 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   </div>
                 )}
 
+              </div>
+            </div>
+          )}
+
+          {/* ================================================================== */}
+          {/* 설정 모달 */}
+          {/* ================================================================== */}
+          {isSettingsOpen && (
+            <div className="fixed inset-0 bg-slate-950/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+              <div className="bg-slate-950 border border-slate-700 rounded-2xl w-full max-w-md p-6 flex flex-col space-y-5 shadow-xl">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                  <h2 className="text-sm font-bold text-slate-200 uppercase tracking-widest font-mono">⚙️ 설정</h2>
+                  <button
+                    type="button"
+                    onClick={() => !isResettingAccount && setIsSettingsOpen(false)}
+                    disabled={isResettingAccount}
+                    className="p-1.5 hover:bg-slate-900 border border-slate-800 rounded text-slate-400 hover:text-slate-200 disabled:opacity-40"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">계정</h3>
+                  <p className="text-xs text-slate-500 font-mono leading-relaxed">
+                    진행도를 처음부터 다시 시작합니다. SCA·부품·환생·레이드 기록이 모두 삭제되며, 닉네임과 비밀번호는 그대로 유지됩니다.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleAccountReset}
+                    disabled={isResettingAccount}
+                    className="w-full px-4 py-2.5 bg-rose-950/40 border border-rose-500/50 rounded-lg text-sm font-mono text-rose-300 hover:bg-rose-950/60 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isResettingAccount ? '초기화 중...' : '🗑️ 계정 초기화'}
+                  </button>
+                </div>
               </div>
             </div>
           )}

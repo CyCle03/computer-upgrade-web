@@ -104,6 +104,24 @@
         } catch (e) { /* best-effort */ }
       }
     },
+    /** 서버·로컬 게임 진행도 초기화. 로그인 토큰은 유지한다. */
+    async resetAccount() {
+      const token = this.getToken();
+      const userId = localStorage.getItem('sca_myId');
+      const nickname = localStorage.getItem('sca_nickname');
+      if (!token) throw new Error('로그인이 필요합니다.');
+      const res = await fetch('/api/account/reset', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || '계정 초기화에 실패했습니다.');
+      }
+      this.clearLocalGameState();
+      this.setAuth(token, userId, nickname);
+      return true;
+    },
     /** Socket.io handshake auth 페이로드 */
     getSocketAuth() {
       const token = this.getToken();

@@ -104,6 +104,20 @@ app.post('/api/auth/logout', async (req: Request, res: Response) => {
   }
 });
 
+// 계정 진행도 초기화 (닉네임·로그인 유지)
+app.post('/api/account/reset', async (req: Request, res: Response) => {
+  if (!(await ensureDb(res))) return;
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+  try {
+    await StateService.resetAccount(userId);
+    return res.status(200).json({ success: true, message: '계정이 초기화되었습니다.' });
+  } catch (error: unknown) {
+    console.error('[AccountAPI] reset error:', error);
+    return res.status(500).json({ success: false, message: '계정 초기화 중 오류가 발생했습니다.' });
+  }
+});
+
 // 게임 진행도 조회
 app.get('/api/state', async (req: Request, res: Response) => {
   if (!(await ensureDb(res))) return;

@@ -73,6 +73,47 @@ export class StateService {
     );
     return merged;
   }
+
+  /**
+   * 계정 진행도 초기화. 닉네임·로그인 세션은 유지한다.
+   */
+  static async resetAccount(userId: string): Promise<void> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      await client.query(
+        `INSERT INTO game_states (user_id, state, updated_at)
+         VALUES ($1, '{}'::jsonb, CURRENT_TIMESTAMP)
+         ON CONFLICT (user_id)
+         DO UPDATE SET state = '{}'::jsonb, updated_at = CURRENT_TIMESTAMP`,
+        [userId]
+      );
+
+      await client.query(
+        `INSERT INTO permanent_currencies (user_id, sca_coins)
+         VALUES ($1, 0)
+         ON CONFLICT (user_id) DO UPDATE SET sca_coins = 0`,
+        [userId]
+      );
+
+      await client.query(
+        `INSERT INTO in_game_currencies (user_id, minerals, normal_coins)
+         VALUES ($1, 0, 0)
+         ON CONFLICT (user_id) DO UPDATE SET minerals = 0, normal_coins = 0`,
+        [userId]
+      );
+
+      await client.query(`DELETE FROM daily_raid_progresses WHERE user_id = $1`, [userId]);
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 }
 
 /**
