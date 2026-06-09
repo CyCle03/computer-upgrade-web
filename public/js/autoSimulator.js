@@ -573,8 +573,8 @@
       ctx.huntCombatSig = sig;
       ctx.huntUnitPools.work = [];
       ctx.huntUnitPools.hunt = [];
-      ctx.remWorkKills = 0;
-      ctx.remHuntKills = 0;
+      ctx.remWorkHitProgress = 0;
+      ctx.remHuntHitProgress = 0;
     }
 
     if (alloc.canRunWork && alloc.activeWorkUnits > 0) {
@@ -620,28 +620,46 @@
 
     let gained = 0;
     const hitsPerSecPerUnit = OMG.calcHitsPerSecond(ramAttackFrames, ctx.scaUpgrades || {});
+    const unitDamage = specs.unitDamage || OMG.calcUnitDamageForIncome(ctx.workParts, ctx.scaUpgrades || {});
     const workActive = ctx.huntCombatStatus.workActive;
     if (workActive > 0 && hitsPerSecPerUnit > 0) {
-      const hits = accumulateKillsFromActive(workActive, hitsPerSecPerUnit, elapsedSec, 'remWorkKills', ctx);
-      if (hits > 0) {
-        const perHit = OMG.calcWorkMineralPerHitPerUnit(
-          ctx.workTaskIndex,
-          specs.penalties ? specs.penalties.mineralMultiplier : 1,
-          ctx.rebirthIncomeMult,
-          ctx.incomeBonusRate
+      const hitsToKill = Math.max(
+        1,
+        OMG.calcHitsToKillTarget(workMob, unitDamage)
+      );
+      ctx.remWorkHitProgress = (ctx.remWorkHitProgress || 0) + workActive * hitsPerSecPerUnit * elapsedSec;
+      const buildingKills = Math.floor(ctx.remWorkHitProgress / hitsToKill);
+      if (buildingKills > 0) {
+        ctx.remWorkHitProgress -= buildingKills * hitsToKill;
+        const mult = specs.penalties ? specs.penalties.mineralMultiplier : 1;
+        const perKillMin = OMG.calcWorkMineralPerKillPerUnit(
+          ctx.workTaskIndex, mult, ctx.rebirthIncomeMult, ctx.incomeBonusRate
         );
-        gained += hits * perHit;
-        ctx.stats.incomeTicks += hits;
+        const perKillCoin = OMG.calcWorkCoinPerKillPerUnit(
+          ctx.workTaskIndex, mult, ctx.rebirthIncomeMult, ctx.incomeBonusRate
+        );
+        const payoutUnits = workActive;
+        if (perKillMin > 0) gained += buildingKills * perKillMin * payoutUnits;
+        if (perKillCoin > 0) {
+          gained += OMG.coinsToMinerals(buildingKills * perKillCoin * payoutUnits);
+        }
+        ctx.stats.incomeTicks += buildingKills;
       }
     }
 
     const huntActive = ctx.huntCombatStatus.huntActive;
     if (huntActive > 0 && hitsPerSecPerUnit > 0) {
-      const hits = accumulateKillsFromActive(huntActive, hitsPerSecPerUnit, elapsedSec, 'remHuntKills', ctx);
-      if (hits > 0) {
-        const perHit = OMG.calcHuntMineralPerHitPerUnit(gameIndex, ctx.incomeBonusRate);
-        gained += hits * perHit;
-        ctx.stats.incomeTicks += hits;
+      const huntHitsToKill = Math.max(
+        1,
+        OMG.calcHitsToKillTarget(huntMob, unitDamage)
+      );
+      ctx.remHuntHitProgress = (ctx.remHuntHitProgress || 0) + huntActive * hitsPerSecPerUnit * elapsedSec;
+      const enemyKills = Math.floor(ctx.remHuntHitProgress / huntHitsToKill);
+      if (enemyKills > 0) {
+        ctx.remHuntHitProgress -= enemyKills * huntHitsToKill;
+        const perKill = OMG.calcHuntMineralPerKillPerUnit(gameIndex, ctx.incomeBonusRate);
+        gained += enemyKills * perKill * huntActive;
+        ctx.stats.incomeTicks += enemyKills;
       }
     }
 
@@ -843,8 +861,8 @@
       partyHuntingTier: s.partyHuntingTier,
       isUpgrading: s.isUpgrading,
       remWorkHunt: 0,
-      remWorkKills: s.remWorkKills || 0,
-      remHuntKills: s.remHuntKills || 0,
+      remWorkHitProgress: s.remWorkHitProgress ?? s.remWorkKills ?? 0,
+      remHuntHitProgress: s.remHuntHitProgress ?? s.remHuntKills ?? 0,
       remAuto: 0,
       remParty: 0,
       huntUnitPools: JSON.parse(JSON.stringify(s.huntUnitPools || { work: [], hunt: [] })),

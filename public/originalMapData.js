@@ -216,11 +216,11 @@
     { name: '간단한 편집', taskIndex: 3, ramPerUnitGb: 1, mineralPerUnit: 8, requiredRamGb: 4, requiredGpuLevel: 2, requiredRamLevel: 2, requiredCpuCores: 1, requiredShield: 0 },
     { name: '2D 그래픽 작업', taskIndex: 4, ramPerUnitGb: 1, mineralPerUnit: 10, requiredRamGb: 4, requiredGpuLevel: 2, requiredRamLevel: 3, requiredCpuCores: 1, requiredShield: 0 },
     { name: '간단한 AI 작업', taskIndex: 5, ramPerUnitGb: 2, mineralPerUnit: 30, requiredRamGb: 4, requiredGpuLevel: 3, requiredRamLevel: 3, requiredCpuCores: 2, requiredShield: 0 },
-    { name: '3D 그래픽 작업', taskIndex: 6, ramPerUnitGb: 2, mineralPerUnit: 50, requiredRamGb: 8, requiredGpuLevel: 3, requiredRamLevel: 4, requiredCpuCores: 2, requiredShield: 0 },
-    { name: '전문 편집', taskIndex: 7, ramPerUnitGb: 4, mineralPerUnit: 100, requiredRamGb: 8, requiredGpuLevel: 4, requiredRamLevel: 5, requiredCpuCores: 4, requiredShield: 30 },
-    { name: '고사양 AI 작업', taskIndex: 8, ramPerUnitGb: 4, mineralPerUnit: 200, requiredRamGb: 16, requiredGpuLevel: 5, requiredRamLevel: 6, requiredCpuCores: 4, requiredShield: 50 },
-    { name: '초고사양 그래픽작업', taskIndex: 9, ramPerUnitGb: 8, mineralPerUnit: 350, requiredRamGb: 16, requiredGpuLevel: 6, requiredRamLevel: 7, requiredCpuCores: 6, requiredShield: 80 },
-    { name: '대규모 렌더링 작업', taskIndex: 10, ramPerUnitGb: 8, mineralPerUnit: 500, requiredRamGb: 16, requiredGpuLevel: 6, requiredRamLevel: 7, requiredCpuCores: 6, requiredShield: 100 },
+    { name: '3D 그래픽 작업', taskIndex: 6, ramPerUnitGb: 2, mineralPerUnit: 0, coinPerUnit: 20, requiredRamGb: 8, requiredGpuLevel: 3, requiredRamLevel: 4, requiredCpuCores: 2, requiredShield: 0 },
+    { name: '전문 편집', taskIndex: 7, ramPerUnitGb: 4, mineralPerUnit: 0, coinPerUnit: 100, requiredRamGb: 8, requiredGpuLevel: 4, requiredRamLevel: 5, requiredCpuCores: 4, requiredShield: 30 },
+    { name: '고사양 AI 작업', taskIndex: 8, ramPerUnitGb: 4, mineralPerUnit: 0, coinPerUnit: 1000, requiredRamGb: 16, requiredGpuLevel: 5, requiredRamLevel: 6, requiredCpuCores: 4, requiredShield: 50 },
+    { name: '초고사양 그래픽작업', taskIndex: 9, ramPerUnitGb: 8, mineralPerUnit: 0, coinPerUnit: 350, requiredRamGb: 16, requiredGpuLevel: 6, requiredRamLevel: 7, requiredCpuCores: 6, requiredShield: 80 },
+    { name: '대규모 렌더링 작업', taskIndex: 10, ramPerUnitGb: 8, mineralPerUnit: 0, coinPerUnit: 500, requiredRamGb: 16, requiredGpuLevel: 6, requiredRamLevel: 7, requiredCpuCores: 6, requiredShield: 100 },
   ];
 
   /** 게임 사냥(Gaming) — 다운로드 해금 · CPU 코어 = 유닛 수 · 작업과 동시 */
@@ -237,15 +237,18 @@
 
   const WORK_HUNTING_GROUNDS = WORK_TASKS.map((t) => ({
     name: t.name,
-    multiplier: t.mineralPerUnit,
-    mineralBase: t.mineralPerUnit,
+    /** @deprecated mineralBase/coinBase 사용 — multiplier는 레거시(코인·원 혼동 방지) */
+    multiplier: t.mineralPerUnit || t.coinPerUnit || 0,
+    mineralBase: t.mineralPerUnit || 0,
+    coinBase: t.coinPerUnit || 0,
+    incomeIsCoin: !!(t.coinPerUnit),
     tierIndex: t.taskIndex,
     ramPerUnitGb: t.ramPerUnitGb,
   }));
 
   /**
    * 작업·게임 사냥 적 스펙 (처치 시간 = GPU 공격력 vs 내구도, 공속은 RAM만).
-   * hp·shield·defense·shieldArmor — 맵 EUD 근사. 수입 = 타격마다 mineralPerUnit×유닛수.
+   * hp·shield·defense·shieldArmor — 맵 EUD 근사. 작업·사냥 수입 = 처치 1회당 (mineralPerUnit 원 | coinPerUnit→천만원 환산)×유닛수.
    */
   /** 사냥 유닛 사망 후 자동 재배치 대기(원작: 즉시 부활·수동 배치 → 웹: 1초 후 자동 복귀) */
   const HUNT_UNIT_RESPAWN_MS = 1000;
@@ -690,6 +693,11 @@
     return { coins, remainder: minerals % MINERAL_PER_COIN };
   }
 
+  /** 코인 → 미네랄(원) 1:1 환산 (1코인 = 천만 원) */
+  function coinsToMinerals(coins) {
+    return Math.max(0, Math.floor(coins || 0)) * MINERAL_PER_COIN;
+  }
+
   const REBIRTH_MINERAL_CAP = 1000000;
 
   const REBIRTH_REWARD_TIERS = [
@@ -847,7 +855,7 @@
     return killSec > 0 ? 1 / killSec : 0;
   }
 
-  /** 유닛 1기당 초당 타격 횟수 — 작업·사냥 수입은 타격마다 mineralPerUnit 지급 */
+  /** 유닛 1기당 초당 타격 횟수 — 처치까지 타격 누적·DPS 산출에 사용 */
   function calcHitsPerSecond(ramAttackFrames, scaUpgrades) {
     const interval = calcAttackIntervalSec(ramAttackFrames, scaUpgrades);
     return interval > 0 ? 1 / interval : 0;
@@ -872,10 +880,10 @@
     return getMobAttackPerHit(mobSpec) > 0;
   }
 
-  /** 타격 1회·유닛 1기당 작업 미네랄 (표시용·원작 mineralPerUnit) */
-  function calcWorkMineralPerHitPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate) {
+  /** 건물 처치 1회·유닛 1기당 작업 미네랄 (저티어 · 원) */
+  function calcWorkMineralPerKillPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate) {
     const task = getWorkTask(workTaskIndex);
-    if (!task) return 0;
+    if (!task || !task.mineralPerUnit) return 0;
     return Math.max(
       0,
       Math.round(
@@ -887,11 +895,60 @@
     );
   }
 
-  /** 타격 1회·유닛 1기당 게임 사냥 미네랄 */
-  function calcHuntMineralPerHitPerUnit(unlockedGameIndex, incomeBonusRate) {
+  /** 건물 처치 1회·유닛 1기당 작업 코인 (고티어 taskIndex 6+) */
+  function calcWorkCoinPerKillPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate) {
+    const task = getWorkTask(workTaskIndex);
+    if (!task || !task.coinPerUnit) return 0;
+    return Math.max(
+      0,
+      Math.round(
+        task.coinPerUnit *
+        (mineralMultiplier || 1) *
+        (rebirthIncomeMult || 1) *
+        (1 + (incomeBonusRate || 0))
+      )
+    );
+  }
+
+  /** @deprecated calcWorkMineralPerKillPerUnit */
+  function calcWorkMineralPerHitPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate) {
+    return calcWorkMineralPerKillPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate);
+  }
+
+  /** @deprecated calcWorkCoinPerKillPerUnit */
+  function calcWorkCoinPerHitPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate) {
+    return calcWorkCoinPerKillPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate);
+  }
+
+  /** 작업 건물 초당 처치 횟수 (유닛 N기가 한 건물 공동 공격) */
+  function calcWorkBuildingKillsPerSecond(activeUnits, unitDamage, ramAttackFrames, scaUpgrades, workTaskIndex) {
+    const active = Math.max(0, activeUnits || 0);
+    if (active <= 0) return 0;
+    const hps = calcHitsPerSecond(ramAttackFrames, scaUpgrades) * active;
+    const hitsToKill = calcHitsToKillTarget(getWorkMobSpec(workTaskIndex), unitDamage);
+    return hps / Math.max(1, hitsToKill);
+  }
+
+  /** 적 처치 1회·유닛 1기당 게임 사냥 미네랄(원) */
+  function calcHuntMineralPerKillPerUnit(unlockedGameIndex, incomeBonusRate) {
     const game = getGameHunt(getEffectiveUnlockedGameIndex(unlockedGameIndex));
     if (!game) return 0;
     return Math.max(0, Math.round(game.mineralPerUnit * (1 + (incomeBonusRate || 0))));
+  }
+
+  /** @deprecated calcHuntMineralPerKillPerUnit */
+  function calcHuntMineralPerHitPerUnit(unlockedGameIndex, incomeBonusRate) {
+    return calcHuntMineralPerKillPerUnit(unlockedGameIndex, incomeBonusRate);
+  }
+
+  /** 게임 사냥 적 초당 처치 횟수 (유닛 N기가 한 적 공동 공격) */
+  function calcHuntEnemyKillsPerSecond(activeUnits, unitDamage, ramAttackFrames, scaUpgrades, unlockedGameIndex) {
+    const active = Math.max(0, activeUnits || 0);
+    if (active <= 0) return 0;
+    const hps = calcHitsPerSecond(ramAttackFrames, scaUpgrades) * active;
+    const gi = getEffectiveUnlockedGameIndex(unlockedGameIndex);
+    const hitsToKill = calcHitsToKillTarget(getGameMobSpec(gi), unitDamage);
+    return hps / Math.max(1, hitsToKill);
   }
 
   /**
@@ -988,14 +1045,23 @@
     return Math.max(0, Math.floor(cost || 0));
   }
 
-  /** 1만 원 이상이면 만원 표기 */
+  /** 1억·만원·원 단위 표기 (미네랄 1:1) */
   function formatMineral(amount) {
     const n = Math.max(0, Math.floor(amount || 0));
+    if (n >= 100000000) {
+      const eok = n / 100000000;
+      return (Number.isInteger(eok) ? eok.toLocaleString() : eok.toFixed(1)) + '억원';
+    }
     if (n >= MANWON_MINERALS) {
       const man = n / MANWON_MINERALS;
       return (Number.isInteger(man) ? man.toLocaleString() : man.toFixed(1)) + '만원';
     }
     return n.toLocaleString() + '원';
+  }
+
+  /** 코인 수입·잔액을 미네랄(원) 표기로 (500코인 → 50억원) */
+  function formatCoinsAsMinerals(coins) {
+    return formatMineral(coinsToMinerals(coins));
   }
 
   const formatManwon = formatMineral;
@@ -1431,9 +1497,18 @@ function getPartLevel(part) {
     const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride, scaUpgrades, unitDamage, ramAttackFrames);
     const active = activeUnitsOverride != null ? activeUnitsOverride : alloc.activeWorkUnits;
     if (!alloc.canRunWork || active <= 0) return 0;
-    const hps = calcHitsPerSecond(ramAttackFrames, scaUpgrades) * active;
-    const perHit = calcWorkMineralPerHitPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate);
-    return Math.round(hps * perHit);
+    const kps = calcWorkBuildingKillsPerSecond(active, unitDamage, ramAttackFrames, scaUpgrades, workTaskIndex);
+    const perKill = calcWorkMineralPerKillPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate);
+    return Math.round(kps * perKill * active);
+  }
+
+  function calcWorkCoinIncomePerSec(parts, workTaskIndex, unitDamage, ramAttackFrames, scaUpgrades, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, workUnitsOverride, activeUnitsOverride) {
+    const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride, scaUpgrades, unitDamage, ramAttackFrames);
+    const active = activeUnitsOverride != null ? activeUnitsOverride : alloc.activeWorkUnits;
+    if (!alloc.canRunWork || active <= 0) return 0;
+    const kps = calcWorkBuildingKillsPerSecond(active, unitDamage, ramAttackFrames, scaUpgrades, workTaskIndex);
+    const perKill = calcWorkCoinPerKillPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate);
+    return Math.round(kps * perKill * active);
   }
 
   function calcHuntIncomePerSec(parts, workTaskIndex, unlockedGameIndex, unitDamage, ramAttackFrames, scaUpgrades, incomeBonusRate, isDownloading, maxUnitsOverride, workUnitsOverride, activeUnitsOverride) {
@@ -1441,9 +1516,9 @@ function getPartLevel(part) {
     const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride, scaUpgrades, unitDamage, ramAttackFrames);
     const active = activeUnitsOverride != null ? activeUnitsOverride : alloc.activeHuntingUnits;
     if (active <= 0) return 0;
-    const hps = calcHitsPerSecond(ramAttackFrames, scaUpgrades) * active;
-    const perHit = calcHuntMineralPerHitPerUnit(unlockedGameIndex, incomeBonusRate);
-    return Math.round(hps * perHit);
+    const kps = calcHuntEnemyKillsPerSecond(active, unitDamage, ramAttackFrames, scaUpgrades, unlockedGameIndex);
+    const perKill = calcHuntMineralPerKillPerUnit(unlockedGameIndex, incomeBonusRate);
+    return Math.round(kps * perKill * active);
   }
 
   /** @deprecated 처치 1회 시 총 지급량(표시용). 실제 수입은 calcWork/HuntIncomePerSec */
@@ -1451,20 +1526,22 @@ function getPartLevel(part) {
     if (isDownloading) return 0;
     const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride);
     if (alloc.activeHuntingUnits <= 0) return 0;
-    const perUnit = calcHuntMineralPerHitPerUnit(unlockedGameIndex, incomeBonusRate);
+    const perUnit = calcHuntMineralPerKillPerUnit(unlockedGameIndex, incomeBonusRate);
     return perUnit * alloc.activeHuntingUnits;
   }
 
   function calcWorkIncomePerTick(parts, workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, workUnitsOverride) {
     const alloc = calcRamAllocation(parts, workTaskIndex, maxUnitsOverride, workUnitsOverride);
     if (!alloc.canRunWork || alloc.activeWorkUnits <= 0) return 0;
-    const perUnit = calcWorkMineralPerHitPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate);
+    const perUnit = calcWorkMineralPerKillPerUnit(workTaskIndex, mineralMultiplier, rebirthIncomeMult, incomeBonusRate);
     return perUnit * alloc.activeWorkUnits;
   }
 
   function calcWorkHuntIncomePerSec(parts, workTaskIndex, unlockedGameIndex, unitDamage, ramAttackFrames, scaUpgrades, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading, maxUnitsOverride, workUnitsOverride, activeWorkOverride, activeHuntOverride) {
-    return calcWorkIncomePerSec(parts, workTaskIndex, unitDamage, ramAttackFrames, scaUpgrades, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, workUnitsOverride, activeWorkOverride)
-      + calcHuntIncomePerSec(parts, workTaskIndex, unlockedGameIndex, unitDamage, ramAttackFrames, scaUpgrades, incomeBonusRate, isDownloading, maxUnitsOverride, workUnitsOverride, activeHuntOverride);
+    const workMin = calcWorkIncomePerSec(parts, workTaskIndex, unitDamage, ramAttackFrames, scaUpgrades, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, workUnitsOverride, activeWorkOverride);
+    const workCoin = calcWorkCoinIncomePerSec(parts, workTaskIndex, unitDamage, ramAttackFrames, scaUpgrades, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, workUnitsOverride, activeWorkOverride);
+    const hunt = calcHuntIncomePerSec(parts, workTaskIndex, unlockedGameIndex, unitDamage, ramAttackFrames, scaUpgrades, incomeBonusRate, isDownloading, maxUnitsOverride, workUnitsOverride, activeHuntOverride);
+    return workMin + workCoin * MINERAL_PER_COIN + hunt;
   }
 
   /** 작업·사냥 합산 초당 수입이 최대가 되도록 작업 유닛 수 탐색 */
@@ -1599,6 +1676,7 @@ function getPartLevel(part) {
     normalizeEquippedStorage, normalizeEquippedCooler, getStorageDownloadMultiplier, calcDownloadSpeedBonus, calcDownloadSpeedMb,
     RAM_SLOT_UPGRADES, DEFAULT_RAM_SLOTS, getRamSlotCount, getRamEffectiveCapacityGb, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase,
     SHOP_PURCHASABLE_LEVELS, getShopTierCost, getShopTierCostMinerals, getShopSellPrice, getShopSellPriceMinerals, getShopCatalog, getPurchasableLevels, getPurchasableMaxLevel, isPurchasableLevel, countRamInInventory, canPurchaseRam, buildInventoryPart,
+    coinsToMinerals, formatCoinsAsMinerals,
     costToMinerals, formatMineral, formatManwon, getPurchaseCostMinerals,
     getRamCapacityGb, getRamEffectiveCapacityGb, getRamSlotCount, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase, getStorageCapacityGb, getGpuRamPerUnit, getGpuDisplayName, getGpuModelName, getGpuAttackPower, calcRamAttackFrames, getRamTierRow, getRamStandardTable, getRamMaxLevel, getRamPerfPerUnit, applyRamOverclock, getGpuTierAttack, getCpuRequiredDdrGeneration, getCpuHuntRamPerUnitGb,
     calcStorageUsedGb, getStorageFreeGb,
@@ -1606,7 +1684,10 @@ function getPartLevel(part) {
     getPartLevel, evaluateWorkTaskSpec, evaluateWorkTaskCapacity, canClearWorkTask, getWorkTaskSpecReason, countClearableWorkTasks,
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
     calcHuntIncomePerTick, calcWorkIncomePerTick, calcWorkIncomePerSec, calcHuntIncomePerSec, calcWorkHuntIncomePerSec,
-    calcWorkMineralPerHitPerUnit, calcHuntMineralPerHitPerUnit,
+    calcWorkMineralPerKillPerUnit, calcWorkCoinPerKillPerUnit,
+    calcWorkMineralPerHitPerUnit, calcWorkCoinPerHitPerUnit,
+    calcHuntMineralPerKillPerUnit, calcHuntMineralPerHitPerUnit,
+    calcWorkBuildingKillsPerSecond, calcHuntEnemyKillsPerSecond, calcWorkCoinIncomePerSec,
     calcPartyMineralPerTick, calcPartyPerformanceScore, evaluatePartyTierAccess, canSelectPartyTier,
     getMaxUnlockedPartyTierIndex, resolvePartyHuntingTierIndex, calcOptimalWorkUnits, toDownloadTargetSnapshot,
     getCpuSummonDpsFactor, calcUnitDamageForIncome, calcIncomeDamageMultiplier,
