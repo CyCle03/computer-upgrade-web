@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>'컴퓨터 강화하기' 웹 복원판 대시보드</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -18,18 +18,52 @@
   <script src="/js/gameSync.js"></script>
   <script src="/js/autoSimulator.js"></script>
   <style>
-    /* 가독성: 기본 글자 크기 소폭 상향 (Tailwind rem + 소형 px 클래스) */
+    /* 모바일 우선 글자 크기 — 좁은 화면에서 18px 고정 시 가로 넘침 발생 */
     html {
-      font-size: 18px;
+      font-size: 16px;
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+    }
+    @media (min-width: 640px) {
+      html { font-size: 17px; }
+    }
+    @media (min-width: 1024px) {
+      html { font-size: 18px; }
     }
     @media (min-width: 1280px) {
-      html {
-        font-size: 19px;
-      }
+      html { font-size: 19px; }
     }
     body {
       font-family: 'Outfit', 'JetBrains Mono', sans-serif;
       line-height: 1.5;
+      overflow-x: clip;
+    }
+    #root {
+      width: 100%;
+      min-width: 0;
+      overflow-x: clip;
+    }
+    /* iOS 노치·홈 인디케이터 여백 */
+    @supports (padding: max(0px)) {
+      body {
+        padding-left: max(0px, env(safe-area-inset-left));
+        padding-right: max(0px, env(safe-area-inset-right));
+        padding-bottom: max(0px, env(safe-area-inset-bottom));
+      }
+    }
+    /* 좁은 화면에서 5열 표 등 가로 스크롤 */
+    .mobile-table-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      max-width: 100%;
+    }
+    .mobile-table-scroll > .mobile-table-inner {
+      min-width: min(100%, 20rem);
+    }
+    @media (max-width: 639px) {
+      .mobile-table-scroll > .mobile-table-inner {
+        min-width: 22rem;
+      }
     }
     .neon-border-emerald {
       box-shadow: 0 0 10px rgba(16, 185, 129, 0.2), inset 0 0 10px rgba(16, 185, 129, 0.1);
@@ -1987,19 +2021,19 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       };
 
       return (
-        <div className="container mx-auto p-4 max-w-7xl">
+        <div className="container mx-auto w-full min-w-0 max-w-7xl p-3 sm:p-4">
           
           {/* ================================================================== */}
           {/* 상단 자원 바 */}
           {/* ================================================================== */}
-          <header className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 items-center bg-slate-900/60 p-4 rounded-xl border border-emerald-500/20 neon-border-emerald">
-            <div className="flex items-center space-x-3">
+          <header className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6 items-stretch bg-slate-900/60 p-3 sm:p-4 rounded-xl border border-emerald-500/20 neon-border-emerald min-w-0">
+            <div className="flex items-start sm:items-center gap-3 min-w-0">
               <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-400 border border-emerald-500/30">
                 <span className="text-xl">🧠</span>
               </div>
-              <div>
+              <div className="min-w-0 flex-1">
                 <h1 className="text-sm text-slate-400 uppercase tracking-widest font-semibold">복원 제어 터미널</h1>
-                <p className="text-xs text-emerald-500 font-mono">환생 {rebirthCount}회 · 환생수치 {rebirthStat.toLocaleString()} · 수입 x{rebirthIncomeMult.toFixed(2)} · 배속 {gameSpeedFrames}f</p>
+                <p className="text-xs text-emerald-500 font-mono break-words">환생 {rebirthCount}회 · 환생수치 {rebirthStat.toLocaleString()} · 수입 x{rebirthIncomeMult.toFixed(2)} · 배속 {gameSpeedFrames}f</p>
                 <p className="text-sm text-slate-400 font-mono mt-0.5 flex items-center gap-2 flex-wrap">
                   <span>👤 {nickname}</span>
                   <button
@@ -2066,9 +2100,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             </button>
           </div>
           {showScaCenter && (
-            <section className="mb-4 p-4 border border-cyan-500/20 rounded-xl space-y-3">
-              <p className="text-xs font-mono text-cyan-300/80">다음 환생 시작 미네랄: <strong>{OMG.calcRebirthStartMinerals(scaUpgrades).toLocaleString()}원</strong> (상한 {OMG.REBIRTH_MINERAL_CAP.toLocaleString()}원) · 환생 미네랄 <strong>+10원 = {OMG.REBIRTH_MINERAL_SCA_PER_10} SCA</strong> 고정</p>
-              <p className="text-xs font-mono text-cyan-300/70">게임 배속 {gameSpeedFrames}프레임 (x{gameSpeedMult.toFixed(2)}) · RAM 공속 {ramAttackFrames}f · 다운로드 x{OMG.calcDownloadSpeedBonus(scaUpgrades).toFixed(1)} · {OMG.isMiningAmplifierUnlocked(scaUpgrades) ? `채굴력 ${OMG.getMiningPower(scaUpgrades).toLocaleString()} · ${OMG.getMiningAttackFrames(scaUpgrades)}f` : '채굴증폭기 미구축'}</p>
+            <section className="mb-4 p-3 sm:p-4 border border-cyan-500/20 rounded-xl space-y-3 min-w-0">
+              <p className="text-xs font-mono text-cyan-300/80 break-words">다음 환생 시작 미네랄: <strong>{OMG.calcRebirthStartMinerals(scaUpgrades).toLocaleString()}원</strong> (상한 {OMG.REBIRTH_MINERAL_CAP.toLocaleString()}원) · 환생 미네랄 <strong>+10원 = {OMG.REBIRTH_MINERAL_SCA_PER_10} SCA</strong> 고정</p>
+              <p className="text-xs font-mono text-cyan-300/70 break-words">게임 배속 {gameSpeedFrames}프레임 (x{gameSpeedMult.toFixed(2)}) · RAM 공속 {ramAttackFrames}f · 다운로드 x{OMG.calcDownloadSpeedBonus(scaUpgrades).toFixed(1)} · {OMG.isMiningAmplifierUnlocked(scaUpgrades) ? `채굴력 ${OMG.getMiningPower(scaUpgrades).toLocaleString()} · ${OMG.getMiningAttackFrames(scaUpgrades)}f` : '채굴증폭기 미구축'}</p>
               <div className="space-y-3">
                 <div>
                   <p className="text-[11px] font-bold text-slate-400 font-mono mb-2 uppercase tracking-wider">환생 미네랄</p>
@@ -2119,9 +2153,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               </div>
 
               {/* 원작 맵: 오버클럭 연구소 1~4레벨 건물명 + 내구도 표기 */}
-              <div className="border border-slate-900 rounded-lg overflow-hidden text-[10px] font-mono">
+              <div className="border border-slate-900 rounded-lg overflow-hidden text-[10px] font-mono mobile-table-scroll">
                 <div className="px-2 py-1.5 bg-slate-900/80 text-slate-400 text-[10px]">건물 스펙 (원작: 레벨별 연구소 트리거명)</div>
-                <div className="grid grid-cols-5 gap-px bg-slate-900 text-center">
+                <div className="grid grid-cols-5 gap-px bg-slate-900 text-center mobile-table-inner">
                   <div className="bg-slate-950 p-1.5 text-slate-500">레벨</div>
                   <div className="bg-slate-950 p-1.5 text-slate-500">HP</div>
                   <div className="bg-slate-950 p-1.5 text-slate-500">실드</div>
@@ -2288,7 +2322,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             <div
               role="status"
               aria-live="polite"
-              className={`fixed bottom-4 right-4 z-50 max-w-sm px-3 py-2 rounded-md border text-xs font-mono shadow-md pointer-events-none ${
+              className={`fixed bottom-4 right-3 left-3 sm:left-auto sm:right-4 z-50 max-w-sm mx-auto sm:mx-0 px-3 py-2 rounded-md border text-xs font-mono shadow-md pointer-events-none ${
                 upgradeStatus === 'success' ? 'bg-slate-900/95 border-emerald-800/50 text-emerald-300' :
                 upgradeStatus === 'exploded' ? 'bg-slate-900/95 border-rose-800/50 text-rose-300' :
                 'bg-slate-900/95 border-slate-700/80 text-slate-300'
@@ -2301,10 +2335,10 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           {/* ================================================================== */}
           {/* 중앙 그리드 레이아웃 */}
           {/* ================================================================== */}
-          <main className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <main className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 min-w-0">
             
-            <section className="lg:col-span-5 bg-slate-900/40 p-6 rounded-xl border border-slate-800 flex flex-col space-y-6">
-              <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+            <section className="lg:col-span-5 bg-slate-900/40 p-4 sm:p-6 rounded-xl border border-slate-800 flex flex-col space-y-4 sm:space-y-6 min-w-0">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 border-b border-slate-800 pb-3">
                 <h2 className="text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2">
                   <span className="text-emerald-400 text-lg mr-1.5">🖥️</span>
                   <span>내 하드웨어 모니터</span>
@@ -2339,9 +2373,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center">
-                  <div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
+                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-start gap-2 min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs text-slate-500 font-mono">CPU PROCESSOR</p>
                     <p className="text-base font-semibold text-slate-200">{getCpuName(cpu.level)}</p>
                     <p className="text-[11px] text-slate-500 font-mono mt-0.5">Grade: +{cpu.level}강</p>
@@ -2349,8 +2383,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{cpu.ddrGeneration}</span>
                 </div>
 
-                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center">
-                  <div>
+                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-start gap-2 min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs text-slate-500 font-mono">GPU ENGINE</p>
                     <p className="text-base font-semibold text-slate-200">{getGpuName(gpu.level, gpu)}</p>
                     <p className="text-[11px] text-slate-500 font-mono mt-0.5">+{gpu.level}강 · {OMG.GPU_GRADE_NAMES[gpuGrade]} · 공격 {OMG.getGpuAttackPower(gpu, scaUpgrades)}</p>
@@ -2358,11 +2392,11 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">PCI-E</span>
                 </div>
 
-                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center">
-                  <div>
+                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-start gap-2 min-w-0 md:col-span-2">
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs text-slate-500 font-mono">SYSTEM RAM (MEM)</p>
-                    <p className="text-base font-semibold text-slate-200">{getRamName(ram.level, ram)}</p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">Grade: +{ram.level || 1}강{ram.ramVariant === 'overclock' ? ' OC' : ''} · 유효 {effectiveRamGb}GB ({ramSlots}슬롯×{ram.capacityGb}GB) · {ram.clockMhz}MHz · 공속 {ramAttackFrames}f · 성능 {OMG.getRamPerfPerUnit(ram)}</p>
+                    <p className="text-base font-semibold text-slate-200 break-words">{getRamName(ram.level, ram)}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5 break-words">Grade: +{ram.level || 1}강{ram.ramVariant === 'overclock' ? ' OC' : ''} · 유효 {effectiveRamGb}GB ({ramSlots}슬롯×{ram.capacityGb}GB) · {ram.clockMhz}MHz · 공속 {ramAttackFrames}f · 성능 {OMG.getRamPerfPerUnit(ram)}</p>
                   </div>
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{ram.ddrGeneration}</span>
                 </div>
@@ -2376,7 +2410,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{cooler.coolerKind === 'water' ? '수랭' : '공랭'}</span>
                 </div>
 
-                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center col-span-2">
+                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 col-span-1 md:col-span-2">
                   <div>
                     <p className="text-xs text-slate-500 font-mono">MOTHERBOARD</p>
                     <p className="text-base font-semibold text-slate-200">{motherboard.name || `${motherboard.socketManufacturer} Board`}</p>
@@ -2385,7 +2419,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">{motherboard.supportedDdrGeneration} SLOT</span>
                 </div>
 
-                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center col-span-2">
+                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 col-span-1 md:col-span-2">
                   <div>
                     <p className="text-xs text-slate-500 font-mono">STORAGE SYSTEM</p>
                     <p className="text-base font-semibold text-slate-200">{getStorageName(storage.level || 1, storage)}</p>
@@ -2459,9 +2493,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               </div>
             </section>
 
-            <section className="lg:col-span-7 flex flex-col space-y-6">
+            <section className="lg:col-span-7 flex flex-col space-y-4 sm:space-y-6 min-w-0">
               
-              <div className="bg-slate-900/40 p-6 rounded-xl border border-slate-800 flex flex-col space-y-4">
+              <div className="bg-slate-900/40 p-4 sm:p-6 rounded-xl border border-slate-800 flex flex-col space-y-4 min-w-0">
                 <h2 className="text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
                   <span className="text-cyan-400 text-lg mr-1.5">🛒</span>
                   <span>부품 조립 및 고도 강화 상점</span>
@@ -2740,7 +2774,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                                 </p>
                               </div>
                               
-                              <div className="flex space-x-1.5 pt-2 border-t border-slate-950">
+                              <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-950">
                                 <button 
                                   onClick={() => handleInventoryUpgrade(p.id)}
                                   disabled={isUpgrading}
@@ -2774,13 +2808,13 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               {/* ---------------------------------------------------------------- */}
               {/* 하단 - 작업 사냥터 / 파티 사냥터 */}
               {/* ---------------------------------------------------------------- */}
-              <div className="bg-slate-900/40 p-6 rounded-xl border border-slate-800 flex flex-col space-y-4">
-                <h2 className="text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
+              <div className="bg-slate-900/40 p-4 sm:p-6 rounded-xl border border-slate-800 flex flex-col space-y-4 min-w-0">
+                <h2 className="text-base sm:text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
                   <span className="text-emerald-400 text-lg mr-1.5">💼</span>
                   <span>작업 사냥터</span>
                 </h2>
-                <p className="text-xs text-slate-400">작업(Work)과 게임 사냥(Gaming)은 <strong className="text-emerald-400">동시 진행</strong> · 작업 목록은 원작처럼 모두 표시, <strong className="text-amber-400">실제 파괴 가능</strong>할 때만 선택 (GPU·공속·건물 내구 종합 · 1기 {OMG.WORK_PRACTICAL_CLEAR_KILL_SEC}초 이내)</p>
-                <p className="text-[10px] text-slate-500 font-mono">
+                <p className="text-xs text-slate-400 break-words">작업(Work)과 게임 사냥(Gaming)은 <strong className="text-emerald-400">동시 진행</strong> · 작업 목록은 원작처럼 모두 표시, <strong className="text-amber-400">실제 파괴 가능</strong>할 때만 선택 (GPU·공속·건물 내구 종합 · 1기 {OMG.WORK_PRACTICAL_CLEAR_KILL_SEC}초 이내)</p>
+                <p className="text-[10px] text-slate-500 font-mono break-words">
                   GPU 공격 {specs.unitDamage} · RAM {incomeAttackFrames}f({incomeEventMs}ms/타격) · 배속 {gameSpeedMult.toFixed(2)}×
                   · 작업 건물 반격 없음 · HP{workMobSpec.hp}{workMobSpec.shield ? `+실드${workMobSpec.shield}` : ''}{workMobSpec.defense ? ` 방${workMobSpec.defense}` : ''} → {workHitsToKill}타격/{workKillTimeSec.toFixed(1)}초/파괴
                   · 게임 몬스터 공{OMG.getMobAttackPerHit(huntMobSpec)} HP{huntMobSpec.hp}{huntMobSpec.shield ? `+실드${huntMobSpec.shield}` : ''} → {huntHitsToKill}타격/{huntKillTimeSec.toFixed(1)}초/처치
@@ -2824,7 +2858,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       <button type="button" onClick={() => setWorkUnitMode('auto')} className={`px-2 py-0.5 rounded border text-xs font-mono ${workUnitMode === 'auto' ? 'bg-amber-500/20 border-amber-500 text-amber-300' : 'border-slate-700 text-slate-400'}`}>자동 최적</button>
                       <button type="button" onClick={() => { setWorkUnitMode('manual'); setManualWorkUnits(effectiveWorkUnits); }} className={`px-2 py-0.5 rounded border text-xs font-mono ${workUnitMode === 'manual' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300' : 'border-slate-700 text-slate-400'}`}>수동</button>
                     </div>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-400 break-words">
                       {workIncomeIsCoin ? (
                         <>
                           처치당 <strong className="text-emerald-400">{formatWorkCoinAsMinerals(workCoinPerKillPerUnit)}/기</strong>
@@ -2863,7 +2897,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         );
                       })}
                     </div>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-400 break-words">
                       배치 <strong className="text-cyan-400">{specs.maxHuntingUnits}기</strong>
                       (RAM 잔여 {specs.huntRamFree}GB / CPU {specs.cpuHuntRamPerUnit}GB·기 · 코어 {specs.ramAllocation.maxByCpu} · GPU참고 {specs.gpuRamPerUnit}GB·기)
                       · 교전 <strong className="text-cyan-400">{huntActiveForIncome}</strong>/{specs.maxHuntingUnits}기
@@ -2899,12 +2933,12 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 </div>
               </div>
 
-              <div className="bg-slate-900/40 p-6 rounded-xl border border-purple-900/40 flex flex-col space-y-4">
-                <h2 className="text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
+              <div className="bg-slate-900/40 p-4 sm:p-6 rounded-xl border border-purple-900/40 flex flex-col space-y-4 min-w-0">
+                <h2 className="text-base sm:text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
                   <span className="text-purple-400 text-lg mr-1.5">👥</span>
                   <span>파티 사냥터</span>
                 </h2>
-                <p className="text-xs text-slate-400">원 + SCA 코인 · 파티 ON 시 작업 수입 중단 · 성능 {partyPerfScore.toLocaleString()} · 환생수치 {rebirthStat.toLocaleString()} · 채굴력 {partyMiningPower.toLocaleString()}</p>
+                <p className="text-xs text-slate-400 break-words">원 + SCA 코인 · 파티 ON 시 작업 수입 중단 · 성능 {partyPerfScore.toLocaleString()} · 환생수치 {rebirthStat.toLocaleString()} · 채굴력 {partyMiningPower.toLocaleString()}</p>
                 <div className="flex flex-wrap items-center gap-2">
                   <button onClick={() => {
                     setIsPartyHunting((v) => {
@@ -2917,7 +2951,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     });
                   }} className={`text-sm px-3 py-1.5 rounded font-mono font-bold border ${isPartyHunting ? 'bg-purple-600 border-purple-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-300'}`}>{isPartyHunting ? '파티 ON' : '파티 OFF'}</button>
                 </div>
-                <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
                   {OMG.PARTY_HUNTING_TIERS.map((tier, idx) => {
                     const access = OMG.evaluatePartyTierAccess(idx, partyPerfScore, rebirthStat, partyMiningPower);
                     const locked = !access.ok;
@@ -2963,13 +2997,13 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           {/* 레이드 오버레이 모달 */}
           {/* ================================================================== */}
           {isRaidOpen && (
-            <div className="fixed inset-0 bg-slate-950/90 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-              <div className="bg-slate-950 border border-cyan-500/30 rounded-2xl w-full max-w-4xl p-6 neon-border-cyan flex flex-col space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="fixed inset-0 bg-slate-950/90 flex items-end sm:items-center justify-center p-2 sm:p-4 z-50 backdrop-blur-sm">
+              <div className="bg-slate-950 border border-cyan-500/30 rounded-2xl w-full max-w-4xl p-4 sm:p-6 neon-border-cyan flex flex-col space-y-4 sm:space-y-6 max-h-[92vh] sm:max-h-[90vh] overflow-y-auto min-w-0">
                 
-                <div className="flex justify-between items-center border-b border-slate-800 pb-4">
-                  <div className="flex items-center space-x-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
-                    <h2 className="text-lg font-bold text-cyan-400 uppercase tracking-widest font-mono">실시간 100층 보스 등반 레이드</h2>
+                <div className="flex justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-4">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping shrink-0"></span>
+                    <h2 className="text-sm sm:text-lg font-bold text-cyan-400 uppercase tracking-widest font-mono break-words">실시간 100층 보스 등반 레이드</h2>
                   </div>
                   <button 
                     onClick={leaveRaidRoom}
@@ -3045,8 +3079,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         <div className="absolute top-2 left-3 text-[11px] font-mono text-cyan-500/40 uppercase">LIVE COMPUTE COMBAT MONITOR</div>
                         
                         <div className="text-xs font-mono uppercase tracking-widest text-slate-500">BOSS RAID STAGE</div>
-                        <div className="text-4xl font-extrabold text-cyan-300 font-mono tracking-wider mt-1.5">
-                          FLOOR {raidState.currentFloor} <span className="text-lg text-slate-500">/ 100</span>
+                        <div className="text-2xl sm:text-4xl font-extrabold text-cyan-300 font-mono tracking-wider mt-1.5">
+                          FLOOR {raidState.currentFloor} <span className="text-base sm:text-lg text-slate-500">/ 100</span>
                         </div>
                         <div className="text-xs font-bold text-rose-400 font-mono mt-2 animate-pulse uppercase tracking-wider">
                           🎯 타겟 보스: {getRaidBossName(raidState.currentFloor)}
@@ -3062,12 +3096,12 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                       </div>
 
                       <div className="bg-slate-900/40 border border-slate-800 p-5 rounded-xl space-y-3 flex flex-col">
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="font-bold text-slate-300 uppercase tracking-wider font-mono flex items-center space-x-1">
-                            <span className="text-rose-500 text-sm mr-1">💀</span>
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 text-xs">
+                          <span className="font-bold text-slate-300 uppercase tracking-wider font-mono flex items-center gap-1 shrink-0">
+                            <span className="text-rose-500 text-sm">💀</span>
                             <span>보스 개체 체력</span>
                           </span>
-                          <span className="text-rose-400 font-mono font-bold">
+                          <span className="text-rose-400 font-mono font-bold text-[11px] sm:text-xs break-all text-right">
                             {raidState.bossCurrentHp.toLocaleString()} / {raidState.bossMaxHp.toLocaleString()} ({Math.round((raidState.bossCurrentHp / raidState.bossMaxHp) * 100)}%)
                           </span>
                         </div>
@@ -3178,8 +3212,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           {/* 설정 모달 */}
           {/* ================================================================== */}
           {isSettingsOpen && (
-            <div className="fixed inset-0 bg-slate-950/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-              <div className="bg-slate-950 border border-slate-700 rounded-2xl w-full max-w-md p-6 flex flex-col space-y-5 shadow-xl">
+            <div className="fixed inset-0 bg-slate-950/80 flex items-end sm:items-center justify-center p-3 sm:p-4 z-50 backdrop-blur-sm">
+              <div className="bg-slate-950 border border-slate-700 rounded-2xl w-full max-w-md p-4 sm:p-6 flex flex-col space-y-5 shadow-xl max-h-[92vh] overflow-y-auto">
                 <div className="flex justify-between items-center border-b border-slate-800 pb-3">
                   <h2 className="text-sm font-bold text-slate-200 uppercase tracking-widest font-mono">⚙️ 설정</h2>
                   <button
