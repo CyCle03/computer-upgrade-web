@@ -399,6 +399,28 @@
       const [isResettingAccount, setIsResettingAccount] = useState(false);
       const [socket, setSocket] = useState(null);
       const [raidState, setRaidState] = useState(null);
+      /** 서버 daily_raid_progresses — 오늘 이미 수령한 마일스톤 최고 층 (0, 10, … 100) */
+      const [todayHighestClaimedFloor, setTodayHighestClaimedFloor] = useState(0);
+
+      const formatRemainingRewardRange = (claimedFloor) => {
+        const claimed = Math.max(0, Math.min(100, claimedFloor || 0));
+        if (claimed >= 100) return '모든 구간 수령 완료';
+        return `${claimed + 10}층 ~ 100층`;
+      };
+
+      const refreshRaidProgress = async () => {
+        if (!GameSync.getToken()) return;
+        try {
+          const data = await GameSync.fetchRaidProgress();
+          if (data && data.highestClaimedFloor != null) {
+            setTodayHighestClaimedFloor(data.highestClaimedFloor);
+          }
+        } catch (e) { /* best-effort */ }
+      };
+
+      useEffect(() => {
+        refreshRaidProgress();
+      }, []);
       const [rewardMessage, setRewardMessage] = useState(null);
       const [myId] = useState(() => {
         const saved = localStorage.getItem('sca_myId');
@@ -1859,6 +1881,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setErrorMessage(null);
         setRewardMessage(null);
         setIsRaidOpen(true);
+        refreshRaidProgress();
 
         const socketCon = io({
           auth: GameSync.getSocketAuth(),
@@ -1884,6 +1907,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
 
         socketCon.on('milestone_reward_claimed', (data) => {
           const { clearedFloor, txResult } = data;
+          if (txResult && txResult.newHighestFloor != null) {
+            setTodayHighestClaimedFloor(txResult.newHighestFloor);
+          }
           if (txResult.success) {
             const total = Number(txResult.currentTotalCoins) || 0;
             setScaCoins(total);
@@ -3122,9 +3148,13 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                             <span className="text-cyan-300 font-bold">10층 ~ 100층 (10층단위)</span>
                           </div>
                           <div className="flex justify-between text-sm text-slate-400">
-                            <span>오늘 남은 보상 층수:</span>
+                            <span>오늘 수령 완료 최고 층:</span>
+                            <span className="text-cyan-300 font-bold">{todayHighestClaimedFloor}층</span>
+                          </div>
+                          <div className="flex justify-between text-sm text-slate-400">
+                            <span>오늘 남은 보상 구간:</span>
                             <span className="text-emerald-400 font-bold">
-                              {raidState.currentFloor <= 100 ? `${Math.ceil(raidState.currentFloor / 10) * 10}층 ~ 100층` : '모든 구간 수령 완료'}
+                              {formatRemainingRewardRange(todayHighestClaimedFloor)}
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-500 mt-2 border-t border-slate-900 pt-2 leading-relaxed">

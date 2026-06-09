@@ -620,7 +620,6 @@
 
     let gained = 0;
     const hitsPerSecPerUnit = OMG.calcHitsPerSecond(ramAttackFrames, ctx.scaUpgrades || {});
-    const unitDamage = specs.unitDamage || OMG.calcUnitDamageForIncome(ctx.workParts, ctx.scaUpgrades || {});
     const workActive = ctx.huntCombatStatus.workActive;
     if (workActive > 0 && hitsPerSecPerUnit > 0) {
       const hitsToKill = Math.max(
@@ -856,6 +855,7 @@
       effectiveUnitLimit: s.effectiveUnitLimit,
       effectiveWorkUnits: s.effectiveWorkUnits,
       unlockedGameIndex: s.unlockedGameIndex,
+      effectiveUnlockedGameIndex: s.effectiveUnlockedGameIndex,
       isDownloading: s.isDownloading,
       isPartyHunting: s.isPartyHunting,
       partyHuntingTier: s.partyHuntingTier,

@@ -26,8 +26,48 @@ const RAID_CUMULATIVE_REWARDS: Record<number, number> = {
  * 3. 층수 무결성 검증: 10~100 사이의 10의 배수인지 엄격히 검사.
  * 4. DB 트랜잭션 보장: 모든 갱신(날짜 초기화, 진행도 업데이트, 재화 누적)을 하나의 원자적 트랜잭션 내에서 수행.
  */
+export interface DailyRaidProgressSnapshot {
+  highestClaimedFloor: number;
+  lastPlayedDate: string;
+  todayDate: string;
+}
+
 export class RewardService {
-  
+
+  /** 오늘(KST) 이미 수령한 마일스톤 최고 층 — 레이드 UI용 (읽기 전용) */
+  static async getDailyRaidProgress(userId: string): Promise<DailyRaidProgressSnapshot> {
+    await pool.query(`
+      INSERT INTO daily_raid_progresses (user_id, last_played_date, highest_claimed_floor)
+      VALUES ($1, (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date, 0)
+      ON CONFLICT (user_id) DO NOTHING
+    `, [userId]);
+
+    const dateRes = await pool.query(
+      "SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date::text AS today"
+    );
+    const todayStr = dateRes.rows[0].today as string;
+
+    const progressRes = await pool.query(`
+      SELECT last_played_date::text AS last_played_date, highest_claimed_floor
+      FROM daily_raid_progresses
+      WHERE user_id = $1
+    `, [userId]);
+
+    const row = progressRes.rows[0];
+    let highestClaimedFloor = Number(row?.highest_claimed_floor) || 0;
+    const lastPlayedDate = (row?.last_played_date as string) || todayStr;
+
+    if (lastPlayedDate !== todayStr) {
+      highestClaimedFloor = 0;
+    }
+
+    return {
+      highestClaimedFloor,
+      lastPlayedDate,
+      todayDate: todayStr,
+    };
+  }
+
   /**
    * Node.js 백엔드 단에서 트랜잭션을 수동으로 열어 보상을 안전하게 지급하는 방식
    * (일반 Express + PostgreSQL 프로젝트에 적합)

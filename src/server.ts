@@ -264,6 +264,35 @@ app.put('/api/state', async (req: Request, res: Response) => {
   }
 });
 
+app.get('/api/raid/progress', async (req: Request, res: Response) => {
+  if (!(await ensureDb(res))) {
+    return res.status(503).json({
+      success: false,
+      message: '데이터베이스에 연결할 수 없습니다.',
+      highestClaimedFloor: 0,
+      lastPlayedDate: '',
+      todayDate: '',
+    });
+  }
+
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+
+  try {
+    const progress = await RewardService.getDailyRaidProgress(userId);
+    return res.status(200).json({ success: true, ...progress });
+  } catch (error: unknown) {
+    console.error('[RaidAPI] progress error:', error);
+    return res.status(500).json({
+      success: false,
+      message: '레이드 진행도를 불러오지 못했습니다.',
+      highestClaimedFloor: 0,
+      lastPlayedDate: '',
+      todayDate: '',
+    });
+  }
+});
+
 app.post('/api/raid/claim', async (req: Request, res: Response) => {
   if (!(await ensureDb(res))) {
     return res.status(503).json({

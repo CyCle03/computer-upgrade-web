@@ -169,6 +169,17 @@
       }
       return data;
     },
+    /** 오늘 레이드 마일스톤 수령 진행도 (highestClaimedFloor) */
+    async fetchRaidProgress() {
+      const token = this.getToken();
+      if (!token) return null;
+      const res = await fetch('/api/raid/progress', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) return null;
+      return data;
+    },
     /** 파티 사냥 SCA 틱 지급 */
     async claimPartyIncome(tierIndex, tickCount, parts) {
       const token = this.getToken();
