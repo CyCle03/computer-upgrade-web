@@ -350,6 +350,7 @@
       const [overclockLabCooldown, setOverclockLabCooldown] = useState(0);
       const [partyHuntingTier, setPartyHuntingTier] = useState(0);
       const [isPartyHunting, setIsPartyHunting] = useState(false);
+      const [partyElapsedSec, setPartyElapsedSec] = useState(0);
       const [cpuBuyManufacturer, setCpuBuyManufacturer] = useState('Intel');
       const [coolerBuyKind, setCoolerBuyKind] = useState('air');
       const [storageBuyKind, setStorageBuyKind] = useState('hdd');
@@ -790,6 +791,16 @@
           setPartyHuntingTier(maxUnlockedPartyTier);
         }
       }, [partyHuntingTier, maxUnlockedPartyTier]);
+
+      useEffect(() => {
+        if (!isPartyHunting) {
+          setPartyElapsedSec(0);
+          return;
+        }
+        setPartyElapsedSec(0);
+        const id = setInterval(() => setPartyElapsedSec((s) => s + 1), 1000);
+        return () => clearInterval(id);
+      }, [isPartyHunting, partyHuntingTier]);
 
       useEffect(() => {
         if (localStorage.getItem('sca_rebirthStatMigrated')) return;
@@ -2266,9 +2277,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                         <div key={param} className="flex items-center justify-between p-2 bg-slate-950/80 border border-slate-900 rounded text-xs">
                           <span className="text-slate-400 font-mono">{label}</span>
                           <div className="flex items-center gap-2">
-                            <button onClick={() => adjustOcParam(param, -1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">−</button>
+                            <button aria-label={`${label} 감소`} onClick={() => adjustOcParam(param, -1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">−</button>
                             <span className="text-white font-bold w-6 text-center">{currentVal}</span>
-                            <button onClick={() => adjustOcParam(param, 1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">+</button>
+                            <button aria-label={`${label} 증가`} onClick={() => adjustOcParam(param, 1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">+</button>
                           </div>
                         </div>
                       );
@@ -2591,12 +2602,12 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                               {variants}
                             </div>
                             <div className="flex items-center gap-1">
-                              <button type="button" onClick={() => adjustBuyLevel(type, -1, levels.length)} disabled={idx <= 0} className={`px-2.5 py-2 rounded border text-xs font-bold ${idx <= 0 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>◀</button>
+                              <button type="button" aria-label="이전 강화 단계" onClick={() => adjustBuyLevel(type, -1, levels.length)} disabled={idx <= 0} className={`px-2.5 py-2 rounded border text-xs font-bold ${idx <= 0 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>◀</button>
                               <div className="flex-1 text-center px-1 py-1 bg-slate-950 rounded border border-slate-800 min-w-0">
                                 <div className="text-sm font-bold text-cyan-200 font-mono">+{level}강</div>
                                 <div className="text-[10px] text-slate-400 font-mono truncate" title={row.name}>{row.name}</div>
                               </div>
-                              <button type="button" onClick={() => adjustBuyLevel(type, 1, levels.length)} disabled={idx >= levels.length - 1} className={`px-2.5 py-2 rounded border text-xs font-bold ${idx >= levels.length - 1 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>▶</button>
+                              <button type="button" aria-label="다음 강화 단계" onClick={() => adjustBuyLevel(type, 1, levels.length)} disabled={idx >= levels.length - 1} className={`px-2.5 py-2 rounded border text-xs font-bold ${idx >= levels.length - 1 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>▶</button>
                             </div>
                             <button type="button" onClick={() => handleBuyComponentPack(type, level)} disabled={buyDisabled} className={`w-full py-1.5 rounded text-xs font-bold font-mono border transition mt-auto ${buyDisabled ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed opacity-60' : 'bg-cyan-600/20 border-cyan-500 text-cyan-200 hover:bg-cyan-500/30'}`}>
                               {`구매 ${OMG.formatMineral(row.costMinerals)}`}
@@ -2621,12 +2632,12 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                               </div>
                             </div>
                             <div className="flex items-center gap-1">
-                              <button type="button" onClick={() => adjustMotherboardBuyIndex(-1)} disabled={mbIdx <= 0} className={`px-2.5 py-2 rounded border text-xs font-bold ${mbIdx <= 0 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>◀</button>
+                              <button type="button" aria-label="이전 메인보드" onClick={() => adjustMotherboardBuyIndex(-1)} disabled={mbIdx <= 0} className={`px-2.5 py-2 rounded border text-xs font-bold ${mbIdx <= 0 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>◀</button>
                               <div className="flex-1 text-center px-1 py-1 bg-slate-950 rounded border border-slate-800 min-w-0">
                                 <div className="text-sm font-bold text-cyan-200 font-mono truncate" title={board.name}>{board.name}</div>
                                 <div className="text-[10px] text-slate-400 font-mono">{board.supportedDdrGeneration} · 실드+{board.shieldIncrease.toLocaleString()}</div>
                               </div>
-                              <button type="button" onClick={() => adjustMotherboardBuyIndex(1)} disabled={mbIdx >= boards.length - 1} className={`px-2.5 py-2 rounded border text-xs font-bold ${mbIdx >= boards.length - 1 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>▶</button>
+                              <button type="button" aria-label="다음 메인보드" onClick={() => adjustMotherboardBuyIndex(1)} disabled={mbIdx >= boards.length - 1} className={`px-2.5 py-2 rounded border text-xs font-bold ${mbIdx >= boards.length - 1 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>▶</button>
                             </div>
                             <button type="button" onClick={() => board && handlePurchaseMotherboard(board)} disabled={!affordable || !board} className={`w-full py-1.5 rounded text-xs font-bold font-mono border transition mt-auto ${!affordable ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed opacity-60' : 'bg-cyan-600/20 border-cyan-500 text-cyan-200 hover:bg-cyan-500/30'}`}>
                               구매 {OMG.formatMineral(mbCost)}
@@ -2656,9 +2667,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                               <span>{row.emoji} {row.label} {row.on ? 'AUTO ON' : 'AUTO OFF'}</span>
                             </button>
                             <div className="flex items-center justify-center gap-0.5 text-[10px] font-mono text-slate-500">
-                              <button type="button" onClick={() => adjustAutoTarget(row.type, -1, row.variantKey)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">−</button>
+                              <button type="button" aria-label="자동 목표 강화 단계 감소" onClick={() => adjustAutoTarget(row.type, -1, row.variantKey)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">−</button>
                               <span className="text-center leading-tight">+{buyLv != null ? buyLv : '—'}강 → {goal}강</span>
-                              <button type="button" onClick={() => adjustAutoTarget(row.type, 1, row.variantKey)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">+</button>
+                              <button type="button" aria-label="자동 목표 강화 단계 증가" onClick={() => adjustAutoTarget(row.type, 1, row.variantKey)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">+</button>
                             </div>
                           </div>
                         );
@@ -2851,10 +2862,10 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
                       <span>배치</span>
-                      <button type="button" disabled={workUnitMode === 'auto' || maxWorkUnits <= 0} onClick={() => setManualWorkUnits((n) => Math.max(0, n - 1))} className="px-2 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-40">◀</button>
+                      <button type="button" aria-label="작업 유닛 1기 감소" disabled={workUnitMode === 'auto' || maxWorkUnits <= 0} onClick={() => setManualWorkUnits((n) => Math.max(0, n - 1))} className="px-2 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-40">◀</button>
                       <strong className="text-emerald-400 font-mono">{effectiveWorkUnits}기</strong>
                       <span className="text-slate-500">/ {maxWorkUnits}기</span>
-                      <button type="button" disabled={workUnitMode === 'auto' || maxWorkUnits <= 0} onClick={() => setManualWorkUnits((n) => Math.min(maxWorkUnits, n + 1))} className="px-2 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-40">▶</button>
+                      <button type="button" aria-label="작업 유닛 1기 증가" disabled={workUnitMode === 'auto' || maxWorkUnits <= 0} onClick={() => setManualWorkUnits((n) => Math.min(maxWorkUnits, n + 1))} className="px-2 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-40">▶</button>
                       <button type="button" onClick={() => setWorkUnitMode('auto')} className={`px-2 py-0.5 rounded border text-xs font-mono ${workUnitMode === 'auto' ? 'bg-amber-500/20 border-amber-500 text-amber-300' : 'border-slate-700 text-slate-400'}`}>자동 최적</button>
                       <button type="button" onClick={() => { setWorkUnitMode('manual'); setManualWorkUnits(effectiveWorkUnits); }} className={`px-2 py-0.5 rounded border text-xs font-mono ${workUnitMode === 'manual' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300' : 'border-slate-700 text-slate-400'}`}>수동</button>
                     </div>
@@ -2971,9 +2982,19 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     );
                   })}
                 </div>
-                {isPartyHunting && OMG.PARTY_HUNTING_TIERS[partyHuntingTier] && (
-                  <p className="text-xs text-purple-300 font-mono">선택: {OMG.PARTY_HUNTING_TIERS[partyHuntingTier].name} · 3초당 +{OMG.calcPartyMineralPerTick(OMG.PARTY_HUNTING_TIERS[partyHuntingTier], incomeBonusRate)}원 +{OMG.PARTY_HUNTING_TIERS[partyHuntingTier].scaCoins}C</p>
-                )}
+                {isPartyHunting && OMG.PARTY_HUNTING_TIERS[partyHuntingTier] && (() => {
+                  const _tier = OMG.PARTY_HUNTING_TIERS[partyHuntingTier];
+                  const _tickSec = Math.max(1, Math.round(OMG.calcGameSpeedTickMs(scaUpgrades, 3000) / 1000));
+                  const _nextIn = _tickSec - (partyElapsedSec % _tickSec);
+                  const _mins = Math.floor(partyElapsedSec / 60);
+                  const _secs = partyElapsedSec % 60;
+                  return (
+                    <div className="space-y-1">
+                      <p className="text-xs text-purple-300 font-mono">선택: {_tier.name} · {_tickSec}초당 +{OMG.calcPartyMineralPerTick(_tier, incomeBonusRate)}원 +{_tier.scaCoins}C</p>
+                      <p className="text-xs text-purple-400/70 font-mono">⏱ 경과 {_mins > 0 ? `${_mins}분 ${_secs}초` : `${_secs}초`} · 다음 틱까지 {_nextIn}초</p>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="p-4 bg-slate-950/90 rounded border border-emerald-500/30 neon-border-emerald flex flex-col space-y-2.5">
@@ -2997,19 +3018,20 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           {/* 레이드 오버레이 모달 */}
           {/* ================================================================== */}
           {isRaidOpen && (
-            <div className="fixed inset-0 bg-slate-950/90 flex items-end sm:items-center justify-center p-2 sm:p-4 z-50 backdrop-blur-sm">
+            <div role="dialog" aria-modal="true" aria-label="실시간 100층 보스 등반 레이드" className="fixed inset-0 bg-slate-950/90 flex items-end sm:items-center justify-center p-2 sm:p-4 z-50 backdrop-blur-sm">
               <div className="bg-slate-950 border border-cyan-500/30 rounded-2xl w-full max-w-4xl p-4 sm:p-6 neon-border-cyan flex flex-col space-y-4 sm:space-y-6 max-h-[92vh] sm:max-h-[90vh] overflow-y-auto min-w-0">
-                
+
                 <div className="flex justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-4">
                   <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                     <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping shrink-0"></span>
                     <h2 className="text-sm sm:text-lg font-bold text-cyan-400 uppercase tracking-widest font-mono break-words">실시간 100층 보스 등반 레이드</h2>
                   </div>
-                  <button 
+                  <button
+                    aria-label="레이드 나가기"
                     onClick={leaveRaidRoom}
                     className="p-2 hover:bg-slate-900 border border-slate-800 hover:border-rose-500/40 rounded-lg text-slate-400 hover:text-rose-500 transition"
                   >
-                    <span className="text-sm">❌</span>
+                    <span aria-hidden="true" className="text-sm">❌</span>
                   </button>
                 </div>
 
