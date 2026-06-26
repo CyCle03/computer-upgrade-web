@@ -5,3 +5,4 @@ dist/
 __pycache__/
 scripts/_*.txt
 scripts/_*.json
+.claude/
