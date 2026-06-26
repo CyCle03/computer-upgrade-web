@@ -548,7 +548,7 @@
   /** 처치 수입 + 몬스터 반격·사망·1초 리스폰 후 자동 재투입 */
   function applyWorkHuntIncome(ctx, elapsedMs) {
     if (elapsedMs <= 0) return 0;
-    OMG.setScaUpgradesRef(ctx.scaUpgrades || {});
+    OMG.setScaUpgradesRef({ ...(ctx.scaUpgrades || {}), ...(ctx.overclockData || {}) });
     const { unitDamage, ramAttackFrames } = getIncomeCombatCtx(ctx);
     const alloc = OMG.calcRamAllocation(
       ctx.workParts,
@@ -699,6 +699,7 @@
           const m = OMG.calcPartyMineralPerTick(tier, ctx.incomeBonusRate) * partyConsumed.ticks;
           ctx.minerals += m;
           ctx.scaPartyTicks = (ctx.scaPartyTicks || 0) + partyConsumed.ticks;
+          ctx.partyMineralGained = (ctx.partyMineralGained || 0) + m;
           ctx.scaCoinsGain = (ctx.scaCoinsGain || 0) + tier.scaCoins * partyConsumed.ticks;
           ctx.stats.incomeTicks += partyConsumed.ticks;
           gained += m;
@@ -798,6 +799,7 @@
           const m = OMG.calcPartyMineralPerTick(tier, ctx.incomeBonusRate);
           ctx.minerals += m;
           ctx.scaPartyTicks = (ctx.scaPartyTicks || 0) + 1;
+          ctx.partyMineralGained = (ctx.partyMineralGained || 0) + m;
           ctx.scaCoinsGain = (ctx.scaCoinsGain || 0) + tier.scaCoins;
           ctx.stats.incomeTicks += 1;
           partyTicks -= 1;

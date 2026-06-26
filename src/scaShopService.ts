@@ -50,14 +50,7 @@ function getShopItem(itemId: string): ScaShopItem | undefined {
 }
 
 function parseScaUpgrades(state: GameStatePayload): Record<string, unknown> {
-  const defaults: Record<string, unknown> = {
-    ddr4Overclocked: false,
-    ddr5OverclockedStep: 0,
-    overclockLabLevel: 1,
-    overclockLabBuilt: false,
-    overclockActivePart: null,
-    highestRaidFloor: 0,
-  };
+  const defaults: Record<string, unknown> = {};
   const raw = state.sca_scaUpgrades;
   if (!raw) return { ...defaults };
   try {
