@@ -1,0 +1,48 @@
+name: Deploy
+
+# main 브랜치에 push되면 self-hosted 러너(Orange Pi)에서 자동 배포한다.
+# 러너의 임시 체크아웃이 아니라 서버가 실제로 서빙하는 경로에서 동기화·빌드·재시작한다.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}   # Actions 탭에서 수동 실행도 가능
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Pull, build & restart
+        working-directory: /home/ubuntu/computer-upgrade-web
+        run: |
+          set -euo pipefail
+
+          echo "::group::git 동기화"
+          BEFORE=$(git rev-parse HEAD)
+          git fetch origin main
+          git reset --hard origin/main
+          AFTER=$(git rev-parse HEAD)
+          echo "배포: $BEFORE -> $AFTER"
+          echo "::endgroup::"
+
+          echo "::group::의존성 (package-lock 변경 시에만 설치)"
+          if ! git diff --quiet "$BEFORE" "$AFTER" -- package-lock.json; then
+            echo "package-lock.json 변경됨 -> npm ci"
+            npm ci
+          else
+            echo "의존성 변경 없음 -> 설치 건너뜀"
+          fi
+          echo "::endgroup::"
+
+          echo "::group::빌드 (tsc)"
+          npm run build
+          echo "::endgroup::"
+
+          echo "::group::systemd 재시작"
+          sudo systemctl restart computer-upgrade-web.service
+          sleep 2
+          systemctl is-active computer-upgrade-web.service
+          echo "::endgroup::"
