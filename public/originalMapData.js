@@ -207,7 +207,8 @@
 
   /**
    * 작업(Work) 11단계 — 원작 맵 UI 순서·[NGB] RAM 요구.
-   * requiredRamGb/ramPerUnitGb만 배치에 사용. requiredGpuLevel 등은 참고용(선택 잠금에 미사용).
+   * requiredRamGb/ramPerUnitGb는 배치 용량에 사용.
+   * requiredGpuLevel·requiredRamLevel·requiredCpuCores·requiredShield는 작업 선택 게이트(canClearWorkTask)에서 검사한다.
    */
   const WORK_TASKS = [
     { name: '간단한 문서작업', taskIndex: 0, ramPerUnitGb: 1, mineralPerUnit: 1, requiredRamGb: 1, requiredGpuLevel: 1, requiredRamLevel: 1, requiredCpuCores: 1, requiredShield: 0 },
@@ -216,11 +217,11 @@
     { name: '간단한 편집', taskIndex: 3, ramPerUnitGb: 1, mineralPerUnit: 8, requiredRamGb: 4, requiredGpuLevel: 2, requiredRamLevel: 2, requiredCpuCores: 1, requiredShield: 0 },
     { name: '2D 그래픽 작업', taskIndex: 4, ramPerUnitGb: 1, mineralPerUnit: 10, requiredRamGb: 4, requiredGpuLevel: 2, requiredRamLevel: 3, requiredCpuCores: 1, requiredShield: 0 },
     { name: '간단한 AI 작업', taskIndex: 5, ramPerUnitGb: 2, mineralPerUnit: 30, requiredRamGb: 4, requiredGpuLevel: 3, requiredRamLevel: 3, requiredCpuCores: 2, requiredShield: 0 },
-    { name: '3D 그래픽 작업', taskIndex: 6, ramPerUnitGb: 2, mineralPerUnit: 0, coinPerUnit: 20, requiredRamGb: 8, requiredGpuLevel: 3, requiredRamLevel: 4, requiredCpuCores: 2, requiredShield: 0 },
-    { name: '전문 편집', taskIndex: 7, ramPerUnitGb: 4, mineralPerUnit: 0, coinPerUnit: 100, requiredRamGb: 8, requiredGpuLevel: 4, requiredRamLevel: 5, requiredCpuCores: 4, requiredShield: 30 },
-    { name: '고사양 AI 작업', taskIndex: 8, ramPerUnitGb: 4, mineralPerUnit: 0, coinPerUnit: 1000, requiredRamGb: 16, requiredGpuLevel: 5, requiredRamLevel: 6, requiredCpuCores: 4, requiredShield: 50 },
-    { name: '초고사양 그래픽작업', taskIndex: 9, ramPerUnitGb: 8, mineralPerUnit: 0, coinPerUnit: 350, requiredRamGb: 16, requiredGpuLevel: 6, requiredRamLevel: 7, requiredCpuCores: 6, requiredShield: 80 },
-    { name: '대규모 렌더링 작업', taskIndex: 10, ramPerUnitGb: 8, mineralPerUnit: 0, coinPerUnit: 500, requiredRamGb: 16, requiredGpuLevel: 6, requiredRamLevel: 7, requiredCpuCores: 6, requiredShield: 100 },
+    { name: '3D 그래픽 작업', taskIndex: 6, ramPerUnitGb: 2, mineralPerUnit: 50, requiredRamGb: 8, requiredGpuLevel: 3, requiredRamLevel: 4, requiredCpuCores: 2, requiredShield: 0 },
+    { name: '전문 편집', taskIndex: 7, ramPerUnitGb: 4, mineralPerUnit: 100, requiredRamGb: 8, requiredGpuLevel: 4, requiredRamLevel: 5, requiredCpuCores: 4, requiredShield: 30 },
+    { name: '고사양 AI 작업', taskIndex: 8, ramPerUnitGb: 4, mineralPerUnit: 200, requiredRamGb: 16, requiredGpuLevel: 5, requiredRamLevel: 6, requiredCpuCores: 4, requiredShield: 50 },
+    { name: '초고사양 그래픽작업', taskIndex: 9, ramPerUnitGb: 8, mineralPerUnit: 350, requiredRamGb: 16, requiredGpuLevel: 6, requiredRamLevel: 7, requiredCpuCores: 6, requiredShield: 80 },
+    { name: '대규모 렌더링 작업', taskIndex: 10, ramPerUnitGb: 8, mineralPerUnit: 500, requiredRamGb: 16, requiredGpuLevel: 6, requiredRamLevel: 7, requiredCpuCores: 6, requiredShield: 100 },
   ];
 
   /** 게임 사냥(Gaming) — 다운로드 해금 · CPU 코어 = 유닛 수 · 작업과 동시 */
@@ -248,7 +249,7 @@
 
   /**
    * 작업·게임 사냥 적 스펙 (처치 시간 = GPU 공격력 vs 내구도, 공속은 RAM만).
-   * hp·shield·defense·shieldArmor — 맵 EUD 근사. 작업·사냥 수입 = 처치 1회당 (mineralPerUnit 원 | coinPerUnit→천만원 환산)×유닛수.
+   * hp·shield·defense·shieldArmor — 맵 EUD 근사. 작업·사냥 수입 = 처치 1회당 mineralPerUnit(원)×유닛수 (원작대로 전부 원 지급).
    */
   /** 사냥 유닛 사망 후 자동 재배치 대기(원작: 즉시 부활·수동 배치 → 웹: 1초 후 자동 복귀) */
   const HUNT_UNIT_RESPAWN_MS = 1000;
@@ -1331,17 +1332,45 @@ function getPartLevel(part) {
   }
 
   /**
-   * 건물 실제 파괴 가능 여부 — GPU 공격·RAM 공속·건물 내구 vs 1기 파괴 시간
+   * 작업 선택 게이트 — GPU·RAM 강화 레벨, CPU 코어, 유닛 실드 요구치 검사.
+   * 상위 단계가 한 번에 여러 개 열리지 않도록 강화 진행에 맞춰 단계적으로 해금한다.
+   */
+  function evaluateWorkTaskRequirements(parts, taskIndex) {
+    const task = getWorkTask(taskIndex);
+    const failures = [];
+    const gpuLevel = getPartLevel(parts && parts.gpu);
+    const ramLevel = getPartLevel(parts && parts.ram);
+    const cpuCores = getCpuCores(parts && parts.cpu);
+    const shield = (parts && parts.motherboard && parts.motherboard.shieldIncrease) || 0;
+    if (task.requiredGpuLevel && gpuLevel < task.requiredGpuLevel) {
+      failures.push(`GPU +${task.requiredGpuLevel}강 필요 (현재 +${gpuLevel}강)`);
+    }
+    if (task.requiredRamLevel && ramLevel < task.requiredRamLevel) {
+      failures.push(`RAM +${task.requiredRamLevel}강 필요 (현재 +${ramLevel}강)`);
+    }
+    if (task.requiredCpuCores && cpuCores < task.requiredCpuCores) {
+      failures.push(`CPU ${task.requiredCpuCores}코어 필요 (현재 ${cpuCores}코어)`);
+    }
+    if (task.requiredShield && shield < task.requiredShield) {
+      failures.push(`유닛 실드 ${task.requiredShield} 필요 (현재 ${shield}) — 메인보드 교체`);
+    }
+    return { ok: failures.length === 0, failures };
+  }
+
+  /**
+   * 건물 실제 파괴 가능 여부 — 강화 요구치 게이트 + GPU 공격·RAM 공속·건물 내구 vs 1기 파괴 시간
    */
   function canClearWorkTask(parts, taskIndex, unitDamage, ramAttackFrames, scaUpgrades) {
     const idx = Math.max(0, Math.min(WORK_TASKS.length - 1, taskIndex || 0));
     const cap = evaluateWorkTaskCapacity(parts, idx);
+    const req = evaluateWorkTaskRequirements(parts, idx);
     const combat = resolveWorkCombat(parts, scaUpgrades, unitDamage, ramAttackFrames);
     const mob = getWorkMobSpec(idx);
     const killSec = calcKillTimeSec(combat.unitDamage, combat.ramAttackFrames, scaUpgrades, mob);
     const kps = calcKillsPerSecond(combat.unitDamage, combat.ramAttackFrames, scaUpgrades, mob);
 
     const failures = cap.failures.slice();
+    if (!req.ok) failures.push(...req.failures);
     if (cap.ok && (combat.unitDamage <= 0 || kps <= 0)) {
       failures.push('공격력 부족 — 건물 파괴 불가');
     }
@@ -1681,7 +1710,7 @@ function getPartLevel(part) {
     getRamCapacityGb, getRamEffectiveCapacityGb, getRamSlotCount, getRamSlotUpgradeCost, canPurchaseRamSlotUpgrade, validateRamSlotPurchase, getStorageCapacityGb, getGpuRamPerUnit, getGpuDisplayName, getGpuModelName, getGpuAttackPower, calcRamAttackFrames, getRamTierRow, getRamStandardTable, getRamMaxLevel, getRamPerfPerUnit, applyRamOverclock, getGpuTierAttack, getCpuRequiredDdrGeneration, getCpuHuntRamPerUnitGb,
     calcStorageUsedGb, getStorageFreeGb,
     getWorkTask, getGameHunt, getEffectiveUnlockedGameIndex, getDownloadTargetMeta,
-    getPartLevel, evaluateWorkTaskSpec, evaluateWorkTaskCapacity, canClearWorkTask, getWorkTaskSpecReason, countClearableWorkTasks,
+    getPartLevel, evaluateWorkTaskSpec, evaluateWorkTaskCapacity, evaluateWorkTaskRequirements, canClearWorkTask, getWorkTaskSpecReason, countClearableWorkTasks,
     calcRamAllocation, canSelectWorkTask, normalizeGameProgress, validateDownloadStart,
     calcHuntIncomePerTick, calcWorkIncomePerTick, calcWorkIncomePerSec, calcHuntIncomePerSec, calcWorkHuntIncomePerSec,
     calcWorkMineralPerKillPerUnit, calcWorkCoinPerKillPerUnit,
