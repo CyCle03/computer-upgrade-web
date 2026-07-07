@@ -7,9 +7,9 @@
 
 ## 라이브 데모
 
-배포된 서비스: **[https://computer-upgrade-web.onrender.com](https://computer-upgrade-web.onrender.com)**
+배포된 서비스: **[https://computer-upgrade-web.duckdns.org](https://computer-upgrade-web.duckdns.org)**
 
-Render.com에 호스팅되어 있으며, 웹 대시보드·실시간 레이드·보상 API를 바로 체험할 수 있습니다.
+웹 대시보드·실시간 레이드·보상 API를 바로 체험할 수 있습니다.
 
 
 ## 원본 유즈맵 참고
@@ -116,7 +116,7 @@ npm run dev
 
 브라우저에서 [http://localhost:3000](http://localhost:3000) 으로 접속합니다.
 
-배포 환경: [https://computer-upgrade-web.onrender.com](https://computer-upgrade-web.onrender.com)
+배포 환경: [https://computer-upgrade-web.duckdns.org](https://computer-upgrade-web.duckdns.org)
 
 ### 5. 프로덕션 빌드 및 실행
 

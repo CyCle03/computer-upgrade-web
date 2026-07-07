@@ -3,7 +3,7 @@ import type { CorsOptions } from 'cors';
 /**
  * ALLOWED_ORIGINS 환경 변수(쉼표 구분)를 파싱한다.
  * - development + 미설정: 모든 오리진 허용
- * - production + 미설정: Render 기본 배포 URL만 허용
+ * - production + 미설정: 기본 배포 URL만 허용
  */
 export function getAllowedOrigins(): string[] | null {
   const raw = process.env.ALLOWED_ORIGINS?.trim();
@@ -13,7 +13,7 @@ export function getAllowedOrigins(): string[] | null {
   if (process.env.NODE_ENV !== 'production') {
     return null; // null = 모든 오리진 허용
   }
-  return ['https://computer-upgrade-web.onrender.com'];
+  return ['https://computer-upgrade-web.duckdns.org'];
 }
 
 function isOriginAllowed(origin: string | undefined, allowed: string[] | null): boolean {
