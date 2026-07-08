@@ -1237,13 +1237,16 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setCooler({ level: 1, coolingCapacity: 500, coolerKind: 'air' });
         setMotherboard({ name: '인텔 P55', socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR3', shieldIncrease: 0 });
         setStorage({ type: 'HDD', capacityGb: 60, level: 1, storageKind: 'hdd' });
-        setInventory([
+        const rebirthInventory = [
           { id: 'inv-cpu-1', type: 'cpu', level: 1, manufacturer: 'Intel', ddrGeneration: 'DDR3' },
           { id: 'inv-gpu-1', type: 'gpu', level: 1 },
           { id: 'inv-ram-1', type: 'ram', level: 1, clockMhz: 1333, capacityGb: 1, ddrGeneration: 'DDR3' },
           { id: 'inv-cooler-1', type: 'cooler', level: 1, coolingCapacity: 500, coolerKind: 'air' },
           { id: 'inv-storage-1', type: 'storage', level: 1, storageType: 'HDD', storageKind: 'hdd', capacityGb: 60 }
-        ]);
+        ];
+        // 자동저장·오토시뮬레이터가 참조하는 ref도 함께 초기화해야 스테일 인벤토리가 되살아나지 않음
+        gameStateRef.current.inventory = rebirthInventory;
+        setInventory(rebirthInventory);
         setWorkTaskIndex(0);
         setUnlockedGameIndex(0);
         const dt = OMG.DOWNLOAD_TARGETS[0];
