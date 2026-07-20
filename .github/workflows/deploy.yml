@@ -1,6 +1,6 @@
 name: Deploy
 
-# main 브랜치에 push되면 self-hosted 러너(Orange Pi)에서 자동 배포한다.
+# main 브랜치에 push되면 self-hosted 러너(Oracle Cloud ARM)에서 자동 배포한다.
 # 러너의 임시 체크아웃이 아니라 서버가 실제로 서빙하는 경로에서 동기화·빌드·재시작한다.
 on:
   push:
