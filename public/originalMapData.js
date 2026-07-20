@@ -953,6 +953,50 @@
   }
 
   /**
+   * 사냥 유닛 생존율(uptime) ∈ (0, 1].
+   * 몬스터 반격에 죽어 HUNT_UNIT_RESPAWN_MS 동안 재배치 대기하는 다운타임을 반영한
+   * 정상상태 가동 비율. 반격 없는 몹이면(작업 건물 등) 1.
+   *
+   * autoSimulator 의 사망 모델과 동일하게 계산한다:
+   *   유닛 처치까지 몹 타격수 = ceil(실드/실드피해) + ceil(HP/HP피해)
+   *   실드피해 = max(1, 몹공격 − 몹실드방어),  HP피해 = max(1, 몹공격 − 유닛방어)
+   *   생존시간 = 처치타격수 × 반격주기(ms),  uptime = 생존시간 / (생존시간 + 리스폰시간)
+   *
+   * 주의: 실제 전투 시뮬(autoSimulator)은 유닛 사망/리스폰을 직접 시뮬해 huntActive 로
+   * 반영하므로, 이 계수는 "정상상태 추정"이 필요한 곳(자동 배분 최적화)에서만 곱한다.
+   * 실제 수입 계산에 곱하면 이중 차감된다.
+   */
+  function calcHuntUnitUptime(parts, scaUpgrades, unlockedGameIndex, ramAttackFrames) {
+    const mob = getGameMobSpec(unlockedGameIndex);
+    const mobAtk = getMobAttackPerHit(mob);
+    if (mobAtk <= 0) return 1; // 반격 없는 몹 → 유닛 안 죽음
+
+    const cpu = (parts && parts.cpu) || {};
+    const cooler = (parts && parts.cooler) || {};
+    const mb = (parts && parts.motherboard) || {};
+
+    const unitHp = Math.max(1, 100 * (cpu.level || 1));
+    const unitShield = Math.max(0, mb.shieldIncrease || 0);
+    let unitDefense = (cooler.level || 0) * 3;
+    if (getCpuCoolingRequired(cpu) > (cooler.coolingCapacity || 0)) {
+      unitDefense = Math.max(0, Math.floor(unitDefense * 0.5)); // 과열 시 방어 반감
+    }
+
+    const shieldDmg = Math.max(1, mobAtk - (mob.shieldArmor || 0));
+    const hpDmg = Math.max(1, mobAtk - unitDefense);
+    const shieldHits = unitShield > 0 ? Math.ceil(unitShield / shieldDmg) : 0;
+    const hpHits = Math.ceil(unitHp / hpDmg);
+    const hitsToDie = Math.max(1, shieldHits + hpHits);
+
+    const ramF = ramAttackFrames != null ? ramAttackFrames : calcRamAttackFrames(parts && parts.ram);
+    const intervalMs = Math.max(1, calcIncomeEventIntervalMs(scaUpgrades || {}, ramF));
+    const timeToDieMs = hitsToDie * intervalMs;
+    const respawnMs = Math.max(0, HUNT_UNIT_RESPAWN_MS);
+    if (respawnMs <= 0) return 1;
+    return timeToDieMs / (timeToDieMs + respawnMs);
+  }
+
+  /**
    * 자동 구매·강화 루프 주기(ms). SCA 배속이 높을수록 짧아짐.
    * 구버전 650ms+600ms ≈ 0.8회/초 → 배속3 기준 약 8~12회/초 목표.
    */
@@ -1573,17 +1617,26 @@ function getPartLevel(part) {
     return workMin + workCoin * MINERAL_PER_COIN + hunt;
   }
 
-  /** 작업·사냥 합산 초당 수입이 최대가 되도록 작업 유닛 수 탐색 */
+  /**
+   * 작업·사냥 합산 초당 수입이 최대가 되도록 작업 유닛 수 탐색.
+   * 사냥 수입에는 리스폰 다운타임(uptime<1)을 반영해, 사냥유닛이 반격에 죽는 조합에서
+   * 사냥을 과대평가하지 않도록 한다(작업 건물은 반격이 없어 uptime=1). 실제 전투 시뮬은
+   * 유닛 사망/리스폰을 직접 처리하므로, 이 계수는 배분 결정 시점의 추정에만 곱한다.
+   */
   function calcOptimalWorkUnits(parts, workTaskIndex, unlockedGameIndex, maxUnitsOverride, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading, unitDamage, ramAttackFrames, scaUpgrades) {
     const clear = canClearWorkTask(parts, workTaskIndex, unitDamage, ramAttackFrames, scaUpgrades);
     const maxW = clear.ok ? clear.activeWorkUnits : 0;
     if (maxW <= 0) return 0;
     const dmg = unitDamage != null ? unitDamage : calcUnitDamageForIncome(parts, scaUpgrades);
     const ramF = ramAttackFrames != null ? ramAttackFrames : calcRamAttackFrames(parts && parts.ram);
+    const huntUptime = calcHuntUnitUptime(parts, scaUpgrades, unlockedGameIndex, ramF);
     let bestUnits = 0;
     let bestTotal = -1;
     for (let w = 0; w <= maxW; w++) {
-      const total = calcWorkHuntIncomePerSec(parts, workTaskIndex, unlockedGameIndex, dmg, ramF, scaUpgrades, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, isDownloading, maxUnitsOverride, w);
+      const workMin = calcWorkIncomePerSec(parts, workTaskIndex, dmg, ramF, scaUpgrades, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, w);
+      const workCoin = calcWorkCoinIncomePerSec(parts, workTaskIndex, dmg, ramF, scaUpgrades, mineralMultiplier, rebirthIncomeMult, incomeBonusRate, maxUnitsOverride, w);
+      const hunt = calcHuntIncomePerSec(parts, workTaskIndex, unlockedGameIndex, dmg, ramF, scaUpgrades, incomeBonusRate, isDownloading, maxUnitsOverride, w);
+      const total = workMin + workCoin * MINERAL_PER_COIN + hunt * huntUptime;
       if (total > bestTotal) {
         bestTotal = total;
         bestUnits = w;
@@ -1716,7 +1769,7 @@ function getPartLevel(part) {
     calcWorkMineralPerKillPerUnit, calcWorkCoinPerKillPerUnit,
     calcWorkMineralPerHitPerUnit, calcWorkCoinPerHitPerUnit,
     calcHuntMineralPerKillPerUnit, calcHuntMineralPerHitPerUnit,
-    calcWorkBuildingKillsPerSecond, calcHuntEnemyKillsPerSecond, calcWorkCoinIncomePerSec,
+    calcWorkBuildingKillsPerSecond, calcHuntEnemyKillsPerSecond, calcHuntUnitUptime, calcWorkCoinIncomePerSec,
     calcPartyMineralPerTick, calcPartyPerformanceScore, evaluatePartyTierAccess, canSelectPartyTier,
     getMaxUnlockedPartyTierIndex, resolvePartyHuntingTierIndex, calcOptimalWorkUnits, toDownloadTargetSnapshot,
     getCpuSummonDpsFactor, calcUnitDamageForIncome, calcIncomeDamageMultiplier,

@@ -110,6 +110,18 @@ function omgCoverage(): Record<string, unknown> {
     safe(`calcDownloadSpeedMb.${t}`, () => OMG.calcDownloadSpeedMb({ type: t, capacityGb: 500 }, {}));
     safe(`getStorageDownloadMultiplier.${t}`, () => OMG.getStorageDownloadMultiplier({ type: t, capacityGb: 500 }));
   }
+  // 사냥 유닛 생존율(리스폰 다운타임 반영) — 자동 배분 최적화가 곱하는 계수를 고정
+  const upMid = {
+    cpu: { manufacturer: 'Intel', level: 5, ddrGeneration: 'DDR4' },
+    ram: { level: 9, clockMhz: 3200, capacityGb: 16, ddrGeneration: 'DDR4' },
+    cooler: { level: 4, coolingCapacity: 1500 },
+    motherboard: { socketManufacturer: 'Intel', supportedDdrGeneration: 'DDR4', shieldIncrease: 300 },
+  };
+  const upTank = { ...upMid, cpu: { manufacturer: 'AMD', level: 8, ddrGeneration: 'DDR5' }, motherboard: { ...upMid.motherboard, shieldIncrease: 8000 } };
+  for (let gi = 0; gi < 8; gi++) {
+    safe(`calcHuntUnitUptime.mid.${gi}`, () => OMG.calcHuntUnitUptime(upMid, {}, gi, OMG.calcRamAttackFrames(upMid.ram)));
+    safe(`calcHuntUnitUptime.tank.${gi}`, () => OMG.calcHuntUnitUptime(upTank, {}, gi, OMG.calcRamAttackFrames(upTank.ram)));
+  }
   return out;
 }
 

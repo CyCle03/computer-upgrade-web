@@ -165,6 +165,22 @@
     "calcDownloadSpeedMb.SSD": 100,
     "getStorageDownloadMultiplier.SSD": 4,
     "calcDownloadSpeedMb.NVMe": 25,
-    "getStorageDownloadMultiplier.NVMe": 1
+    "getStorageDownloadMultiplier.NVMe": 1,
+    "calcHuntUnitUptime.mid.0": 0.9989300235394821,
+    "calcHuntUnitUptime.tank.0": 0.9999026347048858,
+    "calcHuntUnitUptime.mid.1": 0.9984721628063313,
+    "calcHuntUnitUptime.tank.1": 0.9996430865871939,
+    "calcHuntUnitUptime.mid.2": 0.9984721628063313,
+    "calcHuntUnitUptime.tank.2": 0.9996430865871939,
+    "calcHuntUnitUptime.mid.3": 0.9834757175669646,
+    "calcHuntUnitUptime.tank.3": 0.9977618320747369,
+    "calcHuntUnitUptime.mid.4": 0.9520130524497337,
+    "calcHuntUnitUptime.tank.4": 0.994770448852375,
+    "calcHuntUnitUptime.mid.5": 0.903250773993808,
+    "calcHuntUnitUptime.tank.5": 0.9895317554199337,
+    "calcHuntUnitUptime.mid.6": 0.8235709244883557,
+    "calcHuntUnitUptime.tank.6": 0.9739203004381389,
+    "calcHuntUnitUptime.mid.7": 0.7000599880023995,
+    "calcHuntUnitUptime.tank.7": 0.938160905324346
   }
 }
