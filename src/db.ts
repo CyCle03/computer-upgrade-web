@@ -17,6 +17,8 @@ function buildPoolConfig(): PoolConfig {
       max: parseInt(process.env.DB_POOL_MAX || '20', 10),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
+      // rejectUnauthorized:false — 매니지드/셀프호스트 PG의 자가서명 인증서를 허용하기 위함.
+      // (사설 네트워크 전제. 공개망 접속이라면 CA 검증으로 강화 필요.)
       ssl: useSsl ? { rejectUnauthorized: false } : undefined,
     };
   }

@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, RequestHandler } from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -37,18 +37,13 @@ app.get('/health', (_req: Request, res: Response) => {
   });
 });
 
-// DB 연결 보장 헬퍼: 미연결 시 재시도 후 실패하면 503 응답.
-async function ensureDb(res: Response): Promise<boolean> {
-  if (isDbReady()) return true;
-  const ok = await testConnection();
-  if (!ok) {
-    res.status(503).json({
-      success: false,
-      message: '데이터베이스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.',
-    });
-    return false;
-  }
-  return true;
+// requireAuth 미들웨어가 채워 넣는 인증된 유저 ID를 담는 요청 타입.
+interface AuthedRequest extends Request {
+  userId: string;
+}
+
+function getUserId(req: Request): string {
+  return (req as AuthedRequest).userId;
 }
 
 // Authorization 헤더에서 Bearer 토큰 추출.
@@ -58,19 +53,28 @@ function extractToken(req: Request): string | null {
   return header.slice('Bearer '.length).trim() || null;
 }
 
+// DB 연결 보장 미들웨어: 미연결 시 재시도 후 실패하면 503.
+const ensureDb: RequestHandler = async (_req, res, next) => {
+  if (isDbReady() || (await testConnection())) return next();
+  res.status(503).json({
+    success: false,
+    message: '데이터베이스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.',
+  });
+};
+
 // 인증 미들웨어: 유효한 토큰이면 req.userId 설정, 아니면 401.
-async function requireAuth(req: Request, res: Response): Promise<string | null> {
+const requireAuth: RequestHandler = async (req, res, next) => {
   const userId = await AuthService.resolveToken(extractToken(req));
   if (!userId) {
     res.status(401).json({ success: false, message: '로그인이 필요합니다.' });
-    return null;
+    return;
   }
-  return userId;
-}
+  (req as AuthedRequest).userId = userId;
+  next();
+};
 
 // 회원가입
-app.post('/api/auth/register', async (req: Request, res: Response) => {
-  if (!(await ensureDb(res))) return;
+app.post('/api/auth/register', ensureDb, async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body ?? {};
     const result = await AuthService.register(username, password);
@@ -85,8 +89,7 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
 });
 
 // 로그인
-app.post('/api/auth/login', async (req: Request, res: Response) => {
-  if (!(await ensureDb(res))) return;
+app.post('/api/auth/login', ensureDb, async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body ?? {};
     const result = await AuthService.login(username, password);
@@ -101,8 +104,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 });
 
 // 로그아웃 (세션 토큰 폐기)
-app.post('/api/auth/logout', async (req: Request, res: Response) => {
-  if (!(await ensureDb(res))) return;
+app.post('/api/auth/logout', ensureDb, async (req: Request, res: Response) => {
   try {
     await AuthService.logout(extractToken(req));
     return res.status(200).json({ success: true });
@@ -113,12 +115,9 @@ app.post('/api/auth/logout', async (req: Request, res: Response) => {
 });
 
 // 계정 진행도 초기화 (닉네임·로그인 유지)
-app.post('/api/account/reset', async (req: Request, res: Response) => {
-  if (!(await ensureDb(res))) return;
-  const userId = await requireAuth(req, res);
-  if (!userId) return;
+app.post('/api/account/reset', ensureDb, requireAuth, async (req: Request, res: Response) => {
   try {
-    await StateService.resetAccount(userId);
+    await StateService.resetAccount(getUserId(req));
     return res.status(200).json({ success: true, message: '계정이 초기화되었습니다.' });
   } catch (error: unknown) {
     console.error('[AccountAPI] reset error:', error);
@@ -127,10 +126,8 @@ app.post('/api/account/reset', async (req: Request, res: Response) => {
 });
 
 // SCA 상점 구매 (서버 잔액 차감·업그레이드 반영)
-app.post('/api/sca/purchase', async (req: Request, res: Response) => {
-  if (!(await ensureDb(res))) return;
-  const userId = await requireAuth(req, res);
-  if (!userId) return;
+app.post('/api/sca/purchase', ensureDb, requireAuth, async (req: Request, res: Response) => {
+  const userId = getUserId(req);
   const { itemId } = (req.body ?? {}) as ScaPurchaseRequest;
   if (!itemId || typeof itemId !== 'string') {
     return res.status(400).json({
@@ -160,10 +157,8 @@ app.post('/api/sca/purchase', async (req: Request, res: Response) => {
 });
 
 // 환생 SCA 지급 (서버 보상 계산)
-app.post('/api/sca/rebirth', async (req: Request, res: Response) => {
-  if (!(await ensureDb(res))) return;
-  const userId = await requireAuth(req, res);
-  if (!userId) return;
+app.post('/api/sca/rebirth', ensureDb, requireAuth, async (req: Request, res: Response) => {
+  const userId = getUserId(req);
   const { parts } = (req.body ?? {}) as ScaRebirthRequest;
   if (!parts || typeof parts !== 'object') {
     return res.status(400).json({
@@ -193,10 +188,8 @@ app.post('/api/sca/rebirth', async (req: Request, res: Response) => {
 });
 
 // 파티 사냥 타이머 시작
-app.post('/api/sca/party/start', async (req: Request, res: Response) => {
-  if (!(await ensureDb(res))) return;
-  const userId = await requireAuth(req, res);
-  if (!userId) return;
+app.post('/api/sca/party/start', ensureDb, requireAuth, async (req: Request, res: Response) => {
+  const userId = getUserId(req);
   const { tierIndex, parts } = (req.body ?? {}) as ScaPartyStartRequest;
   try {
     const result = await ScaIncomeService.startPartyHunting(userId, Number(tierIndex), parts);
@@ -209,10 +202,8 @@ app.post('/api/sca/party/start', async (req: Request, res: Response) => {
 });
 
 // 파티 사냥 SCA 틱 지급
-app.post('/api/sca/party/income', async (req: Request, res: Response) => {
-  if (!(await ensureDb(res))) return;
-  const userId = await requireAuth(req, res);
-  if (!userId) return;
+app.post('/api/sca/party/income', ensureDb, requireAuth, async (req: Request, res: Response) => {
+  const userId = getUserId(req);
   const { tierIndex, tickCount, parts } = (req.body ?? {}) as ScaPartyIncomeRequest;
   try {
     const result = await ScaIncomeService.claimPartyIncome(
@@ -236,12 +227,9 @@ app.post('/api/sca/party/income', async (req: Request, res: Response) => {
 });
 
 // 게임 진행도 조회
-app.get('/api/state', async (req: Request, res: Response) => {
-  if (!(await ensureDb(res))) return;
-  const userId = await requireAuth(req, res);
-  if (!userId) return;
+app.get('/api/state', ensureDb, requireAuth, async (req: Request, res: Response) => {
   try {
-    const state = await StateService.getState(userId);
+    const state = await StateService.getState(getUserId(req));
     return res.status(200).json({ success: true, state });
   } catch (error: unknown) {
     console.error('[StateAPI] get error:', error);
@@ -250,13 +238,10 @@ app.get('/api/state', async (req: Request, res: Response) => {
 });
 
 // 게임 진행도 저장
-app.put('/api/state', async (req: Request, res: Response) => {
-  if (!(await ensureDb(res))) return;
-  const userId = await requireAuth(req, res);
-  if (!userId) return;
+app.put('/api/state', ensureDb, requireAuth, async (req: Request, res: Response) => {
   try {
     const { state } = req.body ?? {};
-    const saved = await StateService.saveState(userId, state);
+    const saved = await StateService.saveState(getUserId(req), state);
     return res.status(200).json({ success: true, state: saved });
   } catch (error: unknown) {
     console.error('[StateAPI] save error:', error);
@@ -264,22 +249,9 @@ app.put('/api/state', async (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/raid/progress', async (req: Request, res: Response) => {
-  if (!(await ensureDb(res))) {
-    return res.status(503).json({
-      success: false,
-      message: '데이터베이스에 연결할 수 없습니다.',
-      highestClaimedFloor: 0,
-      lastPlayedDate: '',
-      todayDate: '',
-    });
-  }
-
-  const userId = await requireAuth(req, res);
-  if (!userId) return;
-
+app.get('/api/raid/progress', ensureDb, requireAuth, async (req: Request, res: Response) => {
   try {
-    const progress = await RewardService.getDailyRaidProgress(userId);
+    const progress = await RewardService.getDailyRaidProgress(getUserId(req));
     return res.status(200).json({ success: true, ...progress });
   } catch (error: unknown) {
     console.error('[RaidAPI] progress error:', error);
@@ -293,20 +265,8 @@ app.get('/api/raid/progress', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/raid/claim', async (req: Request, res: Response) => {
-  if (!(await ensureDb(res))) {
-    return res.status(503).json({
-      success: false,
-      message: '데이터베이스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.',
-      claimedCoins: 0,
-      newHighestFloor: 0,
-      currentTotalCoins: 0,
-    });
-  }
-
-  const userId = await requireAuth(req, res);
-  if (!userId) return;
-
+app.post('/api/raid/claim', ensureDb, requireAuth, async (req: Request, res: Response) => {
+  const userId = getUserId(req);
   const { currentFloor } = req.body as ClaimRewardRequest;
 
   if (currentFloor === undefined || typeof currentFloor !== 'number') {

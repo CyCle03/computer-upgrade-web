@@ -1,22 +1,10 @@
 import { ComputerParts, ComputerSpecs, PenaltyStatus } from './types';
-import path from 'path';
-import fs from 'fs';
+import { loadOmg } from './omgLoader';
 
-// originalMapData.js 동적 로드 보장 함수
-function ensureOriginalMapDataLoaded() {
-  if (!(globalThis as any).OriginalMapGame) {
-    const filePath = path.join(process.cwd(), 'public/originalMapData.js');
-    if (fs.existsSync(filePath)) {
-      const code = fs.readFileSync(filePath, 'utf8');
-      (0, eval)(code);
-      console.log('[HardwareSimulator] Loaded originalMapData.js successfully.');
-    } else {
-      console.error(`[HardwareSimulator] originalMapData.js not found at ${filePath}`);
-    }
-  }
-}
-
-// CPU 레벨별 소환 유닛 DPS 배율(dpsFactor) 매핑
+// CPU 레벨별 소환 유닛 DPS 배율(dpsFactor) 매핑.
+// NOTE: OMG.getCpuSummonDpsFactor 와 레벨 1~10 값은 같지만, 레벨을 10으로 clamp하지 않는다.
+//       (레벨 11 CPU에서 이 함수는 55, OMG는 45를 반환 — 프론트 수입 경로와 레이드 경로의
+//        의도치 않은 밸런스 불일치. 통합하면 밸런스가 바뀌므로 별도 결정 전까지 현행 유지.)
 function getCpuSummonUnitDpsFactor(level: number): number {
   const factors: Record<number, number> = {
     1: 1.0,
@@ -46,11 +34,7 @@ export class HardwareSimulator {
    * @returns 최종 계산된 스펙 및 페널티 상태
    */
   static calculateComputerSpecs(parts: ComputerParts, scaUpgrades?: any): ComputerSpecs {
-    ensureOriginalMapDataLoaded();
-    const OMG = (globalThis as any).OriginalMapGame;
-    if (!OMG) {
-      throw new Error('[HardwareSimulator] OriginalMapGame is not loaded.');
-    }
+    const OMG = loadOmg();
 
     const { cpu, gpu, cooler, motherboard, storage } = parts;
     let ram = parts.ram;

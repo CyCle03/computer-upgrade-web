@@ -1,6 +1,4 @@
-import fs from 'fs';
-import path from 'path';
-import vm from 'vm';
+import { loadOmg } from './omgLoader';
 
 export interface RebirthParts {
   cpu?: { manufacturer?: string; level?: number; ddrGeneration?: string };
@@ -64,13 +62,7 @@ let cached: OmgBalanceApi | null = null;
 /** 클라이언트 originalMapData.js와 동일한 밸런스 로직을 서버에서 재사용 */
 export function getOmgBalance(): OmgBalanceApi {
   if (cached) return cached;
-  const filePath = path.join(__dirname, '..', 'public', 'originalMapData.js');
-  const code = fs.readFileSync(filePath, 'utf8');
-  const sandbox: Record<string, unknown> = {};
-  sandbox.globalThis = sandbox;
-  vm.createContext(sandbox);
-  vm.runInContext(code, sandbox);
-  const omg = sandbox.OriginalMapGame as OmgBalanceApi | undefined;
+  const omg = loadOmg() as unknown as OmgBalanceApi;
   if (!omg?.calcRebirthOutcome || !omg.PARTY_HUNTING_TIERS || !omg.canSelectPartyTier) {
     throw new Error('originalMapData.js OriginalMapGame 로드 실패');
   }

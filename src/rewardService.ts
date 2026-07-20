@@ -1,20 +1,16 @@
 import { pool } from './db';
 import { ClaimRewardResponse } from './types';
+import { loadOmg } from './omgLoader';
+import { StateKey } from './stateKeys';
 
-// 각 마일스톤 도달 시의 누적 보상 도표 (10층 ~ 100층, 차분 지급)
-const RAID_CUMULATIVE_REWARDS: Record<number, number> = {
-  0: 0,
-  10: 1000,
-  20: 3000,
-  30: 6000,
-  40: 10000,
-  50: 15000,
-  60: 22000,
-  70: 30000,
-  80: 40000,
-  90: 55000,
-  100: 80000
-};
+// 각 마일스톤 도달 시의 누적 보상 도표는 originalMapData.js(OMG)를 단일 소스로 사용한다.
+// (프론트·서버 TS·schema.sql 3중 복제를 방지 — schema.sql 사본은 testRewardTable.ts가 드리프트를 감시한다.)
+function getRaidCumulativeRewards(): Record<number, number> {
+  return loadOmg().RAID_CUMULATIVE_REWARDS as Record<number, number>;
+}
+
+// 환생 수치 보상 배율: 10,000,000 당 +100% (schema.sql claim_daily_raid_reward 와 값 일치).
+const REBIRTH_STAT_SCA_DIVISOR = 10_000_000;
 
 /**
  * 일일 마일스톤 보상 검증 및 지급 서비스 클래스
@@ -34,38 +30,53 @@ export interface DailyRaidProgressSnapshot {
 
 export class RewardService {
 
-  /** 오늘(KST) 이미 수령한 마일스톤 최고 층 — 레이드 UI용 (읽기 전용) */
+  /**
+   * 오늘(KST) 이미 수령한 마일스톤 최고 층 — 레이드 UI용 (읽기 전용).
+   * 오늘 날짜와 진행도 행을 한 트랜잭션에서 읽어 둘 사이의 불일치를 방지한다.
+   */
   static async getDailyRaidProgress(userId: string): Promise<DailyRaidProgressSnapshot> {
-    await pool.query(`
-      INSERT INTO daily_raid_progresses (user_id, last_played_date, highest_claimed_floor)
-      VALUES ($1, (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date, 0)
-      ON CONFLICT (user_id) DO NOTHING
-    `, [userId]);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    const dateRes = await pool.query(
-      "SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date::text AS today"
-    );
-    const todayStr = dateRes.rows[0].today as string;
+      await client.query(`
+        INSERT INTO daily_raid_progresses (user_id, last_played_date, highest_claimed_floor)
+        VALUES ($1, (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date, 0)
+        ON CONFLICT (user_id) DO NOTHING
+      `, [userId]);
 
-    const progressRes = await pool.query(`
-      SELECT last_played_date::text AS last_played_date, highest_claimed_floor
-      FROM daily_raid_progresses
-      WHERE user_id = $1
-    `, [userId]);
+      const dateRes = await client.query(
+        "SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date::text AS today"
+      );
+      const todayStr = dateRes.rows[0].today as string;
 
-    const row = progressRes.rows[0];
-    let highestClaimedFloor = Number(row?.highest_claimed_floor) || 0;
-    const lastPlayedDate = (row?.last_played_date as string) || todayStr;
+      const progressRes = await client.query(`
+        SELECT last_played_date::text AS last_played_date, highest_claimed_floor
+        FROM daily_raid_progresses
+        WHERE user_id = $1
+      `, [userId]);
 
-    if (lastPlayedDate !== todayStr) {
-      highestClaimedFloor = 0;
+      await client.query('COMMIT');
+
+      const row = progressRes.rows[0];
+      let highestClaimedFloor = Number(row?.highest_claimed_floor) || 0;
+      const lastPlayedDate = (row?.last_played_date as string) || todayStr;
+
+      if (lastPlayedDate !== todayStr) {
+        highestClaimedFloor = 0;
+      }
+
+      return {
+        highestClaimedFloor,
+        lastPlayedDate,
+        todayDate: todayStr,
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
-
-    return {
-      highestClaimedFloor,
-      lastPlayedDate,
-      todayDate: todayStr,
-    };
   }
 
   /**
@@ -132,9 +143,9 @@ export class RewardService {
         SELECT state FROM game_states WHERE user_id = $1 FOR UPDATE
       `, [userId]);
       const gameState = stateRes.rows[0]?.state ?? {};
-      const walletScaBefore = Number(gameState.sca_scaCoins) || 0;
-      const rebirthStat = Number(gameState.sca_rebirthStat) || 0;
-      const statMult = 1.0 + (rebirthStat / 10000000.0);
+      const walletScaBefore = Number(gameState[StateKey.scaCoins]) || 0;
+      const rebirthStat = Number(gameState[StateKey.rebirthStat]) || 0;
+      const statMult = 1.0 + rebirthStat / REBIRTH_STAT_SCA_DIVISOR;
 
       // 5. [일일 리셋 처리] 날짜가 바뀌었다면 수령 최고 층수를 0으로 리셋하고 날짜 갱신
       if (lastPlayedDateStr !== todayStr) {
@@ -163,7 +174,8 @@ export class RewardService {
       }
 
       // 7. [차분 지급량 계산] 중복 지급 방지
-      const baseReward = (RAID_CUMULATIVE_REWARDS[currentFloor] || 0) - (RAID_CUMULATIVE_REWARDS[highestClaimedFloor] || 0);
+      const rewards = getRaidCumulativeRewards();
+      const baseReward = (rewards[currentFloor] || 0) - (rewards[highestClaimedFloor] || 0);
       const coinsToReward = Math.floor(baseReward * statMult);
 
       const newWalletSca = walletScaBefore + coinsToReward;

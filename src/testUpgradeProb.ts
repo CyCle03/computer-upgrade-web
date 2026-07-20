@@ -1,18 +1,12 @@
 /**
  * 부품별 강화 확률 검증 — 최종 강 prob=0 보정 후 모든 구간 prob > 0
  */
-import fs from 'fs';
-import path from 'path';
-import vm from 'vm';
+import { loadOmg } from './omgLoader';
 
 function loadOMG(): { auditUpgradeProbTable: () => Array<{ label: string; from: number; to: number; prob: number; isFinalStep: boolean }> } {
-  const filePath = path.join(__dirname, '../public/originalMapData.js');
-  const code = fs.readFileSync(filePath, 'utf8');
-  const sandbox: { OriginalMapGame?: unknown } = {};
-  vm.runInNewContext(code, sandbox, { filename: 'originalMapData.js' });
-  const OMG = sandbox.OriginalMapGame as { auditUpgradeProbTable: () => Array<{ label: string; from: number; to: number; prob: number; isFinalStep: boolean }> };
+  const OMG = loadOmg() as { auditUpgradeProbTable?: () => Array<{ label: string; from: number; to: number; prob: number; isFinalStep: boolean }> };
   if (!OMG?.auditUpgradeProbTable) throw new Error('OMG.auditUpgradeProbTable not found');
-  return OMG;
+  return OMG as { auditUpgradeProbTable: () => Array<{ label: string; from: number; to: number; prob: number; isFinalStep: boolean }> };
 }
 
 function runUpgradeProbTests(): boolean {

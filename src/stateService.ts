@@ -1,5 +1,6 @@
 import { pool } from './db';
 import { GameStatePayload } from './types';
+import { StateKey, SERVER_ONLY_STATE_KEYS } from './stateKeys';
 
 /**
  * 계정별 게임 진행도(localStorage 스냅샷)를 PostgreSQL JSONB로 저장/복원하는 서비스.
@@ -33,7 +34,7 @@ export class StateService {
 
     // permanent_currencies가 권위 있는 잔액 소스
     const permSca = Number(currRes.rows[0].sca_coins) || 0;
-    state.sca_scaCoins = String(permSca);
+    state[StateKey.scaCoins] = String(permSca);
     return state;
   }
 
@@ -67,15 +68,7 @@ export class StateService {
           : {};
 
       const merged: GameStatePayload = { ...existing, ...sanitized };
-      const serverOnlyKeys = [
-        'sca_scaCoins',
-        'sca_scaUpgrades',
-        'sca_rebirthStat',
-        'sca_rebirthCount',
-        'sca_partyLastClaimMs',
-        'sca_partyHuntingTier',
-      ] as const;
-      for (const key of serverOnlyKeys) {
+      for (const key of SERVER_ONLY_STATE_KEYS) {
         delete merged[key];
         if (existing[key]) {
           merged[key] = existing[key];

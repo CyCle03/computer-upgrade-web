@@ -1,5 +1,6 @@
 import { PoolClient } from 'pg';
 import { GameStatePayload } from './types';
+import { StateKey } from './stateKeys';
 
 /**
  * game_states.sca_scaCoins + permanent_currencies 동시 갱신.
@@ -30,7 +31,7 @@ export async function applyScaWalletDelta(
   if (next < 0) {
     throw new Error('SCA 잔액이 부족합니다.');
   }
-  state.sca_scaCoins = String(next);
+  state[StateKey.scaCoins] = String(next);
   await client.query(
     `UPDATE game_states
      SET state = $2::jsonb, updated_at = CURRENT_TIMESTAMP

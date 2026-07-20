@@ -1,27 +1,6 @@
 import { ComputerParts, ComputerSpecs } from './types';
 import { HardwareSimulator } from './hardwareSimulator';
-
-/** originalMapData MINING_AMPLIFIER_SPEC 과 동기화 */
-const MINING_POWER_PER_LEVEL = 500;
-const MINING_BASE_SPEED_FRAMES = 24;
-const MINING_MIN_SPEED_FRAMES = 8;
-
-function isMiningAmplifierUnlocked(scaUpgrades?: any): boolean {
-  if (!scaUpgrades) return false;
-  return !!(scaUpgrades.miningAmplifierUnlock || (Number(scaUpgrades.miningAmplifier) || 0) > 0);
-}
-
-function calcMiningPower(scaUpgrades?: any): number {
-  if (!isMiningAmplifierUnlocked(scaUpgrades)) return 0;
-  return (Number(scaUpgrades!.miningAmplifier) || 0) * MINING_POWER_PER_LEVEL;
-}
-
-function calcMiningSpeedMult(scaUpgrades?: any): number {
-  if (!isMiningAmplifierUnlocked(scaUpgrades)) return 1;
-  const lv = Number(scaUpgrades!.miningAmplifierSpeed) || 0;
-  const frames = Math.max(MINING_MIN_SPEED_FRAMES, MINING_BASE_SPEED_FRAMES - lv);
-  return MINING_BASE_SPEED_FRAMES / frames;
-}
+import { calcMiningPower, calcMiningSpeedMult } from './scaUpgrades';
 
 /**
  * 레이드 참여 플레이어 상태 정보
@@ -146,7 +125,7 @@ export class RaidRoomState {
    */
   private getBossMaxHpForFloor(floor: number): number {
     const baseHp = 1000;
-    // 100층 도달 시 약 700억 수준의 보스 HP 설정으로 졸업 유저 합산 스펙만 처치 가능하게 조율
+    // 층당 1.28배 기하급수 성장(1층 1,000 → 100층 약 41조). 졸업 유저 합산 스펙만 처치 가능하게 조율.
     return Math.round(baseHp * Math.pow(1.28, floor - 1));
   }
 

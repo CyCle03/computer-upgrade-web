@@ -1,5 +1,7 @@
 import { pool } from './db';
 import { GameStatePayload } from './types';
+import { StateKey } from './stateKeys';
+import { parseScaUpgrades } from './scaUpgrades';
 
 const REBIRTH_MINERAL_SCA_PER_10 = 500;
 const REBIRTH_MINERAL_CAP = 1_000_000;
@@ -47,17 +49,6 @@ export interface ScaPurchaseResult {
 
 function getShopItem(itemId: string): ScaShopItem | undefined {
   return SCA_SHOP_ITEMS.find((item) => item.id === itemId);
-}
-
-function parseScaUpgrades(state: GameStatePayload): Record<string, unknown> {
-  const defaults: Record<string, unknown> = {};
-  const raw = state.sca_scaUpgrades;
-  if (!raw) return { ...defaults };
-  try {
-    return { ...defaults, ...JSON.parse(raw) };
-  } catch {
-    return { ...defaults };
-  }
 }
 
 function getGpuGradeLevel(scaUpgrades: Record<string, unknown>): number {
@@ -163,12 +154,12 @@ export class ScaShopService {
       const blockReason = canPurchase(item, scaUpgrades);
       if (blockReason) {
         await client.query('ROLLBACK');
-        const wallet = Number(state.sca_scaCoins) || 0;
+        const wallet = Number(state[StateKey.scaCoins]) || 0;
         return { success: false, message: blockReason, scaCoins: wallet, scaUpgrades, cost: 0 };
       }
 
       const cost = getItemCost(item, scaUpgrades);
-      const wallet = Number(state.sca_scaCoins) || 0;
+      const wallet = Number(state[StateKey.scaCoins]) || 0;
       if (wallet < cost) {
         await client.query('ROLLBACK');
         return {
@@ -183,8 +174,8 @@ export class ScaShopService {
       const nextUpgrades = applyPurchase(item, scaUpgrades);
       const nextWallet = wallet - cost;
 
-      state.sca_scaCoins = String(nextWallet);
-      state.sca_scaUpgrades = JSON.stringify(nextUpgrades);
+      state[StateKey.scaCoins] = String(nextWallet);
+      state[StateKey.scaUpgrades] = JSON.stringify(nextUpgrades);
 
       await client.query(
         `UPDATE game_states

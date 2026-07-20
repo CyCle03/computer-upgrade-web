@@ -14,6 +14,7 @@
 import fs from 'fs';
 import path from 'path';
 import { HardwareSimulator } from './hardwareSimulator';
+import { loadOmg } from './omgLoader';
 import { ComputerParts } from './types';
 
 const SNAP_PATH = path.join(__dirname, '__snapshots__', 'balance.snapshot.json');
@@ -86,7 +87,7 @@ const SCENARIOS: Record<string, { parts: ComputerParts; sca?: any }> = {
 
 // --- OMG 순수 getter 커버리지 (시그니처가 확실한 것만, 방어적으로 호출) ------
 function omgCoverage(): Record<string, unknown> {
-  const OMG = (globalThis as any).OriginalMapGame;
+  const OMG = loadOmg();
   const out: Record<string, unknown> = {};
   const safe = (label: string, fn: () => unknown) => {
     try { out[label] = fn(); } catch (e) { out[label] = { __error: String((e as Error).message) }; }
@@ -130,7 +131,6 @@ function buildSnapshot() {
   for (const [name, sc] of Object.entries(SCENARIOS)) {
     specs[name] = HardwareSimulator.calculateComputerSpecs(sc.parts, sc.sca);
   }
-  // calculateComputerSpecs 가 originalMapData.js 를 전역 로드한 뒤 OMG 커버리지 수집
   const omg = omgCoverage();
   return { specs, omg };
 }

@@ -2,6 +2,8 @@ import { pool } from './db';
 import { getOmgBalance, RebirthParts } from './gameBalance';
 import { GameStatePayload } from './types';
 import { applyScaWalletDelta } from './scaWalletService';
+import { StateKey } from './stateKeys';
+import { parseScaUpgrades } from './scaUpgrades';
 
 const PARTY_BASE_TICK_MS = 3000;
 const MAX_PARTY_TICKS_PER_REQUEST = 200;
@@ -21,16 +23,6 @@ export interface ScaPartyIncomeResult {
   scaCoins: number;
   grantedTicks: number;
   grantedSca: number;
-}
-
-function parseScaUpgrades(state: GameStatePayload): Record<string, unknown> {
-  const raw = state.sca_scaUpgrades;
-  if (!raw) return {};
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
 }
 
 function clampGpuLevel(parts: RebirthParts): number {
@@ -118,14 +110,14 @@ export class ScaIncomeService {
       );
       const state: GameStatePayload = { ...(stateRes.rows[0].state as GameStatePayload) };
 
-      const prevRebirthStat = Number(state.sca_rebirthStat) || 0;
-      const prevRebirthCount = Number(state.sca_rebirthCount) || 0;
+      const prevRebirthStat = Number(state[StateKey.rebirthStat]) || 0;
+      const prevRebirthCount = Number(state[StateKey.rebirthCount]) || 0;
       const outcome = omg.calcRebirthOutcome(parts, prevRebirthStat);
       const scaReward = Math.max(0, Math.floor(outcome.scaReward));
 
       const nextWallet = await applyScaWalletDelta(client, userId, state, scaReward);
-      state.sca_rebirthStat = String(outcome.correctedStat);
-      state.sca_rebirthCount = String(prevRebirthCount + 1);
+      state[StateKey.rebirthStat] = String(outcome.correctedStat);
+      state[StateKey.rebirthCount] = String(prevRebirthCount + 1);
 
       await client.query(
         `UPDATE game_states
@@ -201,14 +193,14 @@ export class ScaIncomeService {
           : {};
 
       const scaUpgrades = parseScaUpgrades(state);
-      const rebirthStat = Number(state.sca_rebirthStat) || 0;
+      const rebirthStat = Number(state[StateKey.rebirthStat]) || 0;
       const tierCheck = resolvePartyTierForUser(omg, tierIndex, parts, rebirthStat, scaUpgrades);
       if (!tierCheck.ok) {
         await client.query('ROLLBACK');
         return {
           success: false,
           message: tierCheck.message,
-          scaCoins: Number(state.sca_scaCoins) || 0,
+          scaCoins: Number(state[StateKey.scaCoins]) || 0,
           grantedTicks: 0,
           grantedSca: 0,
         };
@@ -216,12 +208,12 @@ export class ScaIncomeService {
 
       const partyTickMs = omg.calcGameSpeedTickMs(scaUpgrades, PARTY_BASE_TICK_MS);
       const nowMs = Date.now();
-      const lastClaimMs = Number(state.sca_partyLastClaimMs) || nowMs;
+      const lastClaimMs = Number(state[StateKey.partyLastClaimMs]) || nowMs;
       const elapsed = Math.max(0, nowMs - lastClaimMs);
       const allowedTicks = Math.floor(elapsed / partyTickMs);
       const grantedTicks = Math.min(ticksWanted, allowedTicks);
 
-      const walletBefore = Number(state.sca_scaCoins) || 0;
+      const walletBefore = Number(state[StateKey.scaCoins]) || 0;
 
       if (grantedTicks <= 0) {
         await client.query('COMMIT');
@@ -236,8 +228,8 @@ export class ScaIncomeService {
 
       const grantedSca = grantedTicks * tier.scaCoins;
       const nextWallet = await applyScaWalletDelta(client, userId, state, grantedSca);
-      state.sca_partyLastClaimMs = String(lastClaimMs + grantedTicks * partyTickMs);
-      state.sca_partyHuntingTier = String(tierIndex);
+      state[StateKey.partyLastClaimMs] = String(lastClaimMs + grantedTicks * partyTickMs);
+      state[StateKey.partyHuntingTier] = String(tierIndex);
 
       await client.query(
         `UPDATE game_states
@@ -289,14 +281,14 @@ export class ScaIncomeService {
       );
       const state: GameStatePayload = { ...(stateRes.rows[0].state as GameStatePayload) };
       const scaUpgrades = parseScaUpgrades(state);
-      const rebirthStat = Number(state.sca_rebirthStat) || 0;
+      const rebirthStat = Number(state[StateKey.rebirthStat]) || 0;
       const tierCheck = resolvePartyTierForUser(omg, tierIndex, parts, rebirthStat, scaUpgrades);
       if (!tierCheck.ok) {
         await client.query('ROLLBACK');
         return { success: false, message: tierCheck.message };
       }
-      state.sca_partyLastClaimMs = String(Date.now());
-      state.sca_partyHuntingTier = String(tierCheck.effectiveTier);
+      state[StateKey.partyLastClaimMs] = String(Date.now());
+      state[StateKey.partyHuntingTier] = String(tierCheck.effectiveTier);
       await client.query(
         `UPDATE game_states SET state = $2::jsonb, updated_at = CURRENT_TIMESTAMP WHERE user_id = $1`,
         [userId, JSON.stringify(state)]
