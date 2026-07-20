@@ -7,10 +7,17 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "nodemon --watch src -e ts --exec ts-node src/server.ts",
+    "dev:local": "ts-node scripts/devLocal.ts dev",
+    "db:up": "ts-node scripts/devLocal.ts db",
+    "db:down": "ts-node scripts/devLocal.ts down",
+    "seed": "ts-node scripts/seedTestAccount.ts",
     "test": "ts-node src/runTests.ts",
     "test:hardware": "ts-node src/testHardware.ts",
     "test:reward": "ts-node src/testReward.ts",
-    "test:raid": "ts-node src/testRaid.ts"
+    "test:raid": "ts-node src/testRaid.ts",
+    "test:balance": "ts-node src/testBalanceSnapshot.ts",
+    "test:balance:update": "UPDATE_SNAPSHOT=1 ts-node src/testBalanceSnapshot.ts",
+    "health": "bash scripts/check-deploy-health.sh"
   },
   "dependencies": {
     "cors": "^2.8.5",

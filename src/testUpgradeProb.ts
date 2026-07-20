@@ -8,9 +8,9 @@ import vm from 'vm';
 function loadOMG(): { auditUpgradeProbTable: () => Array<{ label: string; from: number; to: number; prob: number; isFinalStep: boolean }> } {
   const filePath = path.join(__dirname, '../public/originalMapData.js');
   const code = fs.readFileSync(filePath, 'utf8');
-  const sandbox: { OMG?: unknown } = {};
+  const sandbox: { OriginalMapGame?: unknown } = {};
   vm.runInNewContext(code, sandbox, { filename: 'originalMapData.js' });
-  const OMG = sandbox.OMG as { auditUpgradeProbTable: () => Array<{ label: string; from: number; to: number; prob: number; isFinalStep: boolean }> };
+  const OMG = sandbox.OriginalMapGame as { auditUpgradeProbTable: () => Array<{ label: string; from: number; to: number; prob: number; isFinalStep: boolean }> };
   if (!OMG?.auditUpgradeProbTable) throw new Error('OMG.auditUpgradeProbTable not found');
   return OMG;
 }

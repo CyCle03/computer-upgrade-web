@@ -1,0 +1,94 @@
+name: Runner Health
+
+# 배포 파이프라인 감시.
+# self-hosted 러너가 offline 이 되면 push 로 트리거된 Deploy 가 '조용히' queued 로
+# 멈춘다(별도 실패 알림 없음). 이 워크플로우는 GitHub-hosted 러너에서 주기적으로
+# 돌며 그 증상(오래 멈춘 배포 run)을 감지해 이슈를 열고 잡을 실패시킨다.
+# → 스케줄 워크플로우 실패 시 GitHub 이 소유자에게 메일을 보낸다.
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # 30분마다
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: runner-health
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STUCK_MIN: '15'          # 이 시간(분) 넘게 queued/in_progress 면 이상으로 판단
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Deploy 파이프라인 상태 점검
+        run: |
+          set -euo pipefail
+
+          runs=$(gh api "repos/$REPO/actions/workflows/deploy.yml/runs?per_page=20")
+          now=$(date -u +%s)
+          threshold=$(( STUCK_MIN * 60 ))
+
+          stuck=$(echo "$runs" | jq -r --argjson now "$now" --argjson th "$threshold" '
+            .workflow_runs[]
+            | select(.status == "queued" or .status == "in_progress")
+            | (($now) - (.created_at | fromdateiso8601)) as $age
+            | select($age > $th)
+            | "\(.status)\t\(($age/60)|floor)분\t\(.html_url)"
+          ' || true)
+
+          if [ -n "$stuck" ]; then
+            {
+              echo "STUCK<<EOF"
+              echo "$stuck"
+              echo "EOF"
+            } >> "$GITHUB_ENV"
+            echo "::error::배포가 ${STUCK_MIN}분 넘게 멈춰 있습니다 (러너 offline 의심)"
+            echo "$stuck"
+            echo "UNHEALTHY=1" >> "$GITHUB_ENV"
+          else
+            echo "✅ 멈춘 배포 없음. 파이프라인 정상."
+            echo "UNHEALTHY=0" >> "$GITHUB_ENV"
+          fi
+
+      - name: 이상 시 이슈 열기/갱신 후 실패
+        if: env.UNHEALTHY == '1'
+        run: |
+          set -euo pipefail
+          title="🚨 배포 파이프라인 정지 감지 (러너 offline 의심)"
+          body=$(cat <<EOF
+          Deploy 워크플로우가 **${STUCK_MIN}분 넘게 진행되지 못하고** 있습니다.
+          self-hosted 러너(\`web-game-server\`)가 offline 일 가능성이 높습니다.
+
+          멈춘 run:
+          \`\`\`
+          ${STUCK}
+          \`\`\`
+
+          **복구:** 러너 인스턴스에서
+          \`\`\`
+          sudo systemctl start actions.runner.CyCle03-computer-upgrade-web.web-game-server.service
+          \`\`\`
+          온라인이 되면 큐에 걸린 배포가 자동 실행됩니다.
+
+          _(runner-health 워크플로우 자동 생성)_
+          EOF
+          )
+
+          existing=$(gh issue list --state open --label deploy-health --json number --jq '.[0].number' || true)
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+            echo "기존 이슈 #$existing 에 코멘트 추가."
+          else
+            gh label create deploy-health --color B60205 --description "배포 파이프라인 이상" 2>/dev/null || true
+            gh issue create --title "$title" --body "$body" --label deploy-health
+          fi
+
+          exit 1
