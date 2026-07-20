@@ -1,26 +1,6 @@
 import { ComputerParts, ComputerSpecs, PenaltyStatus } from './types';
 import { loadOmg } from './omgLoader';
 
-// CPU 레벨별 소환 유닛 DPS 배율(dpsFactor) 매핑.
-// NOTE: OMG.getCpuSummonDpsFactor 와 레벨 1~10 값은 같지만, 레벨을 10으로 clamp하지 않는다.
-//       (레벨 11 CPU에서 이 함수는 55, OMG는 45를 반환 — 프론트 수입 경로와 레이드 경로의
-//        의도치 않은 밸런스 불일치. 통합하면 밸런스가 바뀌므로 별도 결정 전까지 현행 유지.)
-function getCpuSummonUnitDpsFactor(level: number): number {
-  const factors: Record<number, number> = {
-    1: 1.0,
-    2: 1.5,
-    3: 2.2,
-    4: 3.2,
-    5: 4.8,
-    6: 7.2,
-    7: 11.0,
-    8: 16.0,
-    9: 25.0,
-    10: 45.0
-  };
-  return factors[level] || level * 5;
-}
-
 /**
  * 하드웨어 스펙 연산 및 페널티 시뮬레이션 유틸리티 클래스
  */
@@ -92,8 +72,9 @@ export class HardwareSimulator {
 
     // B. 사냥터 배치 가용 유닛 수 (RAM 용량 GB 기반)
     const ramAttackFrames = OMG.calcRamAttackFrames(ram);
-    const gpuAttackPower = OMG.getGpuAttackPower(gpu, scaUpgrades || {});
-    const unitDamage = Math.round(gpuAttackPower * getCpuSummonUnitDpsFactor(cpu.level));
+    // 유닛 데미지(GPU 공격력 × CPU 소환 배율)는 OMG를 단일 소스로 사용 —
+    // 프론트 수입 경로와 동일한 값을 보장한다. (CPU 11강 이상에서 배율은 10강으로 clamp됨.)
+    const unitDamage = OMG.calcUnitDamageForIncome(parts, scaUpgrades || {});
     const _workUnitsForSpecs = 0; // 백엔드 보스 레이드 시점 사냥터 용량 계산을 위함 (기본 0)
     const ramAllocation = OMG.calcRamAllocation(
       parts, 0, unitLimit, _workUnitsForSpecs, scaUpgrades || {}, unitDamage, ramAttackFrames
