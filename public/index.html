@@ -140,6 +140,255 @@
       }
     }
 
+    // ======================================================================
+    // 2D 사냥 전투 씬 (유즈맵풍 비주얼) — 기존 상태값을 읽어 그리기만 함
+    //   props: units(교전 유닛), totalUnits(배치), monsterName, killTimeSec,
+    //          attackSpeedSec, damage, respawning, active, accent
+    //   게임 로직/밸런스는 전혀 건드리지 않는 순수 시각 레이어.
+    // ======================================================================
+    const HUNT_SCENE_ACCENTS = {
+      cyan: { unit: '#22d3ee', edge: '#0e7490', bullet: '#a5f3fc', muzzle: '#ecfeff', glow: 'rgba(34,211,238,0.20)' },
+      emerald: { unit: '#34d399', edge: '#047857', bullet: '#a7f3d0', muzzle: '#ecfdf5', glow: 'rgba(52,211,153,0.20)' },
+    };
+    const HUNT_SCENE_MOBS = ['👾', '🐛', '🦠', '👹', '🤖', '💀', '🐙', '👻', '🎃', '🐉'];
+
+    function HuntScene({ units, totalUnits, monsterName, killTimeSec, attackSpeedSec, damage, respawning, active, accent }) {
+      const canvasRef = useRef(null);
+      const stateRef = useRef(null);
+      const propsRef = useRef({});
+      propsRef.current = { units, totalUnits, monsterName, killTimeSec, attackSpeedSec, damage, respawning, active, accent };
+
+      useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const S = stateRef.current || (stateRef.current = {
+          t: 0, w: 320, h: 150,
+          bullets: [], particles: [], floats: [],
+          monHp: 1, monHitFlash: 0, monShake: 0,
+          dead: false, respawnT: 0, kills: 0, fireAcc: 0,
+        });
+
+        function mobFor(name) {
+          if (!name) return '🏆';
+          let hsum = 0;
+          for (let i = 0; i < name.length; i++) hsum = (hsum + name.charCodeAt(i)) % 997;
+          return HUNT_SCENE_MOBS[hsum % HUNT_SCENE_MOBS.length];
+        }
+
+        function resize() {
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          const w = canvas.clientWidth || 320;
+          const h = canvas.clientHeight || 150;
+          canvas.width = Math.floor(w * dpr);
+          canvas.height = Math.floor(h * dpr);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          S.w = w; S.h = h;
+        }
+        resize();
+        const ro = new ResizeObserver(resize);
+        ro.observe(canvas);
+
+        let raf = 0;
+        let last = performance.now();
+
+        function frame(now) {
+          const dt = Math.min(0.05, (now - last) / 1000);
+          last = now;
+          S.t += dt;
+          const p = propsRef.current;
+          const col = HUNT_SCENE_ACCENTS[p.accent] || HUNT_SCENE_ACCENTS.cyan;
+          const w = S.w, h = S.h;
+
+          const drawnTotal = Math.max(0, Math.min(24, Math.round(p.totalUnits || 0)));
+          const engaged = Math.max(0, Math.min(drawnTotal, Math.round(p.units || 0)));
+          const alive = !!p.active && !!p.monsterName;
+          const killSec = Math.max(0.4, p.killTimeSec || 2);
+          const atkSec = Math.max(0.15, p.attackSpeedSec || 0.5);
+
+          // 몬스터 위치(둥실둥실) — 처치 사이클
+          const monX = w * 0.80;
+          const monY = h * 0.48 + Math.sin(S.t * 1.6) * 4;
+
+          // 유닛 대형 좌표 (좌측)
+          const cols = 4;
+          const rows = Math.max(1, Math.ceil(drawnTotal / cols));
+          const bandL = 14, bandR = w * 0.34;
+          const cellW = (bandR - bandL) / cols;
+          const topY = 20, botY = h - 18;
+          const cellH = rows > 1 ? (botY - topY) / (rows - 1) : 0;
+          function unitPos(i) {
+            const cx = i % cols, cy = Math.floor(i / cols);
+            return {
+              x: bandL + cx * cellW + cellW * 0.4 + Math.sin(S.t * 2 + i) * 1.2,
+              y: topY + cy * cellH + Math.cos(S.t * 1.7 + i) * 1.2,
+            };
+          }
+
+          // --- 업데이트 ---
+          if (alive && !S.dead) {
+            S.monHp -= dt / killSec;
+            // 발사 (교전 유닛 수 / 공격속도)
+            S.fireAcc += (engaged / atkSec) * dt;
+            let guard = 0;
+            while (S.fireAcc >= 1 && guard < 6) {
+              S.fireAcc -= 1; guard++;
+              const src = unitPos(Math.floor(Math.random() * Math.max(1, engaged)));
+              const ang = Math.atan2(monY - src.y, monX - src.x);
+              const spd = 460 + Math.random() * 120;
+              S.bullets.push({ x: src.x + 8, y: src.y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, life: 0.8 });
+            }
+            if (S.monHp <= 0) {
+              S.monHp = 0; S.dead = true; S.respawnT = 0.55; S.kills++;
+              for (let k = 0; k < 20; k++) {
+                const a = Math.random() * Math.PI * 2, s = 40 + Math.random() * 180;
+                S.particles.push({ x: monX, y: monY, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5 + Math.random() * 0.35, r: 1.5 + Math.random() * 2.5 });
+              }
+              S.floats.push({ x: monX, y: monY - 18, txt: '처치!', life: 0.9, col: '#fca5a5' });
+            }
+          } else if (S.dead) {
+            S.respawnT -= dt;
+            if (S.respawnT <= 0) { S.dead = false; S.monHp = 1; }
+          }
+
+          // 총알 이동/피격
+          for (let i = S.bullets.length - 1; i >= 0; i--) {
+            const b = S.bullets[i];
+            b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+            if (!S.dead && b.x >= monX - 10 && Math.abs(b.y - monY) < 16) {
+              S.monHitFlash = 1; S.monShake = 3;
+              for (let k = 0; k < 3; k++) {
+                const a = Math.random() * Math.PI * 2, s = 30 + Math.random() * 60;
+                S.particles.push({ x: monX - 8, y: b.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.25, r: 1 + Math.random() * 1.5 });
+              }
+              S.bullets.splice(i, 1); continue;
+            }
+            if (b.life <= 0 || b.x > w + 20) S.bullets.splice(i, 1);
+          }
+          if (S.bullets.length > 120) S.bullets.splice(0, S.bullets.length - 120);
+          for (let i = S.particles.length - 1; i >= 0; i--) {
+            const pt = S.particles[i];
+            pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.vy += 140 * dt; pt.life -= dt;
+            if (pt.life <= 0) S.particles.splice(i, 1);
+          }
+          for (let i = S.floats.length - 1; i >= 0; i--) {
+            const f = S.floats[i]; f.y -= 24 * dt; f.life -= dt;
+            if (f.life <= 0) S.floats.splice(i, 1);
+          }
+          S.monHitFlash = Math.max(0, S.monHitFlash - dt * 6);
+          S.monShake = Math.max(0, S.monShake - dt * 18);
+
+          // --- 렌더 ---
+          ctx.clearRect(0, 0, w, h);
+          // 배경
+          const bg = ctx.createLinearGradient(0, 0, 0, h);
+          bg.addColorStop(0, '#020617'); bg.addColorStop(1, '#0b1220');
+          ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+          // 바닥 그리드
+          ctx.strokeStyle = 'rgba(148,163,184,0.06)'; ctx.lineWidth = 1;
+          for (let gx = 0; gx <= w; gx += 26) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke(); }
+          ctx.strokeStyle = 'rgba(148,163,184,0.10)';
+          ctx.beginPath(); ctx.moveTo(0, h - 12); ctx.lineTo(w, h - 12); ctx.stroke();
+
+          // 유닛
+          for (let i = 0; i < drawnTotal; i++) {
+            const u = unitPos(i);
+            const on = i < engaged && alive;
+            ctx.save();
+            ctx.translate(u.x, u.y);
+            if (on) { ctx.shadowColor = col.glow; ctx.shadowBlur = 8; }
+            ctx.fillStyle = on ? col.unit : 'rgba(100,116,139,0.5)';
+            ctx.strokeStyle = on ? col.edge : 'rgba(71,85,105,0.6)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(6, 0); ctx.lineTo(-5, -4); ctx.lineTo(-2, 0); ctx.lineTo(-5, 4);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.restore();
+          }
+
+          // 총알
+          ctx.fillStyle = col.bullet;
+          for (const b of S.bullets) {
+            ctx.globalAlpha = Math.max(0.3, Math.min(1, b.life * 2));
+            ctx.beginPath(); ctx.arc(b.x, b.y, 2.2, 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+
+          // 몬스터
+          if (p.monsterName) {
+            const sx = (Math.random() - 0.5) * S.monShake;
+            const mx = monX + sx, my = monY;
+            if (!S.dead) {
+              ctx.save();
+              ctx.font = '30px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+              ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+              if (S.monHitFlash > 0.02) { ctx.shadowColor = '#fecaca'; ctx.shadowBlur = 16 * S.monHitFlash; }
+              ctx.fillText(mobFor(p.monsterName), mx, my);
+              ctx.restore();
+              // HP 바
+              const bw = 54, bh = 6, bx = monX - bw / 2, by = monY - 26;
+              ctx.fillStyle = 'rgba(2,6,23,0.85)'; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+              ctx.fillStyle = 'rgba(148,163,184,0.25)'; ctx.fillRect(bx, by, bw, bh);
+              ctx.fillStyle = '#f43f5e';
+              ctx.fillRect(bx, by, bw * Math.max(0, S.monHp), bh);
+            }
+          } else {
+            ctx.save();
+            ctx.font = '28px "Segoe UI Emoji", sans-serif';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.globalAlpha = 0.5;
+            ctx.fillText('🏆', monX, monY);
+            ctx.restore();
+          }
+
+          // 파티클
+          for (const pt of S.particles) {
+            ctx.globalAlpha = Math.max(0, Math.min(1, pt.life * 2.2));
+            ctx.fillStyle = '#fb923c';
+            ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+
+          // 플로팅 텍스트
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.font = 'bold 12px ui-monospace, monospace';
+          for (const f of S.floats) {
+            ctx.globalAlpha = Math.max(0, Math.min(1, f.life * 1.4));
+            ctx.fillStyle = f.col; ctx.fillText(f.txt, f.x, f.y);
+          }
+          ctx.globalAlpha = 1;
+
+          // HUD 텍스트
+          ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+          ctx.font = '11px ui-monospace, monospace';
+          ctx.fillStyle = 'rgba(226,232,240,0.9)';
+          ctx.fillText((p.monsterName || '대기 중') + '  ⚔ ' + engaged + '/' + drawnTotal + '기', 10, 8);
+          ctx.textAlign = 'right';
+          ctx.fillStyle = 'rgba(148,163,184,0.85)';
+          ctx.fillText('처치 ' + S.kills + (p.respawning > 0 ? ' · 리스폰 ' + p.respawning + '기' : ''), w - 10, 8);
+          if (!alive && p.monsterName) {
+            ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(148,163,184,0.7)';
+            ctx.font = '11px ui-monospace, monospace';
+            ctx.fillText(p.active === false ? '⏸ 사냥 대기' : '⏳', w / 2, h - 26);
+          }
+
+          raf = requestAnimationFrame(frame);
+        }
+        raf = requestAnimationFrame(frame);
+        return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+      }, []);
+
+      return (
+        <canvas
+          ref={canvasRef}
+          className="w-full rounded-md border border-slate-800 bg-slate-950"
+          style={{ height: '150px', display: 'block' }}
+        />
+      );
+    }
+
     function App({ onLogout }) {
       // ----------------------------------------------------------------------
       // 1. 핵심 유저 재화 및 강화 피드백 상태 정의
@@ -2900,6 +3149,17 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <div className="p-4 bg-slate-950/60 rounded border border-cyan-900/40 space-y-3">
                     <span className="text-xs text-cyan-400 font-mono uppercase font-bold">🎮 게임 사냥 (Gaming)</span>
                     <p className="text-xs text-slate-300 font-bold">사냥 중: <strong className="text-cyan-300">{activeGame ? activeGame.name : '—'}</strong> · 해금 {effectiveUnlockedGameIndex + 1}/{OMG.GAME_HUNTING.length}</p>
+                    <HuntScene
+                      units={huntActiveForIncome}
+                      totalUnits={specs.maxHuntingUnits}
+                      monsterName={activeGame ? activeGame.name : null}
+                      killTimeSec={huntKillTimeSec}
+                      attackSpeedSec={specs.attackSpeedSec}
+                      damage={specs.unitDamage}
+                      respawning={huntCombatStatus.huntRespawning}
+                      active={!isDownloading && huntActiveForIncome > 0}
+                      accent="cyan"
+                    />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-36 overflow-y-auto pr-1">
                       {OMG.GAME_HUNTING.map((g) => {
                         const unlocked = g.gameIndex <= effectiveUnlockedGameIndex;
