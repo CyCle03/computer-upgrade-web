@@ -389,6 +389,483 @@
       );
     }
 
+    // 실시간 100층 보스 레이드 오버레이 모달 (App에서 분리 — 순수 프레젠테이션)
+    function RaidModal({ raidState, myId, todayHighestClaimedFloor, rewardMessage, errorMessage, toggleReady, leaveRaidRoom, getRaidBossName, formatRemainingRewardRange }) {
+      return (
+            <div role="dialog" aria-modal="true" aria-label="실시간 100층 보스 등반 레이드" className="fixed inset-0 bg-slate-950/90 flex items-end sm:items-center justify-center p-2 sm:p-4 z-50 backdrop-blur-sm">
+              <div className="bg-slate-950 border border-cyan-500/30 rounded-2xl w-full max-w-4xl p-4 sm:p-6 neon-border-cyan flex flex-col space-y-4 sm:space-y-6 max-h-[92vh] sm:max-h-[90vh] overflow-y-auto min-w-0">
+
+                <div className="flex justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-4">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping shrink-0"></span>
+                    <h2 className="text-sm sm:text-lg font-bold text-cyan-400 uppercase tracking-widest font-mono break-words">실시간 100층 보스 등반 레이드</h2>
+                  </div>
+                  <button
+                    aria-label="레이드 나가기"
+                    onClick={leaveRaidRoom}
+                    className="p-2 hover:bg-slate-900 border border-slate-800 hover:border-rose-500/40 rounded-lg text-slate-400 hover:text-rose-500 transition"
+                  >
+                    <span aria-hidden="true" className="text-sm">❌</span>
+                  </button>
+                </div>
+
+                {errorMessage && (
+                  <div className="p-3.5 bg-rose-950/20 border border-rose-500/50 rounded-lg text-xs font-mono text-rose-400 animate-pulse">
+                    ⚠️ 에러 감지: {errorMessage}
+                  </div>
+                )}
+
+                {rewardMessage && (
+                  <div className="p-4 bg-emerald-950/30 border border-emerald-400/50 rounded-lg text-center text-sm font-bold font-mono text-emerald-400 neon-border-emerald animate-bounce">
+                    🎉 {rewardMessage}
+                  </div>
+                )}
+
+                {raidState && raidState.status === 'waiting' && (
+                  <div className="flex flex-col items-center justify-center py-10 space-y-6">
+                    <p className="text-slate-400 font-mono text-center">
+                      레이드 대기실에 진입했습니다. 버스 방 번호: <strong className="text-cyan-400">carry-room-100</strong><br />
+                      <span className="text-slate-500">보스는 반격하지 않습니다 · 합산 DPS로 층당 30초 내 격파</span><br />
+                      모든 인원이 준비 완료 버튼을 누르면 실시간 100층 시뮬레이션 전투에 돌입합니다.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 w-full">
+                      {raidState.players.map((p) => {
+                        const isMe = p.userId === myId;
+                        return (
+                          <div key={p.userId} className={`p-4 rounded-lg border ${isMe ? 'bg-cyan-950/10 border-cyan-500/40 neon-border-cyan' : 'bg-slate-900/40 border-slate-800'} flex flex-col justify-between items-center text-center space-y-3`}>
+                            <div className="flex flex-col items-center">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isMe ? 'bg-cyan-500/10 text-cyan-400' : 'bg-slate-800 text-slate-400'} border border-slate-700`}>
+                                <span className="text-lg">👤</span>
+                              </div>
+                              <span className="text-xs font-bold text-slate-200 mt-2 truncate max-w-[120px]">{p.nickname} {isMe && '(나)'}</span>
+                              <span className="text-[11px] text-slate-500 font-mono">DPS: {p.dpsContribution.toLocaleString()}</span>
+                            </div>
+
+                            <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded ${p.isReady ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/20' : 'bg-rose-950/40 text-rose-400 border border-rose-500/20'}`}>
+                              {p.isReady ? '준비 완료' : '대기 중'}
+                            </span>
+                          </div>
+                        );
+                      })}
+
+                      {Array.from({ length: 4 - raidState.players.length }).map((_, idx) => (
+                        <div key={idx} className="p-4 bg-slate-950/20 border border-slate-900 border-dashed rounded-lg flex flex-col items-center justify-center text-center text-slate-700 min-h-[120px]">
+                          <span className="text-lg text-slate-700">➕</span>
+                          <span className="text-[11px] font-mono mt-1">대기 중...</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button 
+                      onClick={toggleReady}
+                      className="px-8 py-3.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 transition text-slate-950 font-bold rounded-lg font-mono text-sm shadow-lg shadow-emerald-500/20"
+                    >
+                      {raidState.players.find(p => p.userId === myId)?.isReady ? '준비 취소' : '레이드 준비 완료'}
+                    </button>
+                  </div>
+                )}
+
+                {raidState && (raidState.status === 'fighting' || raidState.status === 'won' || raidState.status === 'lost') && (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    
+                    <div className="lg:col-span-2 flex flex-col space-y-6">
+                      
+                      <div className="bg-slate-950/80 border border-cyan-500/30 p-6 rounded-xl text-center neon-border-cyan flex flex-col items-center justify-center relative overflow-hidden">
+                        <div className="absolute top-2 left-3 text-[11px] font-mono text-cyan-500/40 uppercase">LIVE COMPUTE COMBAT MONITOR</div>
+                        
+                        <div className="text-xs font-mono uppercase tracking-widest text-slate-500">BOSS RAID STAGE</div>
+                        <div className="text-2xl sm:text-4xl font-extrabold text-cyan-300 font-mono tracking-wider mt-1.5">
+                          FLOOR {raidState.currentFloor} <span className="text-base sm:text-lg text-slate-500">/ 100</span>
+                        </div>
+                        <div className="text-xs font-bold text-rose-400 font-mono mt-2 animate-pulse uppercase tracking-wider">
+                          🎯 타겟 보스: {getRaidBossName(raidState.currentFloor)}
+                        </div>
+
+                        {raidState.status === 'won' ? (
+                          <span className="mt-3 text-xs font-bold text-emerald-400 uppercase tracking-widest font-mono border border-emerald-500/30 bg-emerald-950/20 px-3 py-1 rounded">100층 완전 등반 성공</span>
+                        ) : raidState.status === 'lost' ? (
+                          <span className="mt-3 text-xs font-bold text-rose-400 uppercase tracking-widest font-mono border border-rose-500/30 bg-rose-950/20 px-3 py-1 rounded">시간 초과 패배</span>
+                        ) : (
+                          <span className="mt-3 text-xs font-bold text-cyan-400 uppercase tracking-widest font-mono border border-cyan-500/30 bg-cyan-950/20 px-3 py-1 rounded animate-pulse">전투 연산 진행 중</span>
+                        )}
+                      </div>
+
+                      <div className="bg-slate-900/40 border border-slate-800 p-5 rounded-xl space-y-3 flex flex-col">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 text-xs">
+                          <span className="font-bold text-slate-300 uppercase tracking-wider font-mono flex items-center gap-1 shrink-0">
+                            <span className="text-rose-500 text-sm">💀</span>
+                            <span>보스 개체 체력</span>
+                          </span>
+                          <span className="text-rose-400 font-mono font-bold text-[11px] sm:text-xs break-all text-right">
+                            {raidState.bossCurrentHp.toLocaleString()} / {raidState.bossMaxHp.toLocaleString()} ({Math.round((raidState.bossCurrentHp / raidState.bossMaxHp) * 100)}%)
+                          </span>
+                        </div>
+
+                        <div className="w-full bg-slate-950 rounded-full h-5 overflow-hidden border border-slate-800 p-0.5">
+                          <div 
+                            className="bg-rose-500 h-full rounded-full transition-all duration-300 flex justify-end items-center pr-2 relative"
+                            style={{ width: `${(raidState.bossCurrentHp / raidState.bossMaxHp) * 100}%` }}
+                          >
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between items-center text-xs font-mono pt-1 text-slate-500">
+                          <span>남은 타임아웃 제한 시간</span>
+                          <span className={`font-bold ${raidState.timeLeft <= 10 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`}>{raidState.timeLeft} 초</span>
+                        </div>
+                        <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-1000 ${raidState.timeLeft <= 10 ? 'bg-rose-500' : 'bg-slate-600'}`}
+                            style={{ width: `${(raidState.timeLeft / 30) * 100}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col space-y-6">
+                      
+                      <div className="bg-slate-900/40 border border-slate-800 p-5 rounded-xl flex flex-col space-y-4">
+                        <h3 className="text-xs text-slate-400 font-bold uppercase tracking-widest border-b border-slate-800 pb-2 flex items-center space-x-1">
+                          <span className="text-cyan-400 text-sm mr-1">📊</span>
+                          <span>실시간 파티원 기여도</span>
+                        </h3>
+
+                        <div className="space-y-4">
+                          {raidState.players.map((p) => {
+                            const isMe = p.userId === myId;
+                            const share = raidState.totalDps > 0 ? (p.dpsContribution / raidState.totalDps) * 100 : 0;
+                            return (
+                              <div key={p.userId} className="space-y-1">
+                                <div className="flex justify-between text-xs font-mono">
+                                  <span className={`truncate max-w-[140px] ${isMe ? 'text-cyan-300 font-bold' : 'text-slate-300'}`}>
+                                    {p.nickname} {isMe && '(나)'} {p.isDead && '(⚠️사망)'}
+                                  </span>
+                                  <span className="text-slate-500 font-bold">{p.dpsContribution.toLocaleString()} DPS</span>
+                                </div>
+                                
+                                <div className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-slate-900">
+                                  <div 
+                                    className={`h-full rounded-full transition-all duration-300 ${p.isDead ? 'bg-rose-500' : isMe ? 'bg-cyan-400' : 'bg-slate-700'}`}
+                                    style={{ width: `${p.isDead ? 100 : share}%` }}
+                                  ></div>
+                                </div>
+                                <div className="flex justify-between text-[11px] font-mono text-slate-500">
+                                  <span>{p.isDead ? 'DDR에러 유닛 파괴됨' : `지분: ${Math.round(share)}%`}</span>
+                                  {p.currentHp !== undefined && (
+                                    <span>HP: {p.currentHp} / {p.maxHp}</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="pt-3 border-t border-slate-800 flex justify-between items-center text-xs font-mono">
+                          <span className="text-slate-500">파티 합산 누적 DPS:</span>
+                          <span className="text-cyan-400 font-bold">{raidState.totalDps.toLocaleString()}</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-900/40 border border-slate-800 p-5 rounded-xl flex flex-col space-y-3 font-mono">
+                        <h3 className="text-xs text-slate-400 uppercase tracking-widest border-b border-slate-800 pb-2 flex items-center space-x-1">
+                          <span className="text-cyan-300 text-sm mr-1">🏆</span>
+                          <span>오늘 남은 보상 구간</span>
+                        </h3>
+                        <div className="flex flex-col space-y-2 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">수령 가능 마일스톤:</span>
+                            <span className="text-cyan-300 font-bold">10층 ~ 100층 (10층단위)</span>
+                          </div>
+                          <div className="flex justify-between text-sm text-slate-400">
+                            <span>오늘 수령 완료 최고 층:</span>
+                            <span className="text-cyan-300 font-bold">{todayHighestClaimedFloor}층</span>
+                          </div>
+                          <div className="flex justify-between text-sm text-slate-400">
+                            <span>오늘 남은 보상 구간:</span>
+                            <span className="text-emerald-400 font-bold">
+                              {formatRemainingRewardRange(todayHighestClaimedFloor)}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-2 border-t border-slate-900 pt-2 leading-relaxed">
+                            * 100층 완등 시 최대 80,000 SCA 코인 획득 가능 (유저 환생 수치 비례 증폭)
+                            <br />
+                            * 보상은 하루에 단 한 번, 날짜가 바뀌면 수령 완료 최고 층수가 0으로 리셋되며 다시 처음부터 순차로 차분 획득 가능합니다.
+                          </p>
+                        </div>
+                      </div>
+
+                    </div>
+
+                  </div>
+                )}
+
+              </div>
+            </div>
+      );
+    }
+
+    // SettingsModal — App에서 분리한 순수 프레젠테이션 컴포넌트
+    function SettingsModal({ isResettingAccount, setIsSettingsOpen, handleAccountReset }) {
+      return (
+            <div className="fixed inset-0 bg-slate-950/80 flex items-end sm:items-center justify-center p-3 sm:p-4 z-50 backdrop-blur-sm">
+              <div className="bg-slate-950 border border-slate-700 rounded-2xl w-full max-w-md p-4 sm:p-6 flex flex-col space-y-5 shadow-xl max-h-[92vh] overflow-y-auto">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                  <h2 className="text-sm font-bold text-slate-200 uppercase tracking-widest font-mono">⚙️ 설정</h2>
+                  <button
+                    type="button"
+                    onClick={() => !isResettingAccount && setIsSettingsOpen(false)}
+                    disabled={isResettingAccount}
+                    className="p-1.5 hover:bg-slate-900 border border-slate-800 rounded text-slate-400 hover:text-slate-200 disabled:opacity-40"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">계정</h3>
+                  <p className="text-xs text-slate-500 font-mono leading-relaxed">
+                    진행도를 처음부터 다시 시작합니다. SCA·부품·환생·레이드 기록이 모두 삭제되며, 닉네임과 비밀번호는 그대로 유지됩니다.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleAccountReset}
+                    disabled={isResettingAccount}
+                    className="w-full px-4 py-2.5 bg-rose-950/40 border border-rose-500/50 rounded-lg text-sm font-mono text-rose-300 hover:bg-rose-950/60 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isResettingAccount ? '초기화 중...' : '🗑️ 계정 초기화'}
+                  </button>
+                </div>
+              </div>
+            </div>
+      );
+    }
+
+    // OverclockLabModal — App에서 분리한 순수 프레젠테이션 컴포넌트
+    function OverclockLabModal({ overclockData, overclockLabActive, overclockLabHp, overclockLabShield, overclockLabCooldown, overclockLabUnitDps, effectiveOverclockLabLevel, nextOverclockLabLevel, dpsForNextOverclockLab, effectiveUnitLimit, adjustOcParam, attemptOcUpgrade, testOcActivePart, handleAssignOverclockLabUnit, handleRecallOverclockLabUnit }) {
+      return (
+            <section className="mb-4 p-4 border border-emerald-500/20 rounded-xl space-y-3 bg-slate-950/60 font-mono">
+              <div className="flex justify-between items-center border-b border-slate-900 pb-2">
+                <h2 className="text-sm font-bold text-emerald-300 flex items-center gap-1.5">
+                  <span>🧪 오버클럭 연구소</span>
+                  <span className="text-[10px] bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded-full border border-emerald-800/40">
+                    파밍 Lv.{effectiveOverclockLabLevel}
+                  </span>
+                </h2>
+                <span className="text-[10px] text-slate-500">
+                  {dpsForNextOverclockLab != null
+                    ? `Lv.${nextOverclockLabLevel} 필요 1기 DPS ≥ ${dpsForNextOverclockLab.toLocaleString()}`
+                    : '최고 레벨 파밍 중'}
+                </span>
+              </div>
+
+              {/* 현재 해금된 영구 오버클럭 상태 */}
+              <div className="text-[10px] text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
+                <div>DDR4 오버클럭: <strong className={overclockData.ddr4Overclocked ? "text-emerald-400" : "text-slate-500"}>{overclockData.ddr4Overclocked ? "OC-4000 해금됨" : "미해금"}</strong></div>
+                <div>DDR5 오버클럭 단계: <strong className={overclockData.ddr5OverclockedStep > 0 ? "text-emerald-400" : "text-slate-500"}>
+                  {overclockData.ddr5OverclockedStep === 1 ? "OC-6000 해금됨" :
+                   overclockData.ddr5OverclockedStep === 2 ? "OC-7200 해금됨" :
+                   overclockData.ddr5OverclockedStep === 3 ? "OC-8000 해금됨" : "미해금"}
+                </strong></div>
+              </div>
+
+              {/* 원작 맵: 오버클럭 연구소 1~4레벨 건물명 + 내구도 표기 */}
+              <div className="border border-slate-900 rounded-lg overflow-hidden text-[10px] font-mono mobile-table-scroll">
+                <div className="px-2 py-1.5 bg-slate-900/80 text-slate-400 text-[10px]">건물 스펙 (원작: 레벨별 연구소 트리거명)</div>
+                <div className="grid grid-cols-5 gap-px bg-slate-900 text-center mobile-table-inner">
+                  <div className="bg-slate-950 p-1.5 text-slate-500">레벨</div>
+                  <div className="bg-slate-950 p-1.5 text-slate-500">HP</div>
+                  <div className="bg-slate-950 p-1.5 text-slate-500">실드</div>
+                  <div className="bg-slate-950 p-1.5 text-slate-500">방어</div>
+                  <div className="bg-slate-950 p-1.5 text-slate-500">필요 DPS</div>
+                  {[1, 2, 3, 4].map((lv) => {
+                    const b = OMG.OVERCLOCK_LAB_SPECS[lv];
+                    const active = effectiveOverclockLabLevel === lv;
+                    return (
+                      <React.Fragment key={lv}>
+                        <div className={`bg-slate-950 p-1.5 text-left ${active ? 'text-emerald-300 font-bold' : 'text-slate-400'}`}>
+                          Lv.{lv}{active ? ' ◀' : ''}
+                          <span className="block text-[9px] text-slate-600">연구소 {lv}레벨</span>
+                        </div>
+                        <div className={`bg-slate-950 p-1.5 ${active ? 'text-rose-300' : 'text-slate-300'}`}>{b.hp.toLocaleString()}</div>
+                        <div className={`bg-slate-950 p-1.5 ${active ? 'text-cyan-300' : 'text-slate-300'}`}>{b.shield.toLocaleString()}</div>
+                        <div className={`bg-slate-950 p-1.5 ${active ? 'text-amber-300' : 'text-slate-300'}`}>{b.defense}</div>
+                        <div className={`bg-slate-950 p-1.5 ${active ? 'text-cyan-200' : 'text-slate-400'}`}>{b.minDps > 0 ? `≥${b.minDps.toLocaleString()}` : '—'}</div>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+                <p className="px-2 py-1 text-[9px] text-slate-600">파괴 시 OC 파츠 30% · 재생 {OMG.OVERCLOCK_LAB_RESPAWN_SEC}초 · 순DPS = 차출 1기 DPS − 방어력</p>
+              </div>
+
+              {/* 연구소 건물 공격/파괴 패널 */}
+              <div className="border border-slate-900 p-3 rounded-lg bg-slate-950/40 space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-400">연구소 건물 내구도 및 실드</span>
+                  {!overclockLabActive ? (
+                    <span className="text-slate-500 text-[10px] font-bold">⏸️ 유닛 미차출</span>
+                  ) : overclockLabCooldown > 0 ? (
+                    <span className="text-amber-400 text-[10px] font-bold">🔄 건물 재생성 ({overclockLabCooldown}초)</span>
+                  ) : (
+                    <span className="text-emerald-400 text-[10px] font-bold">⚔️ 차출 유닛 1기 공격 중</span>
+                  )}
+                </div>
+
+                {overclockLabActive ? (
+                  <div className="space-y-1.5 pt-1">
+                    {/* Shield Bar */}
+                    <div className="relative h-4 bg-slate-900 rounded overflow-hidden">
+                      <div 
+                        className="h-full bg-cyan-600 transition-all duration-300"
+                        style={{ width: `${Math.max(0, Math.min(100, (overclockLabShield / (OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.shield || 1000000)) * 100))}%` }}
+                      ></div>
+                      <div className="absolute inset-0 flex justify-between items-center px-2 text-[10px] text-white font-bold drop-shadow-md">
+                        <span>Shield</span>
+                        <span>{overclockLabShield.toLocaleString()} / {(OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.shield || 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    {/* HP Bar */}
+                    <div className="relative h-4 bg-slate-900 rounded overflow-hidden">
+                      <div 
+                        className="h-full bg-rose-600 transition-all duration-300"
+                        style={{ width: `${Math.max(0, Math.min(100, (overclockLabHp / (OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.hp || 2000000)) * 100))}%` }}
+                      ></div>
+                      <div className="absolute inset-0 flex justify-between items-center px-2 text-[10px] text-white font-bold drop-shadow-md">
+                        <span>HP</span>
+                        <span>{overclockLabHp.toLocaleString()} / {(OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.hp || 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono">
+                      <span>방어력: {OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.defense}</span>
+                      <span>차출 1기 DPS: <strong className="text-cyan-400">{overclockLabUnitDps.toLocaleString()}</strong></span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRecallOverclockLabUnit}
+                      className="w-full mt-1 py-1 text-[10px] border border-slate-800 rounded text-slate-400 hover:border-rose-500/40 hover:text-rose-300"
+                    >
+                      유닛 복귀 (작업·사냥 풀 +1기)
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-4 bg-slate-950/80 rounded border border-dashed border-slate-900">
+                    <p className="text-[11px] text-slate-500 mb-2 text-center leading-relaxed">
+                      작업·사냥 유닛 <strong className="text-emerald-400">1기</strong>를 차출해 연구소 건물을 공격합니다. (건물 반격 없음)<br />
+                      건물을 파괴하면 오버클럭 조율 파츠를 획득할 수 있습니다. (미네랄 불필요)
+                    </p>
+                    <button 
+                      onClick={handleAssignOverclockLabUnit}
+                      disabled={effectiveUnitLimit < 1}
+                      className="px-3 py-1.5 text-xs bg-emerald-950 border border-emerald-800 rounded hover:bg-emerald-900 text-emerald-300 disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      유닛 1기 차출 · 연구소 공격 시작
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 타이밍 조율 미니게임 패널 */}
+              {overclockData.overclockActivePart ? (
+                <div className="border border-emerald-900/30 p-3 rounded-lg bg-emerald-950/5 space-y-3">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-emerald-400 font-bold">💾 오버클럭 조율 중 파츠: {overclockData.overclockActivePart.generation} OC-{overclockData.overclockActivePart.targetMhz}</span>
+                    <span className="text-slate-500">테스트 시도: {overclockData.overclockActivePart.testCount} / 3</span>
+                  </div>
+
+                  {/* CL, tRCD, tRP, tRAS 가감 컨트롤러 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {['cl', 'trcd', 'trp', 'tras'].map((param) => {
+                      const label = param.toUpperCase();
+                      const currentVal = overclockData.overclockActivePart[param];
+                      return (
+                        <div key={param} className="flex items-center justify-between p-2 bg-slate-950/80 border border-slate-900 rounded text-xs">
+                          <span className="text-slate-400 font-mono">{label}</span>
+                          <div className="flex items-center gap-2">
+                            <button aria-label={`${label} 감소`} onClick={() => adjustOcParam(param, -1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">−</button>
+                            <span className="text-white font-bold w-6 text-center">{currentVal}</span>
+                            <button aria-label={`${label} 증가`} onClick={() => adjustOcParam(param, 1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">+</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* 테스트 로그 결과 및 강화 시도 */}
+                  <div className="space-y-2">
+                    {overclockData.overclockActivePart.testedResults && overclockData.overclockActivePart.testedResults.length > 0 && (
+                      <div className="text-[10px] text-slate-500 bg-slate-950 border border-slate-900 p-2 rounded max-h-24 overflow-y-auto space-y-1">
+                        {overclockData.overclockActivePart.testedResults.map((r, idx) => (
+                          <div key={idx} className="flex justify-between font-mono">
+                            <span>Test {idx + 1} ({r.clVal}, {r.trcdVal}, {r.trpVal}, {r.trasVal}):</span>
+                            <span>
+                              CL: <strong className={r.cl === '최적' ? 'text-emerald-400' : r.cl === '높음' ? 'text-amber-400' : 'text-rose-400'}>{r.cl}</strong> · 
+                              tRCD: <strong className={r.trcd === '최적' ? 'text-emerald-400' : r.trcd === '높음' ? 'text-amber-400' : 'text-rose-400'}>{r.trcd}</strong> · 
+                              tRP: <strong className={r.trp === '최적' ? 'text-emerald-400' : r.trp === '높음' ? 'text-amber-400' : 'text-rose-400'}>{r.trp}</strong> · 
+                              tRAS: <strong className={r.tras === '최적' ? 'text-emerald-400' : r.tras === '높음' ? 'text-amber-400' : 'text-rose-400'}>{r.tras}</strong>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={testOcActivePart}
+                        disabled={overclockData.overclockActivePart.testCount >= 3}
+                        className="flex-1 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded hover:border-emerald-500/40 text-emerald-400 disabled:opacity-40 disabled:pointer-events-none"
+                      >
+                        테스트 진행 ({3 - overclockData.overclockActivePart.testCount}회 남음)
+                      </button>
+                      <button 
+                        onClick={attemptOcUpgrade}
+                        className="flex-1 py-1.5 text-xs bg-emerald-950 border border-emerald-800/80 rounded hover:bg-emerald-900 text-emerald-300 font-bold"
+                      >
+                        오버클럭 강화 (10% 확률)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-4 bg-slate-950/30 rounded border border-dashed border-slate-900 text-center text-slate-500 text-[11px]">
+                  작업·사냥 유닛 1기 차출 공격. 차출 DPS가 높을수록 더 높은 Lv. 연구소를 자동 파밍합니다. (드랍률 30%, 미네랄·레벨업 불필요)
+                </div>
+              )}
+            </section>
+      );
+    }
+
+    // ScaCenterModal — App에서 분리한 순수 프레젠테이션 컴포넌트
+    function ScaCenterModal({ scaUpgrades, gameSpeedFrames, gameSpeedMult, ramAttackFrames, renderScaShopButton }) {
+      return (
+            <section className="mb-4 p-3 sm:p-4 border border-cyan-500/20 rounded-xl space-y-3 min-w-0">
+              <p className="text-xs font-mono text-cyan-300/80 break-words">다음 환생 시작 미네랄: <strong>{OMG.calcRebirthStartMinerals(scaUpgrades).toLocaleString()}원</strong> (상한 {OMG.REBIRTH_MINERAL_CAP.toLocaleString()}원) · 환생 미네랄 <strong>+10원 = {OMG.REBIRTH_MINERAL_SCA_PER_10} SCA</strong> 고정</p>
+              <p className="text-xs font-mono text-cyan-300/70 break-words">게임 배속 {gameSpeedFrames}프레임 (x{gameSpeedMult.toFixed(2)}) · RAM 공속 {ramAttackFrames}f · 다운로드 x{OMG.calcDownloadSpeedBonus(scaUpgrades).toFixed(1)} · {OMG.isMiningAmplifierUnlocked(scaUpgrades) ? `채굴력 ${OMG.getMiningPower(scaUpgrades).toLocaleString()} · ${OMG.getMiningAttackFrames(scaUpgrades)}f` : '채굴증폭기 미구축'}</p>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-[11px] font-bold text-slate-400 font-mono mb-2 uppercase tracking-wider">환생 미네랄</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {OMG.SCA_SHOP_ITEMS.filter((item) => item.mineralBonus).map(renderScaShopButton)}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold text-slate-400 font-mono mb-2 uppercase tracking-wider">영구 업그레이드</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {OMG.SCA_SHOP_ITEMS.filter((item) => !item.mineralBonus && item.shopGroup !== 'mining').map(renderScaShopButton)}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold text-amber-400/90 font-mono mb-2 uppercase tracking-wider">레이드 · 채굴증폭기</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {OMG.SCA_SHOP_ITEMS.filter((item) => item.shopGroup === 'mining').map(renderScaShopButton)}
+                  </div>
+                </div>
+              </div>
+            </section>
+      );
+    }
+
     function App({ onLogout }) {
       // ----------------------------------------------------------------------
       // 1. 핵심 유저 재화 및 강화 피드백 상태 정의
@@ -2360,222 +2837,33 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             </button>
           </div>
           {showScaCenter && (
-            <section className="mb-4 p-3 sm:p-4 border border-cyan-500/20 rounded-xl space-y-3 min-w-0">
-              <p className="text-xs font-mono text-cyan-300/80 break-words">다음 환생 시작 미네랄: <strong>{OMG.calcRebirthStartMinerals(scaUpgrades).toLocaleString()}원</strong> (상한 {OMG.REBIRTH_MINERAL_CAP.toLocaleString()}원) · 환생 미네랄 <strong>+10원 = {OMG.REBIRTH_MINERAL_SCA_PER_10} SCA</strong> 고정</p>
-              <p className="text-xs font-mono text-cyan-300/70 break-words">게임 배속 {gameSpeedFrames}프레임 (x{gameSpeedMult.toFixed(2)}) · RAM 공속 {ramAttackFrames}f · 다운로드 x{OMG.calcDownloadSpeedBonus(scaUpgrades).toFixed(1)} · {OMG.isMiningAmplifierUnlocked(scaUpgrades) ? `채굴력 ${OMG.getMiningPower(scaUpgrades).toLocaleString()} · ${OMG.getMiningAttackFrames(scaUpgrades)}f` : '채굴증폭기 미구축'}</p>
-              <div className="space-y-3">
-                <div>
-                  <p className="text-[11px] font-bold text-slate-400 font-mono mb-2 uppercase tracking-wider">환생 미네랄</p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    {OMG.SCA_SHOP_ITEMS.filter((item) => item.mineralBonus).map(renderScaShopButton)}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[11px] font-bold text-slate-400 font-mono mb-2 uppercase tracking-wider">영구 업그레이드</p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    {OMG.SCA_SHOP_ITEMS.filter((item) => !item.mineralBonus && item.shopGroup !== 'mining').map(renderScaShopButton)}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[11px] font-bold text-amber-400/90 font-mono mb-2 uppercase tracking-wider">레이드 · 채굴증폭기</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {OMG.SCA_SHOP_ITEMS.filter((item) => item.shopGroup === 'mining').map(renderScaShopButton)}
-                  </div>
-                </div>
-              </div>
-            </section>
+            <ScaCenterModal
+              scaUpgrades={scaUpgrades}
+              gameSpeedFrames={gameSpeedFrames}
+              gameSpeedMult={gameSpeedMult}
+              ramAttackFrames={ramAttackFrames}
+              renderScaShopButton={renderScaShopButton}
+            />
           )}
 
           {showOverclockLab && (
-            <section className="mb-4 p-4 border border-emerald-500/20 rounded-xl space-y-3 bg-slate-950/60 font-mono">
-              <div className="flex justify-between items-center border-b border-slate-900 pb-2">
-                <h2 className="text-sm font-bold text-emerald-300 flex items-center gap-1.5">
-                  <span>🧪 오버클럭 연구소</span>
-                  <span className="text-[10px] bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded-full border border-emerald-800/40">
-                    파밍 Lv.{effectiveOverclockLabLevel}
-                  </span>
-                </h2>
-                <span className="text-[10px] text-slate-500">
-                  {dpsForNextOverclockLab != null
-                    ? `Lv.${nextOverclockLabLevel} 필요 1기 DPS ≥ ${dpsForNextOverclockLab.toLocaleString()}`
-                    : '최고 레벨 파밍 중'}
-                </span>
-              </div>
-
-              {/* 현재 해금된 영구 오버클럭 상태 */}
-              <div className="text-[10px] text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
-                <div>DDR4 오버클럭: <strong className={overclockData.ddr4Overclocked ? "text-emerald-400" : "text-slate-500"}>{overclockData.ddr4Overclocked ? "OC-4000 해금됨" : "미해금"}</strong></div>
-                <div>DDR5 오버클럭 단계: <strong className={overclockData.ddr5OverclockedStep > 0 ? "text-emerald-400" : "text-slate-500"}>
-                  {overclockData.ddr5OverclockedStep === 1 ? "OC-6000 해금됨" :
-                   overclockData.ddr5OverclockedStep === 2 ? "OC-7200 해금됨" :
-                   overclockData.ddr5OverclockedStep === 3 ? "OC-8000 해금됨" : "미해금"}
-                </strong></div>
-              </div>
-
-              {/* 원작 맵: 오버클럭 연구소 1~4레벨 건물명 + 내구도 표기 */}
-              <div className="border border-slate-900 rounded-lg overflow-hidden text-[10px] font-mono mobile-table-scroll">
-                <div className="px-2 py-1.5 bg-slate-900/80 text-slate-400 text-[10px]">건물 스펙 (원작: 레벨별 연구소 트리거명)</div>
-                <div className="grid grid-cols-5 gap-px bg-slate-900 text-center mobile-table-inner">
-                  <div className="bg-slate-950 p-1.5 text-slate-500">레벨</div>
-                  <div className="bg-slate-950 p-1.5 text-slate-500">HP</div>
-                  <div className="bg-slate-950 p-1.5 text-slate-500">실드</div>
-                  <div className="bg-slate-950 p-1.5 text-slate-500">방어</div>
-                  <div className="bg-slate-950 p-1.5 text-slate-500">필요 DPS</div>
-                  {[1, 2, 3, 4].map((lv) => {
-                    const b = OMG.OVERCLOCK_LAB_SPECS[lv];
-                    const active = effectiveOverclockLabLevel === lv;
-                    return (
-                      <React.Fragment key={lv}>
-                        <div className={`bg-slate-950 p-1.5 text-left ${active ? 'text-emerald-300 font-bold' : 'text-slate-400'}`}>
-                          Lv.{lv}{active ? ' ◀' : ''}
-                          <span className="block text-[9px] text-slate-600">연구소 {lv}레벨</span>
-                        </div>
-                        <div className={`bg-slate-950 p-1.5 ${active ? 'text-rose-300' : 'text-slate-300'}`}>{b.hp.toLocaleString()}</div>
-                        <div className={`bg-slate-950 p-1.5 ${active ? 'text-cyan-300' : 'text-slate-300'}`}>{b.shield.toLocaleString()}</div>
-                        <div className={`bg-slate-950 p-1.5 ${active ? 'text-amber-300' : 'text-slate-300'}`}>{b.defense}</div>
-                        <div className={`bg-slate-950 p-1.5 ${active ? 'text-cyan-200' : 'text-slate-400'}`}>{b.minDps > 0 ? `≥${b.minDps.toLocaleString()}` : '—'}</div>
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
-                <p className="px-2 py-1 text-[9px] text-slate-600">파괴 시 OC 파츠 30% · 재생 {OMG.OVERCLOCK_LAB_RESPAWN_SEC}초 · 순DPS = 차출 1기 DPS − 방어력</p>
-              </div>
-
-              {/* 연구소 건물 공격/파괴 패널 */}
-              <div className="border border-slate-900 p-3 rounded-lg bg-slate-950/40 space-y-2">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-400">연구소 건물 내구도 및 실드</span>
-                  {!overclockLabActive ? (
-                    <span className="text-slate-500 text-[10px] font-bold">⏸️ 유닛 미차출</span>
-                  ) : overclockLabCooldown > 0 ? (
-                    <span className="text-amber-400 text-[10px] font-bold">🔄 건물 재생성 ({overclockLabCooldown}초)</span>
-                  ) : (
-                    <span className="text-emerald-400 text-[10px] font-bold">⚔️ 차출 유닛 1기 공격 중</span>
-                  )}
-                </div>
-
-                {overclockLabActive ? (
-                  <div className="space-y-1.5 pt-1">
-                    {/* Shield Bar */}
-                    <div className="relative h-4 bg-slate-900 rounded overflow-hidden">
-                      <div 
-                        className="h-full bg-cyan-600 transition-all duration-300"
-                        style={{ width: `${Math.max(0, Math.min(100, (overclockLabShield / (OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.shield || 1000000)) * 100))}%` }}
-                      ></div>
-                      <div className="absolute inset-0 flex justify-between items-center px-2 text-[10px] text-white font-bold drop-shadow-md">
-                        <span>Shield</span>
-                        <span>{overclockLabShield.toLocaleString()} / {(OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.shield || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
-
-                    {/* HP Bar */}
-                    <div className="relative h-4 bg-slate-900 rounded overflow-hidden">
-                      <div 
-                        className="h-full bg-rose-600 transition-all duration-300"
-                        style={{ width: `${Math.max(0, Math.min(100, (overclockLabHp / (OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.hp || 2000000)) * 100))}%` }}
-                      ></div>
-                      <div className="absolute inset-0 flex justify-between items-center px-2 text-[10px] text-white font-bold drop-shadow-md">
-                        <span>HP</span>
-                        <span>{overclockLabHp.toLocaleString()} / {(OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.hp || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono">
-                      <span>방어력: {OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.defense}</span>
-                      <span>차출 1기 DPS: <strong className="text-cyan-400">{overclockLabUnitDps.toLocaleString()}</strong></span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleRecallOverclockLabUnit}
-                      className="w-full mt-1 py-1 text-[10px] border border-slate-800 rounded text-slate-400 hover:border-rose-500/40 hover:text-rose-300"
-                    >
-                      유닛 복귀 (작업·사냥 풀 +1기)
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-4 bg-slate-950/80 rounded border border-dashed border-slate-900">
-                    <p className="text-[11px] text-slate-500 mb-2 text-center leading-relaxed">
-                      작업·사냥 유닛 <strong className="text-emerald-400">1기</strong>를 차출해 연구소 건물을 공격합니다. (건물 반격 없음)<br />
-                      건물을 파괴하면 오버클럭 조율 파츠를 획득할 수 있습니다. (미네랄 불필요)
-                    </p>
-                    <button 
-                      onClick={handleAssignOverclockLabUnit}
-                      disabled={effectiveUnitLimit < 1}
-                      className="px-3 py-1.5 text-xs bg-emerald-950 border border-emerald-800 rounded hover:bg-emerald-900 text-emerald-300 disabled:opacity-40 disabled:pointer-events-none"
-                    >
-                      유닛 1기 차출 · 연구소 공격 시작
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* 타이밍 조율 미니게임 패널 */}
-              {overclockData.overclockActivePart ? (
-                <div className="border border-emerald-900/30 p-3 rounded-lg bg-emerald-950/5 space-y-3">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-emerald-400 font-bold">💾 오버클럭 조율 중 파츠: {overclockData.overclockActivePart.generation} OC-{overclockData.overclockActivePart.targetMhz}</span>
-                    <span className="text-slate-500">테스트 시도: {overclockData.overclockActivePart.testCount} / 3</span>
-                  </div>
-
-                  {/* CL, tRCD, tRP, tRAS 가감 컨트롤러 */}
-                  <div className="grid grid-cols-2 gap-3">
-                    {['cl', 'trcd', 'trp', 'tras'].map((param) => {
-                      const label = param.toUpperCase();
-                      const currentVal = overclockData.overclockActivePart[param];
-                      return (
-                        <div key={param} className="flex items-center justify-between p-2 bg-slate-950/80 border border-slate-900 rounded text-xs">
-                          <span className="text-slate-400 font-mono">{label}</span>
-                          <div className="flex items-center gap-2">
-                            <button aria-label={`${label} 감소`} onClick={() => adjustOcParam(param, -1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">−</button>
-                            <span className="text-white font-bold w-6 text-center">{currentVal}</span>
-                            <button aria-label={`${label} 증가`} onClick={() => adjustOcParam(param, 1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">+</button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* 테스트 로그 결과 및 강화 시도 */}
-                  <div className="space-y-2">
-                    {overclockData.overclockActivePart.testedResults && overclockData.overclockActivePart.testedResults.length > 0 && (
-                      <div className="text-[10px] text-slate-500 bg-slate-950 border border-slate-900 p-2 rounded max-h-24 overflow-y-auto space-y-1">
-                        {overclockData.overclockActivePart.testedResults.map((r, idx) => (
-                          <div key={idx} className="flex justify-between font-mono">
-                            <span>Test {idx + 1} ({r.clVal}, {r.trcdVal}, {r.trpVal}, {r.trasVal}):</span>
-                            <span>
-                              CL: <strong className={r.cl === '최적' ? 'text-emerald-400' : r.cl === '높음' ? 'text-amber-400' : 'text-rose-400'}>{r.cl}</strong> · 
-                              tRCD: <strong className={r.trcd === '최적' ? 'text-emerald-400' : r.trcd === '높음' ? 'text-amber-400' : 'text-rose-400'}>{r.trcd}</strong> · 
-                              tRP: <strong className={r.trp === '최적' ? 'text-emerald-400' : r.trp === '높음' ? 'text-amber-400' : 'text-rose-400'}>{r.trp}</strong> · 
-                              tRAS: <strong className={r.tras === '최적' ? 'text-emerald-400' : r.tras === '높음' ? 'text-amber-400' : 'text-rose-400'}>{r.tras}</strong>
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={testOcActivePart}
-                        disabled={overclockData.overclockActivePart.testCount >= 3}
-                        className="flex-1 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded hover:border-emerald-500/40 text-emerald-400 disabled:opacity-40 disabled:pointer-events-none"
-                      >
-                        테스트 진행 ({3 - overclockData.overclockActivePart.testCount}회 남음)
-                      </button>
-                      <button 
-                        onClick={attemptOcUpgrade}
-                        className="flex-1 py-1.5 text-xs bg-emerald-950 border border-emerald-800/80 rounded hover:bg-emerald-900 text-emerald-300 font-bold"
-                      >
-                        오버클럭 강화 (10% 확률)
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="py-4 bg-slate-950/30 rounded border border-dashed border-slate-900 text-center text-slate-500 text-[11px]">
-                  작업·사냥 유닛 1기 차출 공격. 차출 DPS가 높을수록 더 높은 Lv. 연구소를 자동 파밍합니다. (드랍률 30%, 미네랄·레벨업 불필요)
-                </div>
-              )}
-            </section>
+            <OverclockLabModal
+              overclockData={overclockData}
+              overclockLabActive={overclockLabActive}
+              overclockLabHp={overclockLabHp}
+              overclockLabShield={overclockLabShield}
+              overclockLabCooldown={overclockLabCooldown}
+              overclockLabUnitDps={overclockLabUnitDps}
+              effectiveOverclockLabLevel={effectiveOverclockLabLevel}
+              nextOverclockLabLevel={nextOverclockLabLevel}
+              dpsForNextOverclockLab={dpsForNextOverclockLab}
+              effectiveUnitLimit={effectiveUnitLimit}
+              adjustOcParam={adjustOcParam}
+              attemptOcUpgrade={attemptOcUpgrade}
+              testOcActivePart={testOcActivePart}
+              handleAssignOverclockLabUnit={handleAssignOverclockLabUnit}
+              handleRecallOverclockLabUnit={handleRecallOverclockLabUnit}
+            />
           )}
 
           {upgradeMessage && (
@@ -3283,252 +3571,28 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           {/* 레이드 오버레이 모달 */}
           {/* ================================================================== */}
           {isRaidOpen && (
-            <div role="dialog" aria-modal="true" aria-label="실시간 100층 보스 등반 레이드" className="fixed inset-0 bg-slate-950/90 flex items-end sm:items-center justify-center p-2 sm:p-4 z-50 backdrop-blur-sm">
-              <div className="bg-slate-950 border border-cyan-500/30 rounded-2xl w-full max-w-4xl p-4 sm:p-6 neon-border-cyan flex flex-col space-y-4 sm:space-y-6 max-h-[92vh] sm:max-h-[90vh] overflow-y-auto min-w-0">
-
-                <div className="flex justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-4">
-                  <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping shrink-0"></span>
-                    <h2 className="text-sm sm:text-lg font-bold text-cyan-400 uppercase tracking-widest font-mono break-words">실시간 100층 보스 등반 레이드</h2>
-                  </div>
-                  <button
-                    aria-label="레이드 나가기"
-                    onClick={leaveRaidRoom}
-                    className="p-2 hover:bg-slate-900 border border-slate-800 hover:border-rose-500/40 rounded-lg text-slate-400 hover:text-rose-500 transition"
-                  >
-                    <span aria-hidden="true" className="text-sm">❌</span>
-                  </button>
-                </div>
-
-                {errorMessage && (
-                  <div className="p-3.5 bg-rose-950/20 border border-rose-500/50 rounded-lg text-xs font-mono text-rose-400 animate-pulse">
-                    ⚠️ 에러 감지: {errorMessage}
-                  </div>
-                )}
-
-                {rewardMessage && (
-                  <div className="p-4 bg-emerald-950/30 border border-emerald-400/50 rounded-lg text-center text-sm font-bold font-mono text-emerald-400 neon-border-emerald animate-bounce">
-                    🎉 {rewardMessage}
-                  </div>
-                )}
-
-                {raidState && raidState.status === 'waiting' && (
-                  <div className="flex flex-col items-center justify-center py-10 space-y-6">
-                    <p className="text-slate-400 font-mono text-center">
-                      레이드 대기실에 진입했습니다. 버스 방 번호: <strong className="text-cyan-400">carry-room-100</strong><br />
-                      <span className="text-slate-500">보스는 반격하지 않습니다 · 합산 DPS로 층당 30초 내 격파</span><br />
-                      모든 인원이 준비 완료 버튼을 누르면 실시간 100층 시뮬레이션 전투에 돌입합니다.
-                    </p>
-
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 w-full">
-                      {raidState.players.map((p) => {
-                        const isMe = p.userId === myId;
-                        return (
-                          <div key={p.userId} className={`p-4 rounded-lg border ${isMe ? 'bg-cyan-950/10 border-cyan-500/40 neon-border-cyan' : 'bg-slate-900/40 border-slate-800'} flex flex-col justify-between items-center text-center space-y-3`}>
-                            <div className="flex flex-col items-center">
-                              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isMe ? 'bg-cyan-500/10 text-cyan-400' : 'bg-slate-800 text-slate-400'} border border-slate-700`}>
-                                <span className="text-lg">👤</span>
-                              </div>
-                              <span className="text-xs font-bold text-slate-200 mt-2 truncate max-w-[120px]">{p.nickname} {isMe && '(나)'}</span>
-                              <span className="text-[11px] text-slate-500 font-mono">DPS: {p.dpsContribution.toLocaleString()}</span>
-                            </div>
-
-                            <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded ${p.isReady ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/20' : 'bg-rose-950/40 text-rose-400 border border-rose-500/20'}`}>
-                              {p.isReady ? '준비 완료' : '대기 중'}
-                            </span>
-                          </div>
-                        );
-                      })}
-
-                      {Array.from({ length: 4 - raidState.players.length }).map((_, idx) => (
-                        <div key={idx} className="p-4 bg-slate-950/20 border border-slate-900 border-dashed rounded-lg flex flex-col items-center justify-center text-center text-slate-700 min-h-[120px]">
-                          <span className="text-lg text-slate-700">➕</span>
-                          <span className="text-[11px] font-mono mt-1">대기 중...</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    <button 
-                      onClick={toggleReady}
-                      className="px-8 py-3.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 transition text-slate-950 font-bold rounded-lg font-mono text-sm shadow-lg shadow-emerald-500/20"
-                    >
-                      {raidState.players.find(p => p.userId === myId)?.isReady ? '준비 취소' : '레이드 준비 완료'}
-                    </button>
-                  </div>
-                )}
-
-                {raidState && (raidState.status === 'fighting' || raidState.status === 'won' || raidState.status === 'lost') && (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    
-                    <div className="lg:col-span-2 flex flex-col space-y-6">
-                      
-                      <div className="bg-slate-950/80 border border-cyan-500/30 p-6 rounded-xl text-center neon-border-cyan flex flex-col items-center justify-center relative overflow-hidden">
-                        <div className="absolute top-2 left-3 text-[11px] font-mono text-cyan-500/40 uppercase">LIVE COMPUTE COMBAT MONITOR</div>
-                        
-                        <div className="text-xs font-mono uppercase tracking-widest text-slate-500">BOSS RAID STAGE</div>
-                        <div className="text-2xl sm:text-4xl font-extrabold text-cyan-300 font-mono tracking-wider mt-1.5">
-                          FLOOR {raidState.currentFloor} <span className="text-base sm:text-lg text-slate-500">/ 100</span>
-                        </div>
-                        <div className="text-xs font-bold text-rose-400 font-mono mt-2 animate-pulse uppercase tracking-wider">
-                          🎯 타겟 보스: {getRaidBossName(raidState.currentFloor)}
-                        </div>
-
-                        {raidState.status === 'won' ? (
-                          <span className="mt-3 text-xs font-bold text-emerald-400 uppercase tracking-widest font-mono border border-emerald-500/30 bg-emerald-950/20 px-3 py-1 rounded">100층 완전 등반 성공</span>
-                        ) : raidState.status === 'lost' ? (
-                          <span className="mt-3 text-xs font-bold text-rose-400 uppercase tracking-widest font-mono border border-rose-500/30 bg-rose-950/20 px-3 py-1 rounded">시간 초과 패배</span>
-                        ) : (
-                          <span className="mt-3 text-xs font-bold text-cyan-400 uppercase tracking-widest font-mono border border-cyan-500/30 bg-cyan-950/20 px-3 py-1 rounded animate-pulse">전투 연산 진행 중</span>
-                        )}
-                      </div>
-
-                      <div className="bg-slate-900/40 border border-slate-800 p-5 rounded-xl space-y-3 flex flex-col">
-                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 text-xs">
-                          <span className="font-bold text-slate-300 uppercase tracking-wider font-mono flex items-center gap-1 shrink-0">
-                            <span className="text-rose-500 text-sm">💀</span>
-                            <span>보스 개체 체력</span>
-                          </span>
-                          <span className="text-rose-400 font-mono font-bold text-[11px] sm:text-xs break-all text-right">
-                            {raidState.bossCurrentHp.toLocaleString()} / {raidState.bossMaxHp.toLocaleString()} ({Math.round((raidState.bossCurrentHp / raidState.bossMaxHp) * 100)}%)
-                          </span>
-                        </div>
-
-                        <div className="w-full bg-slate-950 rounded-full h-5 overflow-hidden border border-slate-800 p-0.5">
-                          <div 
-                            className="bg-rose-500 h-full rounded-full transition-all duration-300 flex justify-end items-center pr-2 relative"
-                            style={{ width: `${(raidState.bossCurrentHp / raidState.bossMaxHp) * 100}%` }}
-                          >
-                          </div>
-                        </div>
-
-                        <div className="flex justify-between items-center text-xs font-mono pt-1 text-slate-500">
-                          <span>남은 타임아웃 제한 시간</span>
-                          <span className={`font-bold ${raidState.timeLeft <= 10 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`}>{raidState.timeLeft} 초</span>
-                        </div>
-                        <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-1000 ${raidState.timeLeft <= 10 ? 'bg-rose-500' : 'bg-slate-600'}`}
-                            style={{ width: `${(raidState.timeLeft / 30) * 100}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col space-y-6">
-                      
-                      <div className="bg-slate-900/40 border border-slate-800 p-5 rounded-xl flex flex-col space-y-4">
-                        <h3 className="text-xs text-slate-400 font-bold uppercase tracking-widest border-b border-slate-800 pb-2 flex items-center space-x-1">
-                          <span className="text-cyan-400 text-sm mr-1">📊</span>
-                          <span>실시간 파티원 기여도</span>
-                        </h3>
-
-                        <div className="space-y-4">
-                          {raidState.players.map((p) => {
-                            const isMe = p.userId === myId;
-                            const share = raidState.totalDps > 0 ? (p.dpsContribution / raidState.totalDps) * 100 : 0;
-                            return (
-                              <div key={p.userId} className="space-y-1">
-                                <div className="flex justify-between text-xs font-mono">
-                                  <span className={`truncate max-w-[140px] ${isMe ? 'text-cyan-300 font-bold' : 'text-slate-300'}`}>
-                                    {p.nickname} {isMe && '(나)'} {p.isDead && '(⚠️사망)'}
-                                  </span>
-                                  <span className="text-slate-500 font-bold">{p.dpsContribution.toLocaleString()} DPS</span>
-                                </div>
-                                
-                                <div className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-slate-900">
-                                  <div 
-                                    className={`h-full rounded-full transition-all duration-300 ${p.isDead ? 'bg-rose-500' : isMe ? 'bg-cyan-400' : 'bg-slate-700'}`}
-                                    style={{ width: `${p.isDead ? 100 : share}%` }}
-                                  ></div>
-                                </div>
-                                <div className="flex justify-between text-[11px] font-mono text-slate-500">
-                                  <span>{p.isDead ? 'DDR에러 유닛 파괴됨' : `지분: ${Math.round(share)}%`}</span>
-                                  {p.currentHp !== undefined && (
-                                    <span>HP: {p.currentHp} / {p.maxHp}</span>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        <div className="pt-3 border-t border-slate-800 flex justify-between items-center text-xs font-mono">
-                          <span className="text-slate-500">파티 합산 누적 DPS:</span>
-                          <span className="text-cyan-400 font-bold">{raidState.totalDps.toLocaleString()}</span>
-                        </div>
-                      </div>
-
-                      <div className="bg-slate-900/40 border border-slate-800 p-5 rounded-xl flex flex-col space-y-3 font-mono">
-                        <h3 className="text-xs text-slate-400 uppercase tracking-widest border-b border-slate-800 pb-2 flex items-center space-x-1">
-                          <span className="text-cyan-300 text-sm mr-1">🏆</span>
-                          <span>오늘 남은 보상 구간</span>
-                        </h3>
-                        <div className="flex flex-col space-y-2 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-slate-500">수령 가능 마일스톤:</span>
-                            <span className="text-cyan-300 font-bold">10층 ~ 100층 (10층단위)</span>
-                          </div>
-                          <div className="flex justify-between text-sm text-slate-400">
-                            <span>오늘 수령 완료 최고 층:</span>
-                            <span className="text-cyan-300 font-bold">{todayHighestClaimedFloor}층</span>
-                          </div>
-                          <div className="flex justify-between text-sm text-slate-400">
-                            <span>오늘 남은 보상 구간:</span>
-                            <span className="text-emerald-400 font-bold">
-                              {formatRemainingRewardRange(todayHighestClaimedFloor)}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500 mt-2 border-t border-slate-900 pt-2 leading-relaxed">
-                            * 100층 완등 시 최대 80,000 SCA 코인 획득 가능 (유저 환생 수치 비례 증폭)
-                            <br />
-                            * 보상은 하루에 단 한 번, 날짜가 바뀌면 수령 완료 최고 층수가 0으로 리셋되며 다시 처음부터 순차로 차분 획득 가능합니다.
-                          </p>
-                        </div>
-                      </div>
-
-                    </div>
-
-                  </div>
-                )}
-
-              </div>
-            </div>
+            <RaidModal
+              raidState={raidState}
+              myId={myId}
+              todayHighestClaimedFloor={todayHighestClaimedFloor}
+              rewardMessage={rewardMessage}
+              errorMessage={errorMessage}
+              toggleReady={toggleReady}
+              leaveRaidRoom={leaveRaidRoom}
+              getRaidBossName={getRaidBossName}
+              formatRemainingRewardRange={formatRemainingRewardRange}
+            />
           )}
 
           {/* ================================================================== */}
           {/* 설정 모달 */}
           {/* ================================================================== */}
           {isSettingsOpen && (
-            <div className="fixed inset-0 bg-slate-950/80 flex items-end sm:items-center justify-center p-3 sm:p-4 z-50 backdrop-blur-sm">
-              <div className="bg-slate-950 border border-slate-700 rounded-2xl w-full max-w-md p-4 sm:p-6 flex flex-col space-y-5 shadow-xl max-h-[92vh] overflow-y-auto">
-                <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-                  <h2 className="text-sm font-bold text-slate-200 uppercase tracking-widest font-mono">⚙️ 설정</h2>
-                  <button
-                    type="button"
-                    onClick={() => !isResettingAccount && setIsSettingsOpen(false)}
-                    disabled={isResettingAccount}
-                    className="p-1.5 hover:bg-slate-900 border border-slate-800 rounded text-slate-400 hover:text-slate-200 disabled:opacity-40"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">계정</h3>
-                  <p className="text-xs text-slate-500 font-mono leading-relaxed">
-                    진행도를 처음부터 다시 시작합니다. SCA·부품·환생·레이드 기록이 모두 삭제되며, 닉네임과 비밀번호는 그대로 유지됩니다.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleAccountReset}
-                    disabled={isResettingAccount}
-                    className="w-full px-4 py-2.5 bg-rose-950/40 border border-rose-500/50 rounded-lg text-sm font-mono text-rose-300 hover:bg-rose-950/60 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isResettingAccount ? '초기화 중...' : '🗑️ 계정 초기화'}
-                  </button>
-                </div>
-              </div>
-            </div>
+            <SettingsModal
+              isResettingAccount={isResettingAccount}
+              setIsSettingsOpen={setIsSettingsOpen}
+              handleAccountReset={handleAccountReset}
+            />
           )}
 
         </div>
