@@ -15,6 +15,7 @@
     "test:hardware": "ts-node src/testHardware.ts",
     "test:reward": "ts-node src/testReward.ts",
     "test:raid": "ts-node src/testRaid.ts",
+    "test:raidcombat": "ts-node src/testRaidCombat.ts",
     "test:balance": "ts-node src/testBalanceSnapshot.ts",
     "test:balance:update": "UPDATE_SNAPSHOT=1 ts-node src/testBalanceSnapshot.ts",
     "jsxcheck": "node scripts/jsxcheck.js",

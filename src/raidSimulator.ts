@@ -1,6 +1,7 @@
 import { ComputerParts, ComputerSpecs } from './types';
 import { HardwareSimulator } from './hardwareSimulator';
 import { calcMiningPower, calcMiningSpeedMult } from './scaUpgrades';
+import * as RaidCombat from './raidCombat';
 
 /**
  * 레이드 참여 플레이어 상태 정보
@@ -120,29 +121,14 @@ export class RaidRoomState {
     return true;
   }
 
-  /**
-   * 보스 HP 공식 (1층 1000부터 시작하여 기하급수 성장)
-   */
+  /** 보스 HP 공식 — 순수 로직은 raidCombat 에 위임 */
   private getBossMaxHpForFloor(floor: number): number {
-    const baseHp = 1000;
-    // 층당 1.28배 기하급수 성장(1층 1,000 → 100층 약 41조). 졸업 유저 합산 스펙만 처치 가능하게 조율.
-    return Math.round(baseHp * Math.pow(1.28, floor - 1));
+    return RaidCombat.getBossMaxHpForFloor(floor);
   }
 
-  /**
-   * 개별 플레이어의 정상 DPS 연산 (보스전 한정 채굴증폭기 보너스 가산)
-   */
+  /** 개별 플레이어 DPS — 순수 로직은 raidCombat 에 위임(채굴증폭기 배율 포함) */
   private calculatePlayerDps(player: RaidPlayer): number {
-    if (player.isDead) return 0;
-    
-    const { unitDamage, attackSpeedSec, unitLimit } = player.specs;
-    // 기본 DPS = (1초 / 공격주기) * 데미지 * 유닛수
-    const shotsPerSec = 1 / attackSpeedSec;
-    const baseDps = Math.round(shotsPerSec * unitDamage * unitLimit);
-    
-    const ampMult = player.miningPower > 0 ? 1 + (player.miningPower / 10000) : 1;
-    const speedMult = player.miningSpeedMult || 1;
-    return Math.round(baseDps * ampMult * speedMult);
+    return RaidCombat.calculatePlayerDps(player);
   }
 
   /**
@@ -215,7 +201,7 @@ export class RaidRoomState {
       if (player.isDead) continue;
 
       if (player.specs.penalties.isDdrMismatched) {
-        const decayAmount = player.specs.unitHp * player.specs.penalties.hpDecayRate;
+        const decayAmount = RaidCombat.hpDecayAmount(player.specs.unitHp, player.specs.penalties.hpDecayRate);
         player.currentHp = Math.max(0, player.currentHp - decayAmount);
 
         // 체력이 다하면 유닛 사망 처리 및 DPS 0으로 즉시 강하
@@ -230,42 +216,28 @@ export class RaidRoomState {
     // 3. 합산 DPS 재계산
     this.recalculateTotalDps();
     
-    // 4. 연쇄 관통(Overkill Multi-Floor Clear) 로직
-    // 한 틱에 DPS 잔여 데미지로 하위 보스들을 연속으로 격파
-    let damageRemaining = this.totalDps;
-    const milestoneFloors: number[] = [];
+    // 4. 연쇄 관통(Overkill Multi-Floor Clear) — 순수 규칙은 raidCombat.resolveOverkill 에 위임
+    const overkill = RaidCombat.resolveOverkill({
+      totalDps: this.totalDps,
+      currentFloor: this.currentFloor,
+      bossCurrentHp: this.bossCurrentHp,
+      bossMaxHp: this.bossMaxHp,
+    });
+    this.currentFloor = overkill.floor;
+    this.bossMaxHp = overkill.bossMaxHp;
+    this.bossCurrentHp = overkill.bossCurrentHp;
 
-    while (damageRemaining > 0 && this.status === 'fighting') {
-      const damageApplied = Math.min(this.bossCurrentHp, damageRemaining);
-      this.bossCurrentHp -= damageApplied;
-      damageRemaining -= damageApplied;
-
-      if (this.bossCurrentHp <= 0) {
-        const clearedFloor = this.currentFloor;
-
-        // 10층 단위 돌파 — 틱 종료 후 순차 지급 (동시 claim 레이스 방지)
-        if (clearedFloor % 10 === 0) {
-          milestoneFloors.push(clearedFloor);
-        }
-
-        if (clearedFloor >= 100) {
-          // 100층 최종 등반 승리
-          this.status = 'won';
-          this.stopTimer();
-          this.onBroadcast(this.getSummaryState('축하합니다! 100층 보스 레이드 등반에 최종 성공하셨습니다.'));
-          this.scheduleReset();
-          return;
-        } else {
-          // 다음 층 자동 진입 및 새로운 보스 HP 충전
-          this.initFloor(clearedFloor + 1);
-        }
-      } else {
-        // 보스가 생존한 경우 잔여 공격력 소진
-        damageRemaining = 0;
-      }
+    if (overkill.won) {
+      // 100층 최종 등반 승리 — 원본과 동일하게 승리 틱의 마일스톤 보상은 지급하지 않고 즉시 종료
+      this.status = 'won';
+      this.stopTimer();
+      this.onBroadcast(this.getSummaryState('축하합니다! 100층 보스 레이드 등반에 최종 성공하셨습니다.'));
+      this.scheduleReset();
+      return;
     }
 
-    for (const floor of milestoneFloors) {
+    // 10층 단위 돌파 보상 순차 지급 (동시 claim 레이스 방지)
+    for (const floor of overkill.milestoneFloors) {
       console.log(`[Raid] ${floor}층 마일스톤 돌파 완료. 보상 지급 시작.`);
       for (const player of this.players.values()) {
         try {
