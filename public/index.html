@@ -2091,13 +2091,10 @@
         }
 
         apiRef.current = { playBurst };
-        // TEMP(검증용): 배포 후 시각 확인을 위한 데모 트리거 — 검증 뒤 제거
-        window.__upgradeFxDemo = playBurst;
 
         return () => {
           if (S.raf) cancelAnimationFrame(S.raf);
           apiRef.current = null;
-          if (window.__upgradeFxDemo === playBurst) delete window.__upgradeFxDemo;
         };
       }, []);
 
