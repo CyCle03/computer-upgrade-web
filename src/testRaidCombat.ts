@@ -37,16 +37,16 @@ check('100층 = round(1000*1.14^99)', getBossMaxHpForFloor(100) === Math.round(1
 console.log('\n[calculatePlayerDps]');
 const mkPlayer = (over: any = {}) => ({
   isDead: false,
-  perfScore: 1000,
+  perfScore: 100000,
   miningPower: 0,
   ...over,
 });
-// DPS = perfScore + miningPower × 75(RAID_MINING_DPS_MULT)
-check('하드웨어만(perf 1000, 채굴 0) → 1000', calculatePlayerDps(mkPlayer()) === 1000, String(calculatePlayerDps(mkPlayer())));
+// DPS = perfScore × 0.011(하드웨어 축소) + miningPower × 75(채굴 핵심)
+check('하드웨어만(perf 100000, 채굴 0) → 1100', calculatePlayerDps(mkPlayer()) === 1100, String(calculatePlayerDps(mkPlayer())));
 check('사망 시 0', calculatePlayerDps(mkPlayer({ isDead: true })) === 0);
-check('채굴력 1000 → 1000 + 1000×75 = 76000', calculatePlayerDps(mkPlayer({ miningPower: 1000 })) === 76000, String(calculatePlayerDps(mkPlayer({ miningPower: 1000 }))));
-check('perf 5000 + 채굴력 200 → 5000 + 15000 = 20000', calculatePlayerDps(mkPlayer({ perfScore: 5000, miningPower: 200 })) === 20000);
-check('채굴력 0 → 성능수치만(1000)', calculatePlayerDps(mkPlayer({ miningPower: 0 })) === 1000);
+check('채굴력 1000 → 1100 + 1000×75 = 76100', calculatePlayerDps(mkPlayer({ miningPower: 1000 })) === 76100, String(calculatePlayerDps(mkPlayer({ miningPower: 1000 }))));
+check('perf 200000 + 채굴력 200 → 2200 + 15000 = 17200', calculatePlayerDps(mkPlayer({ perfScore: 200000, miningPower: 200 })) === 17200);
+check('채굴력 0 → 하드웨어만(1100)', calculatePlayerDps(mkPlayer({ miningPower: 0 })) === 1100);
 
 // --- HP Decay 산식 ---------------------------------------------------------
 console.log('\n[hpDecayAmount]');

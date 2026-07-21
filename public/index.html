@@ -1307,7 +1307,7 @@
                         <span className="text-slate-500">⚔️ 레이드 예상 DPS:</span>
                         <span className="text-cyan-300 font-bold font-mono text-right">
                           {OMG.calcRaidPlayerDps(_perf, _mine).toLocaleString()}
-                          <span className="block text-[9px] text-slate-500 font-normal">하드웨어(성능수치) {_perf.toLocaleString()} + 채굴봇 {_mine.toLocaleString()}×75</span>
+                          <span className="block text-[9px] text-slate-500 font-normal">채굴봇 {OMG.calcRaidPlayerDps(0, _mine).toLocaleString()} + 하드웨어 {OMG.calcRaidPlayerDps(_perf, 0).toLocaleString()}(성능수치 {_perf.toLocaleString()})</span>
                         </span>
                       </div>
                     );

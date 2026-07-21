@@ -1752,12 +1752,13 @@ function getPartLevel(part) {
     return MINING_AMPLIFIER_SPEC.baseSpeedFrames / Math.max(1, frames);
   }
 
-  // 레이드 플레이어 DPS 표시용 = 일반 하드웨어(성능수치) + 채굴봇(채굴력 × 배율).
-  // ⚠️ RAID_MINING_DPS_MULT 는 src/raidCombat.ts 의 RAID_MINING_DPS_MULT 와 반드시 일치해야 한다
+  // 레이드 플레이어 DPS 표시용 = 일반 하드웨어(성능수치×축소) + 채굴봇(채굴력 × 배율).
+  // ⚠️ RAID_MINING_DPS_MULT / RAID_HARDWARE_DPS_MULT 는 src/raidCombat.ts 값과 반드시 일치해야 한다
   //   (레이드 DPS 실제 계산은 서버 raidCombat 권위 — 여기 함수는 프론트 예상치 표시 전용).
   const RAID_MINING_DPS_MULT = 75;
+  const RAID_HARDWARE_DPS_MULT = 0.011;
   function calcRaidPlayerDps(perfScore, miningPower) {
-    return Math.round(Math.max(0, perfScore || 0) + Math.max(0, miningPower || 0) * RAID_MINING_DPS_MULT);
+    return Math.round(Math.max(0, perfScore || 0) * RAID_HARDWARE_DPS_MULT + Math.max(0, miningPower || 0) * RAID_MINING_DPS_MULT);
   }
 
   const RAID_CUMULATIVE_REWARDS = {

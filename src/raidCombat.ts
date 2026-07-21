@@ -16,6 +16,8 @@ export const RAID_BOSS_BASE_HP = 1000;
 export const RAID_BOSS_HP_GROWTH = 1.14;
 // 레이드 채굴봇 DPS 배율 — 채굴력이 레이드의 핵심 스케일. 맥스 채굴(19.5만)×75 ≈ 1,463만.
 export const RAID_MINING_DPS_MULT = 75;
+// 일반 하드웨어(성능수치) → 레이드 DPS 축소 배율. 하드웨어만으론 ~25층까지만, 나머지는 채굴력이 담당.
+export const RAID_HARDWARE_DPS_MULT = 0.011;
 
 /**
  * 보스 HP 공식 — 1층 1,000부터 층당 1.28배 기하급수 성장.
@@ -39,7 +41,7 @@ export interface DpsInput {
  */
 export function calculatePlayerDps(player: DpsInput): number {
   if (player.isDead) return 0;
-  const hardwareDps = Math.max(0, player.perfScore || 0);
+  const hardwareDps = Math.max(0, player.perfScore || 0) * RAID_HARDWARE_DPS_MULT;
   const miningDps = Math.max(0, player.miningPower || 0) * RAID_MINING_DPS_MULT;
   return Math.round(hardwareDps + miningDps);
 }
