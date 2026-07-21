@@ -389,6 +389,264 @@
       );
     }
 
+    // ======================================================================
+    // 2D 작업 씬 (유즈맵풍 비주얼) — 작업 유닛이 작업 건물을 두들겨 조립/완성.
+    //   작업 건물은 반격하지 않음(유닛 사망 없음). 돌아가는 톱니(기계 작동감)로 사냥 씬과 차별화.
+    //   props: units(교전), totalUnits(배치), taskName, cycleTimeSec, attackSpeedSec,
+    //          respawning, active, accent — 게임 로직/밸런스는 건드리지 않는 순수 시각 레이어.
+    // ======================================================================
+    function WorkScene({ units, totalUnits, taskName, cycleTimeSec, attackSpeedSec, respawning, active, accent }) {
+      const canvasRef = useRef(null);
+      const stateRef = useRef(null);
+      const propsRef = useRef({});
+      propsRef.current = { units, totalUnits, taskName, cycleTimeSec, attackSpeedSec, respawning, active, accent };
+
+      useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const S = stateRef.current || (stateRef.current = {
+          t: 0, w: 320, h: 150,
+          bolts: [], particles: [], floats: [],
+          prog: 0, hitFlash: 0, shake: 0, done: false, doneT: 0, cycles: 0, fireAcc: 0, gear: 0,
+        });
+
+        function resize() {
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          const w = canvas.clientWidth || 320;
+          const h = canvas.clientHeight || 150;
+          canvas.width = Math.floor(w * dpr);
+          canvas.height = Math.floor(h * dpr);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          S.w = w; S.h = h;
+        }
+        resize();
+        const ro = new ResizeObserver(resize);
+        ro.observe(canvas);
+
+        function roundRect(x, y, ww, hh, r) {
+          ctx.beginPath();
+          ctx.moveTo(x + r, y);
+          ctx.arcTo(x + ww, y, x + ww, y + hh, r);
+          ctx.arcTo(x + ww, y + hh, x, y + hh, r);
+          ctx.arcTo(x, y + hh, x, y, r);
+          ctx.arcTo(x, y, x + ww, y, r);
+          ctx.closePath();
+        }
+
+        function gear(cx, cy, R, teeth, ang, fill, stroke) {
+          const inner = R * 0.72;
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(ang);
+          ctx.beginPath();
+          const steps = teeth * 2;
+          for (let i = 0; i <= steps; i++) {
+            const a = (i / steps) * Math.PI * 2;
+            const rr = (i % 2 === 0) ? R : inner;
+            const x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.closePath();
+          ctx.fillStyle = fill; ctx.fill();
+          ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke();
+          ctx.beginPath(); ctx.arc(0, 0, R * 0.30, 0, Math.PI * 2);
+          ctx.fillStyle = '#020617'; ctx.fill(); ctx.stroke();
+          ctx.restore();
+        }
+
+        let raf = 0;
+        let last = performance.now();
+
+        function frame(now) {
+          const dt = Math.min(0.05, (now - last) / 1000);
+          last = now;
+          S.t += dt;
+          const p = propsRef.current;
+          const col = HUNT_SCENE_ACCENTS[p.accent] || HUNT_SCENE_ACCENTS.emerald;
+          const w = S.w, h = S.h;
+
+          const drawnTotal = Math.max(0, Math.min(24, Math.round(p.totalUnits || 0)));
+          const engaged = Math.max(0, Math.min(drawnTotal, Math.round(p.units || 0)));
+          const working = !!p.active && !!p.taskName && engaged > 0;
+          const cycleSec = Math.max(0.4, p.cycleTimeSec || 2);
+          const atkSec = Math.max(0.15, p.attackSpeedSec || 0.5);
+
+          const bx = w * 0.80;
+          const by = h * 0.50;
+
+          const cols = 4;
+          const rows = Math.max(1, Math.ceil(drawnTotal / cols));
+          const bandL = 14, bandR = w * 0.34;
+          const cellW = (bandR - bandL) / cols;
+          const topY = 20, botY = h - 18;
+          const cellH = rows > 1 ? (botY - topY) / (rows - 1) : 0;
+          function unitPos(i) {
+            const cx = i % cols, cy = Math.floor(i / cols);
+            return {
+              x: bandL + cx * cellW + cellW * 0.4 + Math.sin(S.t * 2 + i) * 1.2,
+              y: topY + cy * cellH + Math.cos(S.t * 1.7 + i) * 1.2,
+            };
+          }
+
+          // 톱니 회전(작동감) — 작업 중이면 빠르게
+          S.gear += dt * (working ? 3.2 : 0.5);
+
+          // --- 업데이트 ---
+          if (working && !S.done) {
+            S.prog += dt / cycleSec;
+            S.fireAcc += (engaged / atkSec) * dt;
+            let guard = 0;
+            while (S.fireAcc >= 1 && guard < 6) {
+              S.fireAcc -= 1; guard++;
+              const src = unitPos(Math.floor(Math.random() * Math.max(1, engaged)));
+              const ang = Math.atan2(by - src.y, bx - src.x);
+              const spd = 420 + Math.random() * 120;
+              S.bolts.push({ x: src.x + 8, y: src.y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, life: 0.8 });
+            }
+            if (S.prog >= 1) {
+              S.prog = 1; S.done = true; S.doneT = 0.5; S.cycles++;
+              for (let k = 0; k < 18; k++) {
+                const a = Math.random() * Math.PI * 2, s = 40 + Math.random() * 150;
+                S.particles.push({ x: bx, y: by, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5 + Math.random() * 0.3, r: 1.5 + Math.random() * 2 });
+              }
+              S.floats.push({ x: bx, y: by - 26, txt: '완성!', life: 0.9, col: col.bullet });
+            }
+          } else if (S.done) {
+            S.doneT -= dt;
+            if (S.doneT <= 0) { S.done = false; S.prog = 0; }
+          }
+
+          // 볼트 이동/피격
+          for (let i = S.bolts.length - 1; i >= 0; i--) {
+            const b = S.bolts[i];
+            b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+            if (!S.done && b.x >= bx - 16 && Math.abs(b.y - by) < 20) {
+              S.hitFlash = 1; S.shake = 2.5;
+              for (let k = 0; k < 3; k++) {
+                const a = Math.random() * Math.PI * 2, s = 30 + Math.random() * 60;
+                S.particles.push({ x: bx - 14, y: b.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.22, r: 1 + Math.random() * 1.3 });
+              }
+              S.bolts.splice(i, 1); continue;
+            }
+            if (b.life <= 0 || b.x > w + 20) S.bolts.splice(i, 1);
+          }
+          if (S.bolts.length > 120) S.bolts.splice(0, S.bolts.length - 120);
+          for (let i = S.particles.length - 1; i >= 0; i--) {
+            const pt = S.particles[i];
+            pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.vy += 130 * dt; pt.life -= dt;
+            if (pt.life <= 0) S.particles.splice(i, 1);
+          }
+          for (let i = S.floats.length - 1; i >= 0; i--) {
+            const f = S.floats[i]; f.y -= 24 * dt; f.life -= dt;
+            if (f.life <= 0) S.floats.splice(i, 1);
+          }
+          S.hitFlash = Math.max(0, S.hitFlash - dt * 6);
+          S.shake = Math.max(0, S.shake - dt * 16);
+
+          // --- 렌더 ---
+          ctx.clearRect(0, 0, w, h);
+          const bgg = ctx.createLinearGradient(0, 0, 0, h);
+          bgg.addColorStop(0, '#020617'); bgg.addColorStop(1, '#0b1220');
+          ctx.fillStyle = bgg; ctx.fillRect(0, 0, w, h);
+          ctx.strokeStyle = 'rgba(148,163,184,0.06)'; ctx.lineWidth = 1;
+          for (let gx = 0; gx <= w; gx += 26) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke(); }
+          ctx.strokeStyle = 'rgba(148,163,184,0.10)';
+          ctx.beginPath(); ctx.moveTo(0, h - 12); ctx.lineTo(w, h - 12); ctx.stroke();
+
+          // 유닛
+          for (let i = 0; i < drawnTotal; i++) {
+            const u = unitPos(i);
+            const on = i < engaged && working;
+            ctx.save();
+            ctx.translate(u.x, u.y);
+            if (on) { ctx.shadowColor = col.glow; ctx.shadowBlur = 8; }
+            ctx.fillStyle = on ? col.unit : 'rgba(100,116,139,0.5)';
+            ctx.strokeStyle = on ? col.edge : 'rgba(71,85,105,0.6)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(6, 0); ctx.lineTo(-5, -4); ctx.lineTo(-2, 0); ctx.lineTo(-5, 4);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.restore();
+          }
+
+          // 볼트
+          ctx.fillStyle = col.bullet;
+          for (const b of S.bolts) {
+            ctx.globalAlpha = Math.max(0.3, Math.min(1, b.life * 2));
+            ctx.beginPath(); ctx.arc(b.x, b.y, 2.2, 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+
+          // 작업 건물(본체 타워 + 맞물려 도는 톱니 2개)
+          const shakeX = (Math.random() - 0.5) * S.shake;
+          const tx = bx + shakeX;
+          const twW = 34, twH = 46, twX = tx - twW / 2, twY = by - twH / 2 + 6;
+          ctx.save();
+          if (S.hitFlash > 0.02) { ctx.shadowColor = col.muzzle; ctx.shadowBlur = 14 * S.hitFlash; }
+          ctx.fillStyle = 'rgba(15,23,42,0.95)';
+          ctx.strokeStyle = col.edge; ctx.lineWidth = 1.5;
+          roundRect(twX, twY, twW, twH, 4); ctx.fill(); ctx.stroke();
+          ctx.strokeStyle = 'rgba(148,163,184,0.25)'; ctx.lineWidth = 1;
+          for (let sy = twY + 8; sy < twY + twH - 4; sy += 7) { ctx.beginPath(); ctx.moveTo(twX + 4, sy); ctx.lineTo(twX + twW - 4, sy); ctx.stroke(); }
+          ctx.restore();
+          gear(tx - 6, twY - 4, 9, 8, S.gear, col.unit, col.edge);
+          gear(tx + 9, twY - 1, 6, 7, -S.gear * 1.3, col.edge, col.unit);
+
+          // 작업 진행 바
+          const pw = 54, ph = 6, pbx = bx - pw / 2, pby = by + 30;
+          ctx.fillStyle = 'rgba(2,6,23,0.85)'; ctx.fillRect(pbx - 1, pby - 1, pw + 2, ph + 2);
+          ctx.fillStyle = 'rgba(148,163,184,0.25)'; ctx.fillRect(pbx, pby, pw, ph);
+          ctx.fillStyle = col.unit;
+          ctx.fillRect(pbx, pby, pw * Math.max(0, Math.min(1, S.prog)), ph);
+
+          // 파티클
+          for (const pt of S.particles) {
+            ctx.globalAlpha = Math.max(0, Math.min(1, pt.life * 2.2));
+            ctx.fillStyle = col.bullet;
+            ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+
+          // 플로팅 텍스트
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.font = 'bold 12px ui-monospace, monospace';
+          for (const f of S.floats) {
+            ctx.globalAlpha = Math.max(0, Math.min(1, f.life * 1.4));
+            ctx.fillStyle = f.col; ctx.fillText(f.txt, f.x, f.y);
+          }
+          ctx.globalAlpha = 1;
+
+          // HUD
+          ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+          ctx.font = '11px ui-monospace, monospace';
+          ctx.fillStyle = 'rgba(226,232,240,0.9)';
+          ctx.fillText((p.taskName || '작업 대기') + '  🔧 ' + engaged + '/' + drawnTotal + '기', 10, 8);
+          ctx.textAlign = 'right';
+          ctx.fillStyle = 'rgba(148,163,184,0.85)';
+          ctx.fillText('완성 ' + S.cycles + (p.respawning > 0 ? ' · 리스폰 ' + p.respawning + '기' : ''), w - 10, 8);
+          if (!working && p.taskName) {
+            ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(148,163,184,0.7)';
+            ctx.fillText(p.active === false ? '⏸ 작업 대기' : '⏳', w / 2, h - 26);
+          }
+
+          raf = requestAnimationFrame(frame);
+        }
+        raf = requestAnimationFrame(frame);
+        return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+      }, []);
+
+      return (
+        <canvas
+          ref={canvasRef}
+          className="w-full rounded-md border border-slate-800 bg-slate-950"
+          style={{ height: '150px', display: 'block' }}
+        />
+      );
+    }
+
     // 실시간 100층 보스 레이드 오버레이 모달 (App에서 분리 — 순수 프레젠테이션)
     function RaidModal({ raidState, myId, todayHighestClaimedFloor, rewardMessage, errorMessage, toggleReady, leaveRaidRoom, getRaidBossName, formatRemainingRewardRange }) {
       return (
@@ -1127,10 +1385,20 @@
     }
 
     // WorkPanel — App에서 분리한 순수 프레젠테이션 컴포넌트
-    function WorkPanel({ clearableWorkCount, workParts, specs, ramAttackFrames, scaUpgrades, workTaskIndex, setWorkTaskIndex, workCoinPerKillPerUnit, workPerKillPerUnit, workUnitMode, maxWorkUnits, setManualWorkUnits, effectiveWorkUnits, setWorkUnitMode, workIncomeIsCoin, formatWorkCoinAsMinerals, workCoinIncomePerSec, workIncomePerSec, isPartyHunting, ramAlloc, workActiveForIncome, huntCombatStatus, workClearStatus }) {
+    function WorkPanel({ clearableWorkCount, workParts, specs, ramAttackFrames, scaUpgrades, workTaskIndex, setWorkTaskIndex, workCoinPerKillPerUnit, workPerKillPerUnit, workUnitMode, maxWorkUnits, setManualWorkUnits, effectiveWorkUnits, setWorkUnitMode, workIncomeIsCoin, formatWorkCoinAsMinerals, workCoinIncomePerSec, workIncomePerSec, isPartyHunting, ramAlloc, workActiveForIncome, huntCombatStatus, workClearStatus, workKillTimeSec }) {
       return (
                   <div className="p-4 bg-slate-950/60 rounded border border-emerald-900/40 space-y-3">
                     <span className="text-xs text-emerald-400 font-mono uppercase font-bold">💼 작업 (Work) · 실행 가능 {clearableWorkCount}/{OMG.WORK_TASKS.length}</span>
+                    <WorkScene
+                      units={workActiveForIncome}
+                      totalUnits={effectiveWorkUnits}
+                      taskName={OMG.WORK_TASKS[workTaskIndex] ? OMG.WORK_TASKS[workTaskIndex].name : null}
+                      cycleTimeSec={workKillTimeSec}
+                      attackSpeedSec={specs.attackSpeedSec}
+                      respawning={huntCombatStatus.workRespawning}
+                      active={!isPartyHunting && workActiveForIncome > 0}
+                      accent="emerald"
+                    />
                     <div className="flex flex-wrap gap-2">
                       {OMG.WORK_TASKS.map((task) => {
                         const clear = OMG.canClearWorkTask(workParts, task.taskIndex, specs.unitDamage, ramAttackFrames, scaUpgrades);
@@ -3755,6 +4023,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     workActiveForIncome={workActiveForIncome}
                     huntCombatStatus={huntCombatStatus}
                     workClearStatus={workClearStatus}
+                    workKillTimeSec={workKillTimeSec}
                   />
                   <GamingPanel
                     activeGame={activeGame}
