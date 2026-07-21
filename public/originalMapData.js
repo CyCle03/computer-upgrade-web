@@ -394,7 +394,8 @@
       return isMiningAmplifierUnlocked(scaUpgrades) ? '채굴증폭기 (구축 완료)' : '채굴증폭기 구축';
     }
     if (item.id === 'miningAmplifier') {
-      return `채굴증폭기 공격력 (채굴력 ${getMiningPower(scaUpgrades).toLocaleString()})`;
+      const attackPower = ((scaUpgrades && scaUpgrades.miningAmplifier) || 0) * MINING_AMPLIFIER_SPEC.powerPerLevel;
+      return `채굴 공격력 (현재 ${attackPower.toLocaleString()})`;
     }
     if (item.id === 'miningAmplifierSpeed') {
       const frames = getMiningAttackFrames(scaUpgrades);
@@ -410,7 +411,7 @@
     }
     if (item.id === 'miningAmplifier') {
       if (!isMiningAmplifierUnlocked(scaUpgrades)) return '구축 후 구매 가능';
-      return `+${MINING_AMPLIFIER_SPEC.powerPerLevel} 채굴력 · 10,000당 레이드 DPS +100%`;
+      return `+${MINING_AMPLIFIER_SPEC.powerPerLevel} 채굴 공격력 · 채굴력 10,000당 레이드 DPS +100%`;
     }
     if (item.id === 'miningAmplifierSpeed') {
       if (!isMiningAmplifierUnlocked(scaUpgrades)) return '구축 후 구매 가능';

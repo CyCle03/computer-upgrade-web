@@ -3015,8 +3015,8 @@
           } else if (item.id === 'miningAmplifierUnlock') {
             pushToast('채굴증폭기 구축 완료 · 레이드 채굴봇 활성화', 'success', 2500);
           } else if (item.id === 'miningAmplifier') {
-            const power = nextBought * OMG.MINING_AMPLIFIER_SPEC.powerPerLevel;
-            pushToast(`채굴력 +${OMG.MINING_AMPLIFIER_SPEC.powerPerLevel} (현재 ${power.toLocaleString()})`, 'success', 2500);
+            const effectivePower = OMG.getMiningPower(data.scaUpgrades || {});
+            pushToast(`채굴 공격력 +${OMG.MINING_AMPLIFIER_SPEC.powerPerLevel} (채굴력 ${effectivePower.toLocaleString()})`, 'success', 2500);
           } else if (item.id === 'miningAmplifierSpeed') {
             const frames = OMG.getMiningAttackFrames(data.scaUpgrades || {});
             pushToast(`채굴증폭기 공속 강화 (${frames}f)`, 'success', 2500);
