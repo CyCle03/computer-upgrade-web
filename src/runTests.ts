@@ -49,6 +49,16 @@ async function main() {
     process.exit(1);
   }
 
+  console.log('[TestRunner] sca upgrade pure-logic unit tests...');
+  if (!runScript('src/testScaUpgrades.ts')) {
+    process.exit(1);
+  }
+
+  console.log('[TestRunner] raid reward payout formula unit tests...');
+  if (!runScript('src/testRewardMath.ts')) {
+    process.exit(1);
+  }
+
   if (hasDbConfig()) {
     console.log('[TestRunner] reward integration tests (DB)...');
     if (!runScript('src/testReward.ts')) {

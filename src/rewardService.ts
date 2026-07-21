@@ -13,6 +13,26 @@ function getRaidCumulativeRewards(): Record<number, number> {
 const REBIRTH_STAT_SCA_DIVISOR = 10_000_000;
 
 /**
+ * 레이드 마일스톤 차분 지급량(순수 계산) — DB·시계 없이 검증 가능하도록 분리.
+ * currentFloor 가 이미 수령한 최고 층 이하면 0. 그 외 누적표 차분 × 환생 배율(내림).
+ * (지급 산식은 schema.sql claim_daily_raid_reward SQL 사본과 값이 일치해야 함.
+ *  누적표 값은 testRewardTable, 산식은 testRewardMath 가 감시.)
+ */
+export function computeRaidClaimCoins(
+  currentFloor: number,
+  highestClaimedFloor: number,
+  rebirthStat: number,
+  rewards: Record<number, number>,
+): { statMult: number; coinsToReward: number } {
+  const statMult = 1.0 + rebirthStat / REBIRTH_STAT_SCA_DIVISOR;
+  if (currentFloor <= highestClaimedFloor) {
+    return { statMult, coinsToReward: 0 };
+  }
+  const baseReward = (rewards[currentFloor] || 0) - (rewards[highestClaimedFloor] || 0);
+  return { statMult, coinsToReward: Math.floor(baseReward * statMult) };
+}
+
+/**
  * 일일 마일스톤 보상 검증 및 지급 서비스 클래스
  * 
  * [보안 설계 포인트]
@@ -145,7 +165,6 @@ export class RewardService {
       const gameState = stateRes.rows[0]?.state ?? {};
       const walletScaBefore = Number(gameState[StateKey.scaCoins]) || 0;
       const rebirthStat = Number(gameState[StateKey.rebirthStat]) || 0;
-      const statMult = 1.0 + rebirthStat / REBIRTH_STAT_SCA_DIVISOR;
 
       // 5. [일일 리셋 처리] 날짜가 바뀌었다면 수령 최고 층수를 0으로 리셋하고 날짜 갱신
       if (lastPlayedDateStr !== todayStr) {
@@ -175,8 +194,7 @@ export class RewardService {
 
       // 7. [차분 지급량 계산] 중복 지급 방지
       const rewards = getRaidCumulativeRewards();
-      const baseReward = (rewards[currentFloor] || 0) - (rewards[highestClaimedFloor] || 0);
-      const coinsToReward = Math.floor(baseReward * statMult);
+      const { coinsToReward } = computeRaidClaimCoins(currentFloor, highestClaimedFloor, rebirthStat, rewards);
 
       const newWalletSca = walletScaBefore + coinsToReward;
 
