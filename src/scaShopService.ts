@@ -25,8 +25,8 @@ type ScaShopItem = {
 };
 
 const SCA_SHOP_ITEMS: ScaShopItem[] = [
-  { id: 'rebirthMineral500', mineralBonus: 500, maxPurchases: 2000 },
   { id: 'rebirthMineralMax200', mineralBonus: 200, maxPurchases: 5000 },
+  { id: 'rebirthMineral500', mineralBonus: 500, maxPurchases: 2000 },
   { id: 'rebirthMineralMax2000', mineralBonus: 2000, maxPurchases: 500 },
   { id: 'rebirthMineralMax7500', mineralBonus: 7500, maxPurchases: 134 },
   { id: 'huntIncome1', cost: 12000, maxPurchases: 10 },
@@ -76,9 +76,18 @@ function calcRebirthStartMinerals(scaUpgrades: Record<string, unknown>): number 
   return Math.min(REBIRTH_MINERAL_CAP, total);
 }
 
+// 환생 미네랄 대량 구매 할인 — 보너스가 클수록 미네랄당 SCA 비용 소폭 저렴(약간 이득).
+// ⚠️ public/originalMapData.js 의 rebirthMineralCostMult 와 값이 일치해야 한다(클라 표시 비용).
+function rebirthMineralCostMult(mineralBonus: number): number {
+  if (mineralBonus >= 7500) return 0.88;
+  if (mineralBonus >= 2000) return 0.93;
+  if (mineralBonus >= 500) return 0.97;
+  return 1.0;
+}
+
 function getItemCost(item: ScaShopItem, scaUpgrades: Record<string, unknown>): number {
   if (item.mineralBonus) {
-    return Math.floor((item.mineralBonus / 10) * REBIRTH_MINERAL_SCA_PER_10);
+    return Math.floor((item.mineralBonus / 10) * REBIRTH_MINERAL_SCA_PER_10 * rebirthMineralCostMult(item.mineralBonus));
   }
   if (item.id === 'gpuGradeUp') {
     const level = getGpuGradeLevel(scaUpgrades);
