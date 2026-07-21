@@ -30,10 +30,10 @@ export interface DpsInput {
 }
 
 /**
- * 개별 플레이어 DPS — 사망 시 0, 채굴증폭기 배율 반영.
- * 기본 DPS = (1초 / 공격주기) × 데미지 × 유닛수.
- * 채굴 공속은 이제 miningPower(채굴력)에 이미 접혀 들어가므로 여기서 별도 speedMult 를
- * 곱하지 않는다(이중계상 방지). → DPS = baseDps × ampMult(채굴력).
+ * 개별 플레이어 DPS — 사망 시 0.
+ * 기본 DPS = (1초 / 공격주기) × 데미지 × 유닛수(전투 유닛).
+ * 채굴력(= 채굴 공격력 × 채굴 공속 = 채굴봇의 초당 데미지)은 퍼센트 증폭이 아니라
+ * 보스 채굴 시 그 수치 그대로 DPS 에 가산한다. → DPS = baseDps + miningPower.
  */
 export function calculatePlayerDps(player: DpsInput): number {
   if (player.isDead) return 0;
@@ -42,8 +42,7 @@ export function calculatePlayerDps(player: DpsInput): number {
   const shotsPerSec = 1 / attackSpeedSec;
   const baseDps = Math.round(shotsPerSec * unitDamage * unitLimit);
 
-  const ampMult = player.miningPower > 0 ? 1 + player.miningPower / 10000 : 1;
-  return Math.round(baseDps * ampMult);
+  return baseDps + Math.max(0, player.miningPower || 0);
 }
 
 /** DDR 세대 불일치 HP Decay 의 1틱 감쇠량. */
