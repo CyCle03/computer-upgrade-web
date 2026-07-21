@@ -930,7 +930,7 @@
     }
 
     // OverclockLabModal — App에서 분리한 순수 프레젠테이션 컴포넌트
-    function OverclockLabModal({ overclockData, overclockLabActive, overclockLabHp, overclockLabShield, overclockLabCooldown, overclockLabUnitDps, effectiveOverclockLabLevel, nextOverclockLabLevel, dpsForNextOverclockLab, effectiveUnitLimit, adjustOcParam, attemptOcUpgrade, testOcActivePart, handleAssignOverclockLabUnit, handleRecallOverclockLabUnit }) {
+    function OverclockLabModal({ overclockData, overclockLabActive, overclockLabHp, overclockLabShield, overclockLabCooldown, overclockLabUnitDps, effectiveOverclockLabLevel, nextOverclockLabLevel, dpsForNextOverclockLab, effectiveUnitLimit, adjustOcParam, attemptOcUpgrade, testOcActivePart, selectOcPart, calcOcSuccessProb, handleAssignOverclockLabUnit, handleRecallOverclockLabUnit }) {
       return (
             <section className="mb-4 p-4 border border-emerald-500/20 rounded-xl space-y-3 bg-slate-950/60 font-mono">
               <div className="flex justify-between items-center border-b border-slate-900 pb-2">
@@ -1054,72 +1054,89 @@
                 )}
               </div>
 
-              {/* 타이밍 조율 미니게임 패널 */}
-              {overclockData.overclockActivePart ? (
-                <div className="border border-emerald-900/30 p-3 rounded-lg bg-emerald-950/5 space-y-3">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-emerald-400 font-bold">💾 오버클럭 조율 중 파츠: {overclockData.overclockActivePart.generation} OC-{overclockData.overclockActivePart.targetMhz}</span>
-                    <span className="text-slate-500">테스트 시도: {overclockData.overclockActivePart.testCount} / 3</span>
-                  </div>
+              {/* 미확인 재료 보관함 + 타이밍 조율 미니게임 */}
+              {(() => {
+                const parts = overclockData.overclockParts || [];
+                const selected = parts.find(p => p.id === overclockData.overclockSelectedId) || null;
+                return (
+                  <div className="border border-emerald-900/30 p-3 rounded-lg bg-emerald-950/5 space-y-3">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-emerald-400 font-bold">🧰 미확인 재료 보관함</span>
+                      <span className="text-slate-500">보유 {parts.length} / 30</span>
+                    </div>
 
-                  {/* CL, tRCD, tRP, tRAS 가감 컨트롤러 */}
-                  <div className="grid grid-cols-2 gap-3">
-                    {['cl', 'trcd', 'trp', 'tras'].map((param) => {
-                      const label = param.toUpperCase();
-                      const currentVal = overclockData.overclockActivePart[param];
-                      return (
-                        <div key={param} className="flex items-center justify-between p-2 bg-slate-950/80 border border-slate-900 rounded text-xs">
-                          <span className="text-slate-400 font-mono">{label}</span>
-                          <div className="flex items-center gap-2">
-                            <button aria-label={`${label} 감소`} onClick={() => adjustOcParam(param, -1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">−</button>
-                            <span className="text-white font-bold w-6 text-center">{currentVal}</span>
-                            <button aria-label={`${label} 증가`} onClick={() => adjustOcParam(param, 1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">+</button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* 테스트 로그 결과 및 강화 시도 */}
-                  <div className="space-y-2">
-                    {overclockData.overclockActivePart.testedResults && overclockData.overclockActivePart.testedResults.length > 0 && (
-                      <div className="text-[10px] text-slate-500 bg-slate-950 border border-slate-900 p-2 rounded max-h-24 overflow-y-auto space-y-1">
-                        {overclockData.overclockActivePart.testedResults.map((r, idx) => (
-                          <div key={idx} className="flex justify-between font-mono">
-                            <span>Test {idx + 1} ({r.clVal}, {r.trcdVal}, {r.trpVal}, {r.trasVal}):</span>
-                            <span>
-                              CL: <strong className={r.cl === '최적' ? 'text-emerald-400' : r.cl === '높음' ? 'text-amber-400' : 'text-rose-400'}>{r.cl}</strong> · 
-                              tRCD: <strong className={r.trcd === '최적' ? 'text-emerald-400' : r.trcd === '높음' ? 'text-amber-400' : 'text-rose-400'}>{r.trcd}</strong> · 
-                              tRP: <strong className={r.trp === '최적' ? 'text-emerald-400' : r.trp === '높음' ? 'text-amber-400' : 'text-rose-400'}>{r.trp}</strong> · 
-                              tRAS: <strong className={r.tras === '최적' ? 'text-emerald-400' : r.tras === '높음' ? 'text-amber-400' : 'text-rose-400'}>{r.tras}</strong>
-                            </span>
-                          </div>
-                        ))}
+                    {parts.length === 0 ? (
+                      <div className="py-3 text-center text-slate-500 text-[11px]">
+                        작업·사냥 유닛 1기 차출 공격으로 연구소를 파밍하면 미확인 재료가 이곳에 쌓입니다.<br />
+                        (드랍률 30% · 미네랄·레벨업 불필요 · 성능은 강화 성공 전까지 알 수 없음)
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {parts.map((p) => {
+                          const sel = p.id === overclockData.overclockSelectedId;
+                          return (
+                            <button key={p.id} onClick={() => selectOcPart(p.id)}
+                              className={`px-2 py-1 rounded text-[10px] border font-mono ${sel ? 'bg-emerald-900/60 border-emerald-500 text-emerald-200' : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:border-emerald-700/50'}`}>
+                              미확인 {p.generation}{p.tested ? ` ${Math.round(calcOcSuccessProb(p) * 100)}%` : ''}
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
 
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={testOcActivePart}
-                        disabled={overclockData.overclockActivePart.testCount >= 3}
-                        className="flex-1 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded hover:border-emerald-500/40 text-emerald-400 disabled:opacity-40 disabled:pointer-events-none"
-                      >
-                        테스트 진행 ({3 - overclockData.overclockActivePart.testCount}회 남음)
-                      </button>
-                      <button 
-                        onClick={attemptOcUpgrade}
-                        className="flex-1 py-1.5 text-xs bg-emerald-950 border border-emerald-800/80 rounded hover:bg-emerald-900 text-emerald-300 font-bold"
-                      >
-                        오버클럭 강화 (10% 확률)
-                      </button>
-                    </div>
+                    {selected && (
+                      <div className="border-t border-slate-900 pt-3 space-y-3">
+                        <div className="text-[11px] text-emerald-300 font-bold">
+                          🔧 조율 중: 미확인 {selected.generation} 재료 <span className="text-slate-500 font-normal">(목표 성능 비공개)</span>
+                        </div>
+
+                        {/* CL, tRCD, tRP, tRAS 가감 컨트롤러 */}
+                        <div className="grid grid-cols-2 gap-3">
+                          {['cl', 'trcd', 'trp', 'tras'].map((param) => {
+                            const label = param.toUpperCase();
+                            const currentVal = selected[param];
+                            return (
+                              <div key={param} className="flex items-center justify-between p-2 bg-slate-950/80 border border-slate-900 rounded text-xs">
+                                <span className="text-slate-400 font-mono">{label}</span>
+                                <div className="flex items-center gap-2">
+                                  <button aria-label={`${label} 감소`} onClick={() => adjustOcParam(param, -1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">−</button>
+                                  <span className="text-white font-bold w-6 text-center">{currentVal}</span>
+                                  <button aria-label={`${label} 증가`} onClick={() => adjustOcParam(param, 1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">+</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {selected.tested ? (
+                          <div className="text-center text-xs bg-slate-950 border border-emerald-900/40 rounded py-2">
+                            <span className="text-slate-400">현재 조율 성공 확률 </span>
+                            <strong className="text-emerald-300 text-base">{Math.round(calcOcSuccessProb(selected) * 100)}%</strong>
+                          </div>
+                        ) : (
+                          <div className="text-center text-[10px] text-slate-600 py-1">값을 조정한 뒤 [확률 테스트]로 성공 확률을 확인하세요.</div>
+                        )}
+
+                        <div className="flex gap-2">
+                          <button
+                            onClick={testOcActivePart}
+                            className="flex-1 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded hover:border-emerald-500/40 text-emerald-400"
+                          >
+                            🔍 확률 테스트
+                          </button>
+                          <button
+                            onClick={attemptOcUpgrade}
+                            disabled={!selected.tested}
+                            className="flex-1 py-1.5 text-xs bg-emerald-950 border border-emerald-800/80 rounded hover:bg-emerald-900 text-emerald-300 font-bold disabled:opacity-40 disabled:pointer-events-none"
+                          >
+                            ⚡ 강화 (성공 시 해금 · 실패 시 폭발)
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ) : (
-                <div className="py-4 bg-slate-950/30 rounded border border-dashed border-slate-900 text-center text-slate-500 text-[11px]">
-                  작업·사냥 유닛 1기 차출 공격. 차출 DPS가 높을수록 더 높은 Lv. 연구소를 자동 파밍합니다. (드랍률 30%, 미네랄·레벨업 불필요)
-                </div>
-              )}
+                );
+              })()}
             </section>
       );
     }
@@ -2400,9 +2417,17 @@
       });
       // OC 연구소 진행 상태 — sca_overclockData 키에 별도 저장하여 PUT /api/state 동기화에 포함
       const [overclockData, setOverclockData] = useState(() => {
-        const defaults = { overclockLabActive: false, overclockActivePart: null, highestRaidFloor: 0, ddr4Overclocked: false, ddr5OverclockedStep: 0 };
+        const defaults = { overclockLabActive: false, overclockParts: [], overclockSelectedId: null, highestRaidFloor: 0, ddr4Overclocked: false, ddr5OverclockedStep: 0 };
         try {
-          return { ...defaults, ...JSON.parse(localStorage.getItem('sca_overclockData') || '{}') };
+          const saved = JSON.parse(localStorage.getItem('sca_overclockData') || '{}');
+          const merged = { ...defaults, ...saved };
+          if (!Array.isArray(merged.overclockParts)) merged.overclockParts = [];
+          // 구버전 단일 파츠(overclockActivePart) → 미확인 재료 배열로 마이그레이션
+          if (saved.overclockActivePart && merged.overclockParts.length === 0) {
+            merged.overclockParts = [{ ...saved.overclockActivePart, id: 'oc_legacy', tested: false }];
+          }
+          delete merged.overclockActivePart;
+          return merged;
         } catch (e) {
           return defaults;
         }
@@ -3739,9 +3764,15 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   const dropRoll = Math.random() < 0.3;
                   if (dropRoll) {
                     const dropPart = generateOverclockPart(farmLvl);
-                    s.overclockData.overclockActivePart = dropPart;
-                    setOverclockData({ ...s.overclockData });
-                    setCombatLogs((prev) => [...prev.slice(-7), `🎉 [RESEARCH] Lv.${farmLvl} 연구소 파괴 — OC 파츠(${dropPart.generation} OC-${dropPart.targetMhz}) 획득!`]);
+                    const stock = Array.isArray(s.overclockData.overclockParts) ? s.overclockData.overclockParts : [];
+                    if (stock.length >= 30) {
+                      setCombatLogs((prev) => [...prev.slice(-7), `⚠️ [RESEARCH] 재료 보관함이 가득 차(30개) 드랍한 파츠를 폐기했습니다.`]);
+                    } else {
+                      s.overclockData.overclockParts = [...stock, dropPart];
+                      setOverclockData({ ...s.overclockData });
+                      // 세대는 보이되 목표 클럭(성능)은 강화 성공 전까지 비공개
+                      setCombatLogs((prev) => [...prev.slice(-7), `🎉 [RESEARCH] Lv.${farmLvl} 연구소 파괴 — 미확인 ${dropPart.generation} 재료 획득! (보유 ${stock.length + 1}개)`]);
+                    }
                   } else {
                     setCombatLogs((prev) => [...prev.slice(-7), `⚙️ [RESEARCH] Lv.${farmLvl} 연구소를 파괴했으나 파츠 드랍 실패.`]);
                   }
@@ -3787,6 +3818,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         };
       }, []);
 
+      const makeOcPartId = () => 'oc_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
       const generateOverclockPart = (labLevel) => {
         const roll = Math.random();
         let gen = 'DDR4';
@@ -3801,6 +3834,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         
         if (gen === 'DDR4') {
           return {
+            id: makeOcPartId(),
             generation: 'DDR4',
             targetMhz: 4000,
             cl: 16, trcd: 18, trp: 18, tras: 36,
@@ -3808,8 +3842,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             targetTrcd: Math.floor(15 + Math.random() * 7),
             targetTrp: Math.floor(15 + Math.random() * 7),
             targetTras: Math.floor(32 + Math.random() * 9),
-            testCount: 0,
-            testedResults: []
+            tested: false
           };
         } else {
           const mhzRoll = Math.random();
@@ -3832,6 +3865,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           };
           
           return {
+            id: makeOcPartId(),
             generation: 'DDR5',
             targetMhz: targetMhz,
             cl: initVals.cl, trcd: initVals.trcd, trp: initVals.trp, tras: initVals.tras,
@@ -3839,75 +3873,85 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             targetTrcd: randEven(targetRange.trcdMin, targetRange.trcdMax),
             targetTrp: randEven(targetRange.trpMin, targetRange.trpMax),
             targetTras: randEven(targetRange.trasMin, targetRange.trasMax),
-            testCount: 0,
-            testedResults: []
+            tested: false
           };
         }
       };
 
-      const adjustOcParam = (param, delta) => {
-        if (!overclockData.overclockActivePart) return;
-        const part = { ...overclockData.overclockActivePart };
-        const step = part.generation === 'DDR5' ? 2 : 1;
-        part[param] = Math.max(10, Math.min(60, part[param] + delta * step));
-        setOverclockData(prev => ({ ...prev, overclockActivePart: part }));
+      // 조율값이 숨겨진 목표에 가까울수록 성공 확률↑ (완벽 조율 시 최대 90%).
+      // 목표 성능(클럭·타이밍)은 끝까지 비공개 — 유저는 이 확률값만 보고 강화 여부를 결정한다.
+      const calcOcSuccessProb = (part) => {
+        if (!part) return 0;
+        const span = part.generation === 'DDR5' ? 40 : 24; // 세대별 조율 허용 폭
+        const prox = (v, t) => Math.max(0, 1 - Math.abs((v || 0) - (t || 0)) / span);
+        const p =
+          prox(part.cl, part.targetCl) *
+          prox(part.trcd, part.targetTrcd) *
+          prox(part.trp, part.targetTrp) *
+          prox(part.tras, part.targetTras);
+        return Math.max(0, Math.min(0.9, p * 0.9));
       };
 
+      const selectOcPart = (id) => {
+        setOverclockData(prev => ({ ...prev, overclockSelectedId: prev.overclockSelectedId === id ? null : id }));
+      };
+
+      const adjustOcParam = (param, delta) => {
+        setOverclockData(prev => {
+          const parts = prev.overclockParts || [];
+          const idx = parts.findIndex(p => p.id === prev.overclockSelectedId);
+          if (idx < 0) return prev;
+          const part = { ...parts[idx] };
+          const step = part.generation === 'DDR5' ? 2 : 1;
+          part[param] = Math.max(10, Math.min(60, part[param] + delta * step));
+          part.tested = false; // 값을 바꾸면 확률을 다시 테스트해야 강화 가능
+          const next = parts.slice();
+          next[idx] = part;
+          return { ...prev, overclockParts: next };
+        });
+      };
+
+      // 테스트 = 현재 조율의 성공 확률을 확인(공개)하는 행위. 목표값 자체는 공개하지 않는다.
       const testOcActivePart = () => {
-        if (!overclockData.overclockActivePart) return;
-        const part = { ...overclockData.overclockActivePart };
-        if (part.testCount >= 3) {
-          alert('테스트 기회가 모두 소진되었습니다. 강화 시도만 가능합니다.');
-          return;
-        }
-        const compare = (val, target) => {
-          if (val < target) return '낮음';
-          if (val > target) return '높음';
-          return '최적';
-        };
-        const result = {
-          cl: compare(part.cl, part.targetCl),
-          trcd: compare(part.trcd, part.targetTrcd),
-          trp: compare(part.trp, part.targetTrp),
-          tras: compare(part.tras, part.targetTras),
-          clVal: part.cl, trcdVal: part.trcd, trpVal: part.trp, trasVal: part.tras
-        };
-        part.testCount += 1;
-        part.testedResults = [...part.testedResults, result];
-        setOverclockData(prev => ({ ...prev, overclockActivePart: part }));
+        setOverclockData(prev => {
+          const parts = prev.overclockParts || [];
+          const idx = parts.findIndex(p => p.id === prev.overclockSelectedId);
+          if (idx < 0) return prev;
+          const next = parts.slice();
+          next[idx] = { ...next[idx], tested: true };
+          return { ...prev, overclockParts: next };
+        });
       };
 
       const attemptOcUpgrade = () => {
-        if (!overclockData.overclockActivePart) return;
-        const part = overclockData.overclockActivePart;
-        const isAllOptimal =
-          part.cl === part.targetCl &&
-          part.trcd === part.targetTrcd &&
-          part.trp === part.targetTrp &&
-          part.tras === part.targetTras;
-        if (!isAllOptimal) {
-          alert('모든 값이 최적 상태여야만 오버클럭 강화를 시도할 수 있습니다.');
-          return;
-        }
-        const isSuccess = Math.random() < 0.1;
+        const parts = overclockData.overclockParts || [];
+        const part = parts.find(p => p.id === overclockData.overclockSelectedId);
+        if (!part) return;
+        const prob = calcOcSuccessProb(part);
+        const pct = Math.round(prob * 100);
+        const isSuccess = Math.random() < prob;
+        const removeSelected = (prev) => ({
+          ...prev,
+          overclockParts: (prev.overclockParts || []).filter(p => p.id !== part.id),
+          overclockSelectedId: null,
+        });
         if (isSuccess) {
           if (part.generation === 'DDR4') {
-            setOverclockData(prev => ({ ...prev, overclockActivePart: null, ddr4Overclocked: true }));
-            setCombatLogs((logs) => [...logs.slice(-7), `🎉 [RESEARCH] DDR4 오버클럭 강화 성공! 이제 DDR4 9강 장착 시 자동으로 OC-4000 사양으로 작동합니다.`]);
+            setOverclockData(prev => ({ ...removeSelected(prev), ddr4Overclocked: true }));
+            setCombatLogs((logs) => [...logs.slice(-7), `🎉 [RESEARCH] DDR4 오버클럭 강화 성공! (성공 확률 ${pct}%) 이제 DDR4 9강 장착 시 자동으로 OC-4000 사양으로 작동합니다.`]);
           } else {
             let nextStep = 1;
             if (part.targetMhz === 7200) nextStep = 2;
             if (part.targetMhz === 8000) nextStep = 3;
             setOverclockData(prev => ({
-              ...prev,
-              overclockActivePart: null,
+              ...removeSelected(prev),
               ddr5OverclockedStep: Math.max(prev.ddr5OverclockedStep || 0, nextStep),
             }));
-            setCombatLogs((logs) => [...logs.slice(-7), `🎉 [RESEARCH] DDR5-${part.targetMhz} 오버클럭 강화 성공! DDR5 13강 장착 시 자동으로 해당 OC 사양으로 작동합니다.`]);
+            setCombatLogs((logs) => [...logs.slice(-7), `🎉 [RESEARCH] DDR5-${part.targetMhz} 오버클럭 강화 성공! (성공 확률 ${pct}%) DDR5 13강 장착 시 자동으로 해당 OC 사양으로 작동합니다.`]);
           }
         } else {
-          setOverclockData(prev => ({ ...prev, overclockActivePart: null }));
-          setCombatLogs((logs) => [...logs.slice(-7), `❌ [RESEARCH] 오버클럭 강화 실패. 조율 파츠가 과부하로 인해 폭발하였습니다.`]);
+          setOverclockData(prev => removeSelected(prev));
+          setCombatLogs((logs) => [...logs.slice(-7), `❌ [RESEARCH] 오버클럭 강화 실패 (성공 확률 ${pct}%). 미확인 재료가 과부하로 폭발하였습니다.`]);
         }
       };
 
@@ -4062,6 +4106,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               adjustOcParam={adjustOcParam}
               attemptOcUpgrade={attemptOcUpgrade}
               testOcActivePart={testOcActivePart}
+              selectOcPart={selectOcPart}
+              calcOcSuccessProb={calcOcSuccessProb}
               handleAssignOverclockLabUnit={handleAssignOverclockLabUnit}
               handleRecallOverclockLabUnit={handleRecallOverclockLabUnit}
             />
