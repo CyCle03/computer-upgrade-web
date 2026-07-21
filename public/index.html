@@ -1842,6 +1842,158 @@
       );
     }
 
+    // ======================================================================
+    // useRaidSocket — 실시간 100층 레이드 소켓 서브시스템을 App에서 분리한 커스텀 훅.
+    //   상태(isRaidOpen/socket/raidState/todayHighestClaimedFloor/rewardMessage/
+    //   errorMessage/myId) + 핸들러(join/leave/toggleReady) + 진행도 로드를 캡슐화한다.
+    //   부품 조립·scaUpgrades 및 레이드 밖 상태를 바꾸는 setScaCoins·setOverclockData·
+    //   pushToast 는 인자로 받아 결합을 최소화. 동작은 App에 있던 것과 동일(위치만 이동).
+    //   handleAccountReset 등 외부에서 소켓을 닫을 수 있도록 closeRaid()를 노출한다.
+    // ======================================================================
+    function useRaidSocket({ cpu, gpu, ram, cooler, motherboard, storage, scaUpgrades, setScaCoins, setOverclockData, pushToast }) {
+      const [isRaidOpen, setIsRaidOpen] = useState(false);
+      const [socket, setSocket] = useState(null);
+      const [raidState, setRaidState] = useState(null);
+      /** 서버 daily_raid_progresses — 오늘 이미 수령한 마일스톤 최고 층 (0, 10, … 100) */
+      const [todayHighestClaimedFloor, setTodayHighestClaimedFloor] = useState(0);
+      const [rewardMessage, setRewardMessage] = useState(null);
+      const [errorMessage, setErrorMessage] = useState(null);
+      const [myId] = useState(() => {
+        const saved = localStorage.getItem('sca_myId');
+        // [고증 보안 패치] PostgreSQL UUID 규격 준수를 위한 클렌징 작업 (36글자 UUID 규격 준수 검사)
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (saved !== null && uuidRegex.test(saved)) {
+          return saved;
+        }
+
+        // 표준 RFC4122 v4 UUID 생성기
+        const newId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const r = Math.random() * 16 | 0;
+          const v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
+
+        localStorage.setItem('sca_myId', newId);
+        return newId;
+      });
+
+      const formatRemainingRewardRange = (claimedFloor) => {
+        const claimed = Math.max(0, Math.min(100, claimedFloor || 0));
+        if (claimed >= 100) return '모든 구간 수령 완료';
+        return `${claimed + 10}층 ~ 100층`;
+      };
+
+      const refreshRaidProgress = async () => {
+        if (!GameSync.getToken()) return;
+        try {
+          const data = await GameSync.fetchRaidProgress();
+          if (data && data.highestClaimedFloor != null) {
+            setTodayHighestClaimedFloor(data.highestClaimedFloor);
+          }
+        } catch (e) { /* best-effort */ }
+      };
+
+      useEffect(() => {
+        refreshRaidProgress();
+      }, []);
+
+      const joinRaidRoom = () => {
+        setErrorMessage(null);
+        setRewardMessage(null);
+        setIsRaidOpen(true);
+        refreshRaidProgress();
+
+        const socketCon = io({
+          auth: GameSync.getSocketAuth(),
+          reconnection: false
+        });
+
+        socketCon.on('connect', () => {
+          console.log('[Socket] Connected to server.');
+          socketCon.emit('joinRoom', {
+            roomId: 'carry-room-100',
+            parts: { cpu, gpu, ram, cooler, motherboard, storage },
+            scaUpgrades: scaUpgrades
+          });
+        });
+
+        socketCon.on('connect_error', (err) => {
+          setErrorMessage(err.message || '레이드 서버 연결에 실패했습니다. 로그인 상태를 확인해 주세요.');
+        });
+
+        socketCon.on('room_state', (state) => {
+          setRaidState(state);
+        });
+
+        socketCon.on('milestone_reward_claimed', (data) => {
+          const { clearedFloor, txResult } = data;
+          if (txResult && txResult.newHighestFloor != null) {
+            setTodayHighestClaimedFloor(txResult.newHighestFloor);
+          }
+          if (txResult.success) {
+            const total = Number(txResult.currentTotalCoins) || 0;
+            setScaCoins(total);
+            localStorage.setItem('sca_scaCoins', String(total));
+            pushToast(`레이드 ${clearedFloor}층 · SCA +${txResult.claimedCoins.toLocaleString()} (잔액 ${total.toLocaleString()})`, 'success', 3500);
+            setRewardMessage(`돌파 성공. ${clearedFloor}층 마일스톤 보상 SCA 코인 +${txResult.claimedCoins} 지급 완료. (잔액 ${total.toLocaleString()})`);
+            setTimeout(() => setRewardMessage(null), 4000);
+
+            // 최고 층수 업데이트
+            setOverclockData(prev => ({
+              ...prev,
+              highestRaidFloor: Math.max(prev.highestRaidFloor || 0, clearedFloor),
+            }));
+          } else if (txResult.message) {
+            pushToast(`레이드 보상: ${txResult.message}`, 'info', 3000);
+          }
+        });
+
+        socketCon.on('error_message', (msg) => {
+          setErrorMessage(msg);
+        });
+
+        socketCon.on('disconnect', (reason) => {
+          console.log('[Socket] Disconnected:', reason);
+          setErrorMessage(`🔴 [실시간 연결 끊김] 서버와의 실시간 네트워크 연결이 유실되었습니다 (원인: ${reason}). 레이드 참여방에서 이탈되었으니 다시 [레이드 입장]을 눌러 도전해 주시기 바랍니다.`);
+          setRaidState(null);
+          setSocket(null);
+        });
+
+        setSocket(socketCon);
+      };
+
+      const leaveRaidRoom = () => {
+        if (socket) {
+          socket.disconnect();
+        }
+        setSocket(null);
+        setRaidState(null);
+        setIsRaidOpen(false);
+      };
+
+      const toggleReady = () => {
+        if (socket && raidState) {
+          const me = raidState.players.find(p => p.userId === myId);
+          if (me) {
+            socket.emit('readyStatus', { isReady: !me.isReady });
+          }
+        }
+      };
+
+      // 외부(handleAccountReset 등)에서 소켓을 안전하게 닫기 위한 캡슐화
+      const closeRaid = () => {
+        if (socket) socket.disconnect();
+        setSocket(null);
+        setRaidState(null);
+        setIsRaidOpen(false);
+      };
+
+      return {
+        isRaidOpen, raidState, todayHighestClaimedFloor, rewardMessage, errorMessage, myId,
+        formatRemainingRewardRange, joinRaidRoom, leaveRaidRoom, toggleReady, closeRaid,
+      };
+    }
+
     function App({ onLogout }) {
       // ----------------------------------------------------------------------
       // 1. 핵심 유저 재화 및 강화 피드백 상태 정의
@@ -2140,52 +2292,12 @@
       // ----------------------------------------------------------------------
       // 4. 실시간 소켓 멀티플레이 레이드 상태 정의
       // ----------------------------------------------------------------------
-      const [isRaidOpen, setIsRaidOpen] = useState(false);
+      const {
+        isRaidOpen, raidState, todayHighestClaimedFloor, rewardMessage, errorMessage, myId,
+        formatRemainingRewardRange, joinRaidRoom, leaveRaidRoom, toggleReady, closeRaid,
+      } = useRaidSocket({ cpu, gpu, ram, cooler, motherboard, storage, scaUpgrades, setScaCoins, setOverclockData, pushToast });
       const [isSettingsOpen, setIsSettingsOpen] = useState(false);
       const [isResettingAccount, setIsResettingAccount] = useState(false);
-      const [socket, setSocket] = useState(null);
-      const [raidState, setRaidState] = useState(null);
-      /** 서버 daily_raid_progresses — 오늘 이미 수령한 마일스톤 최고 층 (0, 10, … 100) */
-      const [todayHighestClaimedFloor, setTodayHighestClaimedFloor] = useState(0);
-
-      const formatRemainingRewardRange = (claimedFloor) => {
-        const claimed = Math.max(0, Math.min(100, claimedFloor || 0));
-        if (claimed >= 100) return '모든 구간 수령 완료';
-        return `${claimed + 10}층 ~ 100층`;
-      };
-
-      const refreshRaidProgress = async () => {
-        if (!GameSync.getToken()) return;
-        try {
-          const data = await GameSync.fetchRaidProgress();
-          if (data && data.highestClaimedFloor != null) {
-            setTodayHighestClaimedFloor(data.highestClaimedFloor);
-          }
-        } catch (e) { /* best-effort */ }
-      };
-
-      useEffect(() => {
-        refreshRaidProgress();
-      }, []);
-      const [rewardMessage, setRewardMessage] = useState(null);
-      const [myId] = useState(() => {
-        const saved = localStorage.getItem('sca_myId');
-        // [고증 보안 패치] PostgreSQL UUID 규격 준수를 위한 클렌징 작업 (36글자 UUID 규격 준수 검사)
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-        if (saved !== null && uuidRegex.test(saved)) {
-          return saved;
-        }
-        
-        // 표준 RFC4122 v4 UUID 생성기
-        const newId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-          const r = Math.random() * 16 | 0;
-          const v = c === 'x' ? r : (r & 0x3 | 0x8);
-          return v.toString(16);
-        });
-        
-        localStorage.setItem('sca_myId', newId);
-        return newId;
-      });
       const [nickname] = useState(() => {
         const saved = localStorage.getItem('sca_nickname');
         if (saved !== null) return saved;
@@ -2193,7 +2305,6 @@
         localStorage.setItem('sca_nickname', newName);
         return newName;
       });
-      const [errorMessage, setErrorMessage] = useState(null);
 
       const [combatLogs, setCombatLogs] = useState([
         '💬 [SYSTEM] 사이버네틱 배틀 매트릭스 기동 완료.',
@@ -3632,89 +3743,6 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       // ----------------------------------------------------------------------
       // 9. 실시간 웹소켓 100층 레이드 방 연결 핸들러
       // ----------------------------------------------------------------------
-      const joinRaidRoom = () => {
-        setErrorMessage(null);
-        setRewardMessage(null);
-        setIsRaidOpen(true);
-        refreshRaidProgress();
-
-        const socketCon = io({
-          auth: GameSync.getSocketAuth(),
-          reconnection: false
-        });
-
-        socketCon.on('connect', () => {
-          console.log('[Socket] Connected to server.');
-          socketCon.emit('joinRoom', {
-            roomId: 'carry-room-100',
-            parts: { cpu, gpu, ram, cooler, motherboard, storage },
-            scaUpgrades: scaUpgrades
-          });
-        });
-
-        socketCon.on('connect_error', (err) => {
-          setErrorMessage(err.message || '레이드 서버 연결에 실패했습니다. 로그인 상태를 확인해 주세요.');
-        });
-
-        socketCon.on('room_state', (state) => {
-          setRaidState(state);
-        });
-
-        socketCon.on('milestone_reward_claimed', (data) => {
-          const { clearedFloor, txResult } = data;
-          if (txResult && txResult.newHighestFloor != null) {
-            setTodayHighestClaimedFloor(txResult.newHighestFloor);
-          }
-          if (txResult.success) {
-            const total = Number(txResult.currentTotalCoins) || 0;
-            setScaCoins(total);
-            localStorage.setItem('sca_scaCoins', String(total));
-            pushToast(`레이드 ${clearedFloor}층 · SCA +${txResult.claimedCoins.toLocaleString()} (잔액 ${total.toLocaleString()})`, 'success', 3500);
-            setRewardMessage(`돌파 성공. ${clearedFloor}층 마일스톤 보상 SCA 코인 +${txResult.claimedCoins} 지급 완료. (잔액 ${total.toLocaleString()})`);
-            setTimeout(() => setRewardMessage(null), 4000);
-
-            // 최고 층수 업데이트
-            setOverclockData(prev => ({
-              ...prev,
-              highestRaidFloor: Math.max(prev.highestRaidFloor || 0, clearedFloor),
-            }));
-          } else if (txResult.message) {
-            pushToast(`레이드 보상: ${txResult.message}`, 'info', 3000);
-          }
-        });
-
-        socketCon.on('error_message', (msg) => {
-          setErrorMessage(msg);
-        });
-
-        socketCon.on('disconnect', (reason) => {
-          console.log('[Socket] Disconnected:', reason);
-          setErrorMessage(`🔴 [실시간 연결 끊김] 서버와의 실시간 네트워크 연결이 유실되었습니다 (원인: ${reason}). 레이드 참여방에서 이탈되었으니 다시 [레이드 입장]을 눌러 도전해 주시기 바랍니다.`);
-          setRaidState(null);
-          setSocket(null);
-        });
-
-        setSocket(socketCon);
-      };
-
-      const leaveRaidRoom = () => {
-        if (socket) {
-          socket.disconnect();
-        }
-        setSocket(null);
-        setRaidState(null);
-        setIsRaidOpen(false);
-      };
-
-      const toggleReady = () => {
-        if (socket && raidState) {
-          const me = raidState.players.find(p => p.userId === myId);
-          if (me) {
-            socket.emit('readyStatus', { isReady: !me.isReady });
-          }
-        }
-      };
-
       // 파티 사냥터 부수효과 핸들러 — 컴포넌트에서 GameSync·부품 의존을 걷어내기 위해 App에 둔다
       const handleTogglePartyHunting = () => {
         setIsPartyHunting((v) => {
@@ -3750,12 +3778,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         if (!confirm('정말 초기화합니다. 이 작업은 되돌릴 수 없습니다.')) return;
         setIsResettingAccount(true);
         try {
-          if (socket) {
-            socket.disconnect();
-            setSocket(null);
-            setRaidState(null);
-            setIsRaidOpen(false);
-          }
+          closeRaid();
           await GameSync.resetAccount();
           setIsSettingsOpen(false);
           window.location.reload();
