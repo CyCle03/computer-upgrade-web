@@ -111,6 +111,17 @@ function omgCoverage(): Record<string, unknown> {
   for (const mp of [0, 10000, 40000, 100000]) {
     safe(`calcPartyTickMs.mining${mp}`, () => OMG.calcPartyTickMs({ miningAmplifierUnlock: true, miningAmplifier: mp / 500 }));
   }
+  // 파티 생존율(uptime) — 2-x 티어(반격)에서 채굴력이 안정성 결정. + 미네랄/SCA 최적 티어 분화 고정.
+  const t21 = (OMG.PARTY_HUNTING_TIERS as any[])[6];
+  const t23 = (OMG.PARTY_HUNTING_TIERS as any[])[8];
+  for (const mp of [0, 20000, 50000, 150000]) {
+    safe(`calcPartyUptime.2-1.mining${mp}`, () => OMG.calcPartyUptime(t21, mp));
+    safe(`calcPartyUptime.2-3.mining${mp}`, () => OMG.calcPartyUptime(t23, mp));
+  }
+  for (const mp of [0, 20000, 150000]) {
+    safe(`findOptimalPartyTier.mineral.mining${mp}`, () => OMG.findOptimalPartyTierIndex(9999, 9999999, mp, 0, 'mineral'));
+    safe(`findOptimalPartyTier.sca.mining${mp}`, () => OMG.findOptimalPartyTierIndex(9999, 9999999, mp, 0, 'sca'));
+  }
   for (const clk of [1333, 1600, 2400, 3200, 4800, 6000]) {
     safe(`calcRamAttackFrames.${clk}`, () =>
       OMG.calcRamAttackFrames({ level: 5, clockMhz: clk, capacityGb: 8, ddrGeneration: 'DDR4' }));

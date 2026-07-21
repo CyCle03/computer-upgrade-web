@@ -287,16 +287,22 @@
    * minRebirthStat: v1.1.6 파티봇 공격력(환생수치/10000) 후반 구간.
    * minMiningPower: 채굴증폭기 2번 라인(2-2~).
    */
+  // 파티 채굴봇 사망 시 리스폰 다운타임(초) — 채굴력↔보스반격 트레이드오프의 uptime 계산용.
+  const PARTY_RESPAWN_SEC = 3;
+  // 티어 계열 분화:
+  //  1-x = 미네랄 특화(높은 미네랄·낮은 SCA), 보스 반격 없음(bossThreat 0 → uptime 1, 안정).
+  //  2-x = SCA 특화(높은 SCA·낮은 미네랄), 보스 반격 있음(bossThreat>0) → 채굴력이 생존율(uptime)을 결정.
+  //  bossThreat ≈ minMiningPower/3 (해금 채굴력에서 uptime≈0.5, 채굴력 더 쌓으면 1에 근접).
   const PARTY_HUNTING_TIERS = [
-    { name: '파티 1-1', mineralPerTick: 30, scaCoins: 2, minPerfScore: 5, minRebirthStat: 0, minMiningPower: 0 },
-    { name: '파티 1-2', mineralPerTick: 300, scaCoins: 20, minPerfScore: 20, minRebirthStat: 0, minMiningPower: 0 },
-    { name: '파티 1-3', mineralPerTick: 3500, scaCoins: 200, minPerfScore: 50, minRebirthStat: 0, minMiningPower: 0 },
-    { name: '파티 1-4', mineralPerTick: 50000, scaCoins: 2000, minPerfScore: 150, minRebirthStat: 0, minMiningPower: 0 },
-    { name: '파티 1-5', mineralPerTick: 750000, scaCoins: 5000, minPerfScore: 300, minRebirthStat: 50000, minMiningPower: 0 },
-    { name: '파티 1-6', mineralPerTick: 1500000, scaCoins: 40000, minPerfScore: 600, minRebirthStat: 200000, minMiningPower: 0 },
-    { name: '파티 2-1', mineralPerTick: 1, scaCoins: 20, minPerfScore: 1200, minRebirthStat: 100000, minMiningPower: 0 },
-    { name: '파티 2-2', mineralPerTick: 100, scaCoins: 500, minPerfScore: 2500, minRebirthStat: 500000, minMiningPower: 5000 },
-    { name: '파티 2-3', mineralPerTick: 2500, scaCoins: 7500, minPerfScore: 3500, minRebirthStat: 1000000, minMiningPower: 15000 },
+    { name: '파티 1-1', mineralPerTick: 30,      scaCoins: 1,      minPerfScore: 5,    minRebirthStat: 0,       minMiningPower: 0,     bossThreat: 0 },
+    { name: '파티 1-2', mineralPerTick: 300,     scaCoins: 3,      minPerfScore: 20,   minRebirthStat: 0,       minMiningPower: 0,     bossThreat: 0 },
+    { name: '파티 1-3', mineralPerTick: 3500,    scaCoins: 15,     minPerfScore: 50,   minRebirthStat: 0,       minMiningPower: 0,     bossThreat: 0 },
+    { name: '파티 1-4', mineralPerTick: 50000,   scaCoins: 80,     minPerfScore: 150,  minRebirthStat: 0,       minMiningPower: 0,     bossThreat: 0 },
+    { name: '파티 1-5', mineralPerTick: 750000,  scaCoins: 400,    minPerfScore: 300,  minRebirthStat: 50000,   minMiningPower: 0,     bossThreat: 0 },
+    { name: '파티 1-6', mineralPerTick: 1500000, scaCoins: 2000,   minPerfScore: 600,  minRebirthStat: 200000,  minMiningPower: 0,     bossThreat: 0 },
+    { name: '파티 2-1', mineralPerTick: 500,     scaCoins: 3000,   minPerfScore: 1200, minRebirthStat: 100000,  minMiningPower: 3000,  bossThreat: 1000 },
+    { name: '파티 2-2', mineralPerTick: 2000,    scaCoins: 25000,  minPerfScore: 2500, minRebirthStat: 500000,  minMiningPower: 15000, bossThreat: 5000 },
+    { name: '파티 2-3', mineralPerTick: 8000,    scaCoins: 120000, minPerfScore: 3500, minRebirthStat: 1000000, minMiningPower: 50000, bossThreat: 16667 },
   ];
 
   const GAME_SPEED_BASE = 3;
@@ -1234,6 +1240,43 @@
     return Math.round(tier.mineralPerTick * MINERAL_INCOME_SCALE * (1 + (incomeBonusRate || 0)));
   }
 
+  /**
+   * 파티 채굴봇 생존율(uptime) — 보스 반격 대비 채굴력으로 결정.
+   * bossThreat 0(1-x)이면 1(반격 없음, 안정). 그 외 생존시간 ≈ 채굴력/보스위협,
+   * uptime = 생존/(생존+리스폰). 채굴력이 낮은 채 상위(반격 큰) 티어를 고르면 uptime이 낮아
+   * 실효 수입이 하위 안정 티어보다 적어진다 → "내 채굴력에 맞는 최적 티어"가 생긴다.
+   */
+  function calcPartyUptime(tier, miningPower) {
+    if (!tier || !(tier.bossThreat > 0)) return 1;
+    const survivalSec = Math.max(0, miningPower || 0) / tier.bossThreat;
+    return Math.max(0.05, Math.min(1, survivalSec / (survivalSec + PARTY_RESPAWN_SEC)));
+  }
+
+  /** 파티 SCA/틱 실효값(생존율 반영). */
+  function calcPartyScaPerTick(tier, miningPower) {
+    if (!tier) return 0;
+    return Math.round((tier.scaCoins || 0) * calcPartyUptime(tier, miningPower));
+  }
+
+  /**
+   * 해금된 파티 티어 중 목표 재화의 실효 수입(보상×생존율)이 최대인 티어 인덱스.
+   * 틱 간격은 티어 무관(채굴력에만 의존)이라 상대 비교에서 무시. mode: 'mineral' | 'sca'.
+   */
+  function findOptimalPartyTierIndex(perfScore, rebirthStat, miningPower, incomeBonusRate, mode) {
+    let bestIdx = -1;
+    let bestVal = -1;
+    for (let i = 0; i < PARTY_HUNTING_TIERS.length; i += 1) {
+      if (!canSelectPartyTier(i, perfScore, rebirthStat, miningPower)) continue;
+      const tier = PARTY_HUNTING_TIERS[i];
+      const up = calcPartyUptime(tier, miningPower);
+      const val = mode === 'sca'
+        ? (tier.scaCoins || 0) * up
+        : calcPartyMineralPerTick(tier, incomeBonusRate) * up;
+      if (val > bestVal) { bestVal = val; bestIdx = i; }
+    }
+    return bestIdx >= 0 ? bestIdx : 0;
+  }
+
   /** 파티 티어 해금용 성능수치 — GPU(등급)·CPU·RAM·쿨러 합산 (맵 채굴 난이도 스케일) */
   function calcPartyPerformanceScore(parts, scaUpgrades) {
     const gpu = (parts && parts.gpu) || { level: 1 };
@@ -1794,6 +1837,7 @@ function getPartLevel(part) {
     calcHuntMineralPerKillPerUnit, calcHuntMineralPerHitPerUnit,
     calcWorkBuildingKillsPerSecond, calcHuntEnemyKillsPerSecond, calcHuntUnitUptime, calcWorkCoinIncomePerSec,
     calcPartyMineralPerTick, calcPartyPerformanceScore, evaluatePartyTierAccess, canSelectPartyTier,
+    calcPartyUptime, calcPartyScaPerTick, findOptimalPartyTierIndex, PARTY_RESPAWN_SEC,
     getMaxUnlockedPartyTierIndex, resolvePartyHuntingTierIndex, calcOptimalWorkUnits, toDownloadTargetSnapshot,
     getCpuSummonDpsFactor, calcUnitDamageForIncome, calcIncomeDamageMultiplier,
     createIntelCpu11InventoryItem,

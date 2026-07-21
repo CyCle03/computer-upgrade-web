@@ -1563,36 +1563,41 @@
     }
 
     // PartyHuntingGround — App에서 분리한 순수 프레젠테이션 컴포넌트
-    function PartyHuntingGround({ partyPerfScore, rebirthStat, partyMiningPower, isPartyHunting, handleTogglePartyHunting, partyHuntingTier, handlePartyTierSelect, incomeBonusRate, scaUpgrades, partyElapsedSec }) {
+    function PartyHuntingGround({ partyPerfScore, rebirthStat, partyMiningPower, isPartyHunting, handleTogglePartyHunting, partyHuntingTier, handlePartyTierSelect, handlePartyAuto, incomeBonusRate, scaUpgrades, partyElapsedSec }) {
       return (
               <div className="bg-slate-900/40 p-4 sm:p-6 rounded-xl border border-purple-900/40 flex flex-col space-y-4 min-w-0">
                 <h2 className="text-base sm:text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
                   <span className="text-purple-400 text-lg mr-1.5">👥</span>
                   <span>파티 사냥터</span>
                 </h2>
-                <p className="text-xs text-slate-400 break-words">원 + SCA 코인 · 파티 ON 시 작업 수입 중단 · 성능 {partyPerfScore.toLocaleString()} · 환생수치 {rebirthStat.toLocaleString()} · 채굴력 {partyMiningPower.toLocaleString()} (틱 가속)</p>
+                <p className="text-xs text-slate-400 break-words">원 + SCA 코인 · 파티 ON 시 작업 수입 중단 · 성능 {partyPerfScore.toLocaleString()} · 환생수치 {rebirthStat.toLocaleString()} · 채굴력 {partyMiningPower.toLocaleString()} (틱 가속·생존율)</p>
+                <p className="text-[10px] text-slate-500 font-mono break-words">1-x=미네랄 특화(반격 없음) · 2-x=SCA 특화(보스 반격 → 채굴력이 생존율 결정). 채굴력 부족한 채 상위 티어 가면 실효 수입 급감.</p>
                 <div className="flex flex-wrap items-center gap-2">
                   <button onClick={handleTogglePartyHunting} className={`text-sm px-3 py-1.5 rounded font-mono font-bold border ${isPartyHunting ? 'bg-purple-600 border-purple-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-300'}`}>{isPartyHunting ? '파티 ON' : '파티 OFF'}</button>
+                  <button type="button" onClick={() => handlePartyAuto('mineral')} className="text-xs px-2.5 py-1.5 rounded font-mono border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10">💎 미네랄 최적</button>
+                  <button type="button" onClick={() => handlePartyAuto('sca')} className="text-xs px-2.5 py-1.5 rounded font-mono border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10">🪙 SCA 최적</button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
                   {OMG.PARTY_HUNTING_TIERS.map((tier, idx) => {
                     const access = OMG.evaluatePartyTierAccess(idx, partyPerfScore, rebirthStat, partyMiningPower);
                     const locked = !access.ok;
+                    const up = OMG.calcPartyUptime(tier, partyMiningPower);
                     return (
-                    <button key={tier.name} onClick={() => handlePartyTierSelect(idx)} disabled={!isPartyHunting || locked} title={locked ? access.failures.join(' · ') : `성능 ${tier.minPerfScore}+ · 환생 ${tier.minRebirthStat.toLocaleString()}+ · 채굴 ${tier.minMiningPower.toLocaleString()}+`} className={`p-2 rounded border text-[11px] font-mono text-left disabled:opacity-40 ${locked ? 'border-slate-900 bg-slate-950/50 text-slate-600' : partyHuntingTier === idx && isPartyHunting ? 'border-purple-500 bg-purple-950/30' : 'border-slate-800 bg-slate-950'}`}>{tier.name}{locked ? ' 🔒' : ''}<br/>+{OMG.calcPartyMineralPerTick(tier, incomeBonusRate)}원 / +{tier.scaCoins}SCA{locked ? <span className="block text-[9px] text-rose-400/80 mt-0.5">{access.failures[0]}</span> : null}</button>
+                    <button key={tier.name} onClick={() => handlePartyTierSelect(idx)} disabled={!isPartyHunting || locked} title={locked ? access.failures.join(' · ') : `성능 ${tier.minPerfScore}+ · 환생 ${tier.minRebirthStat.toLocaleString()}+ · 채굴 ${tier.minMiningPower.toLocaleString()}+${tier.bossThreat > 0 ? ` · 보스 반격(생존율 ${Math.round(up * 100)}%)` : ' · 반격 없음'}`} className={`p-2 rounded border text-[11px] font-mono text-left disabled:opacity-40 ${locked ? 'border-slate-900 bg-slate-950/50 text-slate-600' : partyHuntingTier === idx && isPartyHunting ? 'border-purple-500 bg-purple-950/30' : 'border-slate-800 bg-slate-950'}`}>{tier.name}{locked ? ' 🔒' : ''}<br/>+{OMG.calcPartyMineralPerTick(tier, incomeBonusRate)}원 / +{tier.scaCoins}SCA{tier.bossThreat > 0 ? <span className={`block text-[9px] mt-0.5 ${up >= 0.7 ? 'text-emerald-400/80' : up >= 0.4 ? 'text-amber-400/80' : 'text-rose-400/80'}`}>생존 {Math.round(up * 100)}%</span> : null}{locked ? <span className="block text-[9px] text-rose-400/80 mt-0.5">{access.failures[0]}</span> : null}</button>
                     );
                   })}
                 </div>
                 {isPartyHunting && OMG.PARTY_HUNTING_TIERS[partyHuntingTier] && (() => {
                   const _tier = OMG.PARTY_HUNTING_TIERS[partyHuntingTier];
                   const _tickMs = OMG.calcPartyTickMs(scaUpgrades);
+                  const _up = OMG.calcPartyUptime(_tier, partyMiningPower);
                   const _tickSec = Math.max(1, Math.round(_tickMs / 1000));
                   const _nextIn = _tickSec - (partyElapsedSec % _tickSec);
                   const _mins = Math.floor(partyElapsedSec / 60);
                   const _secs = partyElapsedSec % 60;
                   return (
                     <div className="space-y-1">
-                      <p className="text-xs text-purple-300 font-mono">선택: {_tier.name} · {(_tickMs / 1000).toFixed(1)}초당 +{OMG.calcPartyMineralPerTick(_tier, incomeBonusRate)}원 +{_tier.scaCoins}C · 채굴력 {partyMiningPower.toLocaleString()} 반영</p>
+                      <p className="text-xs text-purple-300 font-mono">선택: {_tier.name} · {(_tickMs / 1000).toFixed(1)}초당 +{Math.round(OMG.calcPartyMineralPerTick(_tier, incomeBonusRate) * _up).toLocaleString()}원 +{Math.round(_tier.scaCoins * _up).toLocaleString()}C{_tier.bossThreat > 0 ? ` · 생존율 ${Math.round(_up * 100)}%` : ''}</p>
                       <p className="text-xs text-purple-400/70 font-mono">⏱ 경과 {_mins > 0 ? `${_mins}분 ${_secs}초` : `${_secs}초`} · 다음 틱까지 {_nextIn}초</p>
                     </div>
                   );
@@ -3957,6 +3962,12 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         }
       };
 
+      // 미네랄/SCA 최적 파티 티어 자동 배치 — 해금 티어 중 (보상×생존율) 최대 티어 선택 후 파티 ON
+      const handlePartyAuto = (mode) => {
+        const idx = OMG.findOptimalPartyTierIndex(partyPerfScore, rebirthStat, partyMiningPower, incomeBonusRate, mode);
+        handlePartyTierSelect(idx);
+      };
+
       const handleAccountReset = async () => {
         if (isResettingAccount) return;
         const msg1 =
@@ -4266,6 +4277,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 handleTogglePartyHunting={handleTogglePartyHunting}
                 partyHuntingTier={partyHuntingTier}
                 handlePartyTierSelect={handlePartyTierSelect}
+                handlePartyAuto={handlePartyAuto}
                 incomeBonusRate={incomeBonusRate}
                 scaUpgrades={scaUpgrades}
                 partyElapsedSec={partyElapsedSec}

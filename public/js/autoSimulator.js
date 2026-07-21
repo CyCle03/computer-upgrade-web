@@ -696,11 +696,12 @@
         const partyConsumed = OMG.consumeElapsedTicks(partyRem, partyTickMs, MAX_INCOME_TICKS);
         ctx.remParty = partyConsumed.remainderMs;
         if (partyConsumed.ticks > 0) {
-          const m = OMG.calcPartyMineralPerTick(tier, ctx.incomeBonusRate) * partyConsumed.ticks;
+          const up = OMG.calcPartyUptime(tier, OMG.getMiningPower(ctx.scaUpgrades || {}));
+          const m = Math.round(OMG.calcPartyMineralPerTick(tier, ctx.incomeBonusRate) * partyConsumed.ticks * up);
           ctx.minerals += m;
           ctx.scaPartyTicks = (ctx.scaPartyTicks || 0) + partyConsumed.ticks;
           ctx.partyMineralGained = (ctx.partyMineralGained || 0) + m;
-          ctx.scaCoinsGain = (ctx.scaCoinsGain || 0) + tier.scaCoins * partyConsumed.ticks;
+          ctx.scaCoinsGain = (ctx.scaCoinsGain || 0) + Math.round(tier.scaCoins * partyConsumed.ticks * up);
           ctx.stats.incomeTicks += partyConsumed.ticks;
           gained += m;
         }
@@ -781,6 +782,7 @@
       const tier = tierIdx >= 0 ? OMG.PARTY_HUNTING_TIERS[tierIdx] : null;
       if (tier) {
         const partyTickMs = OMG.calcPartyTickMs(ctx.scaUpgrades || {});
+        const partyUptime = OMG.calcPartyUptime(tier, OMG.getMiningPower(ctx.scaUpgrades || {}));
         const autoTickMs = OMG.calcAutoLoopIntervalMs(ctx.scaUpgrades || {});
       let partyRem = (ctx.remParty || 0) + elapsedMs;
       let autoRem = (ctx.remAuto || 0) + elapsedMs;
@@ -796,11 +798,11 @@
 
       while ((partyTicks > 0 || autoTicks > 0) && (partyTicks + autoTicks) < MAX_INCOME_TICKS * 2) {
         if (partyTicks > 0 && (autoTicks === 0 || counter >= partyEvery)) {
-          const m = OMG.calcPartyMineralPerTick(tier, ctx.incomeBonusRate);
+          const m = Math.round(OMG.calcPartyMineralPerTick(tier, ctx.incomeBonusRate) * partyUptime);
           ctx.minerals += m;
           ctx.scaPartyTicks = (ctx.scaPartyTicks || 0) + 1;
           ctx.partyMineralGained = (ctx.partyMineralGained || 0) + m;
-          ctx.scaCoinsGain = (ctx.scaCoinsGain || 0) + tier.scaCoins;
+          ctx.scaCoinsGain = (ctx.scaCoinsGain || 0) + Math.round(tier.scaCoins * partyUptime);
           ctx.stats.incomeTicks += 1;
           partyTicks -= 1;
           counter = 0;

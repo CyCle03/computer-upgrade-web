@@ -225,7 +225,9 @@ export class ScaIncomeService {
         };
       }
 
-      const grantedSca = grantedTicks * tier.scaCoins;
+      // 채굴봇 생존율(uptime) 반영 — 상위(반격) 티어는 채굴력이 낮으면 SCA도 그만큼 덜 받는다.
+      const partyUptime = omg.calcPartyUptime(tier, omg.getMiningPower(scaUpgrades));
+      const grantedSca = Math.round(grantedTicks * tier.scaCoins * partyUptime);
       const nextWallet = await applyScaWalletDelta(client, userId, state, grantedSca);
       state[StateKey.partyLastClaimMs] = String(lastClaimMs + grantedTicks * partyTickMs);
       state[StateKey.partyHuntingTier] = String(tierIndex);

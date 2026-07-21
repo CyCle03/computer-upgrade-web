@@ -36,6 +36,7 @@ export interface OmgBalanceApi {
   PARTY_HUNTING_TIERS: PartyTier[];
   calcGameSpeedTickMs: (scaUpgrades: Record<string, unknown>, baseMs: number) => number;
   calcPartyTickMs: (scaUpgrades: Record<string, unknown>) => number;
+  calcPartyUptime: (tier: unknown, miningPower: number) => number;
   calcPartyPerformanceScore: (parts: RebirthParts, scaUpgrades: Record<string, unknown>) => number;
   getMiningPower: (scaUpgrades: Record<string, unknown>) => number;
   canSelectPartyTier: (
