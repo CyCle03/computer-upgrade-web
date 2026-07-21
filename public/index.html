@@ -866,6 +866,346 @@
       );
     }
 
+    // HardwareMonitor — App에서 분리한 순수 프레젠테이션 컴포넌트
+    function HardwareMonitor({ specs, cpu, gpu, gpuGrade, scaUpgrades, ram, ramSlots, effectiveRamGb, ramAttackFrames, cooler, motherboard, storage, joinRaidRoom, getCpuName, getGpuName, getRamName, getCoolerName, getStorageName, getSummonUnit }) {
+      return (
+            <section className="lg:col-span-5 bg-slate-900/40 p-4 sm:p-6 rounded-xl border border-slate-800 flex flex-col space-y-4 sm:space-y-6 min-w-0">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 border-b border-slate-800 pb-3">
+                <h2 className="text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2">
+                  <span className="text-emerald-400 text-lg mr-1.5">🖥️</span>
+                  <span>내 하드웨어 모니터</span>
+                </h2>
+                <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">DDR {cpu.ddrGeneration} SYSTEM</span>
+              </div>
+
+              {(specs.penalties.isOverheated || specs.penalties.isSocketMismatched || specs.penalties.isDdrMismatched) && (
+                <div className="p-4 bg-rose-950/20 border border-rose-500/50 rounded-lg neon-border-rose space-y-2.5 animate-pulse">
+                  <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest font-mono flex items-center space-x-1.5">
+                    <span className="text-lg mr-1">⚠️</span>
+                    <span>시스템 임계 경고 감지됨</span>
+                  </h3>
+                  
+                  {specs.penalties.isOverheated && (
+                    <div className="text-xs text-rose-400 font-mono">
+                      ⚠️ OVERHEAT ERROR: CPU 요구 열량({specs.cpuHeatDemand})이 쿨러 능력({cooler.coolingCapacity})을 초과했습니다. 초당 미네랄 수입이 50% 삭감되었으며 유닛 방어력이 반감되었습니다.
+                    </div>
+                  )}
+
+                  {specs.penalties.isSocketMismatched && (
+                    <div className="text-xs text-rose-400 font-mono">
+                      ⚠️ SOCKET MISMATCH: CPU 제조사({cpu.manufacturer})와 메인보드 소켓 제조사({motherboard.socketManufacturer})가 불일치하여 유닛 한도가 절반으로 축소됩니다.
+                    </div>
+                  )}
+
+                  {specs.penalties.isDdrMismatched && (
+                    <div className="text-xs text-rose-400 font-mono">
+                      ❌ COMPATIBILITY ERROR: DDR 규격 혼용 오류 발생. 초당 HP Decay 디버프({specs.penalties.hpDecayRate * 100}%/초)가 활성화됩니다.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
+                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-start gap-2 min-w-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-slate-500 font-mono">CPU PROCESSOR</p>
+                    <p className="text-base font-semibold text-slate-200">{getCpuName(cpu.level)}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">Grade: +{cpu.level}강</p>
+                  </div>
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{cpu.ddrGeneration}</span>
+                </div>
+
+                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-start gap-2 min-w-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-slate-500 font-mono">GPU ENGINE</p>
+                    <p className="text-base font-semibold text-slate-200">{getGpuName(gpu.level, gpu)}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">+{gpu.level}강 · {OMG.GPU_GRADE_NAMES[gpuGrade]} · 공격 {OMG.getGpuAttackPower(gpu, scaUpgrades)}</p>
+                  </div>
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">PCI-E</span>
+                </div>
+
+                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-start gap-2 min-w-0 md:col-span-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-slate-500 font-mono">SYSTEM RAM (MEM)</p>
+                    <p className="text-base font-semibold text-slate-200 break-words">{getRamName(ram.level, ram)}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5 break-words">Grade: +{ram.level || 1}강{ram.ramVariant === 'overclock' ? ' OC' : ''} · 유효 {effectiveRamGb}GB ({ramSlots}슬롯×{ram.capacityGb}GB) · {ram.clockMhz}MHz · 공속 {ramAttackFrames}f · 성능 {OMG.getRamPerfPerUnit(ram)}</p>
+                  </div>
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{ram.ddrGeneration}</span>
+                </div>
+
+                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center">
+                  <div>
+                    <p className="text-xs text-slate-500 font-mono">COOLING BLADE</p>
+                    <p className="text-base font-semibold text-slate-200">{getCoolerName(cooler.level, cooler)}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{(cooler.coolerKind === 'water' ? '수랭' : '공랭')} · Cap: {cooler.coolingCapacity}W / +{cooler.level}강</p>
+                  </div>
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{cooler.coolerKind === 'water' ? '수랭' : '공랭'}</span>
+                </div>
+
+                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 col-span-1 md:col-span-2">
+                  <div>
+                    <p className="text-xs text-slate-500 font-mono">MOTHERBOARD</p>
+                    <p className="text-base font-semibold text-slate-200">{motherboard.name || `${motherboard.socketManufacturer} Board`}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{motherboard.socketManufacturer} · {motherboard.supportedDdrGeneration} · 실드 +{motherboard.shieldIncrease}</p>
+                  </div>
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">{motherboard.supportedDdrGeneration} SLOT</span>
+                </div>
+
+                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 col-span-1 md:col-span-2">
+                  <div>
+                    <p className="text-xs text-slate-500 font-mono">STORAGE SYSTEM</p>
+                    <p className="text-base font-semibold text-slate-200">{getStorageName(storage.level || 1, storage)}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">+{storage.level || 1}강 · {storage.capacityGb}GB · {(storage.storageKind === 'nvme' || storage.type === 'SSD') ? 'NVMe SSD' : 'HDD'} · 다운로드 x{specs.storageDownloadMult}</p>
+                  </div>
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{storage.type === 'SSD' ? 'SSD 4X FASTER' : 'HDD BASE'}</span>
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-lg flex flex-col space-y-3 font-mono">
+                <h3 className="text-xs text-slate-400 uppercase tracking-widest border-b border-slate-800 pb-1.5 flex items-center space-x-1">
+                  <span className="text-emerald-400 text-sm mr-1">🛡️</span>
+                  <span>유닛 전투 스펙 매니페스트</span>
+                </h3>
+                <div className="grid grid-cols-2 gap-y-2.5 gap-x-4 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">필드 유닛 상한:</span>
+                    <span className="text-emerald-400 font-bold">{specs.unitLimit}기</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">RAM (작업/사냥):</span>
+                    <span className="text-emerald-400 font-bold">{specs.workRamUsed}GB / {specs.huntRamFree}GB · GPU {specs.gpuRamPerUnit}GB/기</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">게임 사냥 유닛:</span>
+                    <span className="text-emerald-400 font-bold">{specs.maxHuntingUnits}기</span>
+                  </div>
+                  <div className="flex justify-between col-span-2 text-cyan-300 font-semibold border-b border-slate-900 pb-1.5 mt-0.5">
+                    <span>👾 소환 스타 유닛:</span>
+                    <span>{getSummonUnit(cpu.level).emoji} {getSummonUnit(cpu.level).name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">유닛 HP/실드:</span>
+                    <span className="text-emerald-400 font-bold">{specs.unitHp} / {specs.unitShield}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">유닛 단일데미지:</span>
+                    <span className="text-emerald-400 font-bold">{specs.unitDamage}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">공격 주기(공속):</span>
+                    <span className="text-cyan-400 font-bold">{specs.attackSpeedSec}초 · RAM {specs.ramAttackFrames}f · {specs.ramClockMhz}MHz · 성능 {OMG.getRamPerfPerUnit(specs.ram)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">방어력(쿨러반영):</span>
+                    <span className="text-emerald-400 font-bold">{specs.unitDefense}</span>
+                  </div>
+                  <div className="flex justify-between col-span-2 border-t border-slate-900 pt-2 text-sm">
+                    <span className="text-slate-500">1기 DPS (연구소·레이드 기준):</span>
+                    <span className="text-cyan-400 font-bold font-mono">
+                      {OMG.calcUnitDps(specs.unitDamage, specs.attackSpeedSec).toLocaleString()} DPS
+                    </span>
+                  </div>
+                  <div className="flex justify-between col-span-2 text-xs">
+                    <span className="text-slate-500">전체 {specs.unitLimit}기 합산 DPS:</span>
+                    <span className="text-slate-400 font-mono">
+                      {(OMG.calcUnitDps(specs.unitDamage, specs.attackSpeedSec) * specs.unitLimit).toLocaleString()} DPS
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-950/60 rounded border border-slate-800">
+                <button 
+                  onClick={joinRaidRoom}
+                  className="w-full flex items-center justify-center space-x-2 py-3 bg-cyan-500 hover:bg-cyan-400 active:scale-95 transition text-slate-950 font-bold rounded-lg font-mono text-sm shadow-lg shadow-cyan-500/20"
+                >
+                  <span className="text-sm mr-1">⚔️</span>
+                  <span>100층 레이드 참가</span>
+                </button>
+              </div>
+            </section>
+      );
+    }
+
+    // InventoryVault — App에서 분리한 순수 프레젠테이션 컴포넌트
+    function InventoryVault({ inventory, isUpgrading, handleInventoryUpgrade, handleEquipComponent, handleSellComponent, getCpuName, getGpuName, getRamName, getCoolerName, getSummonUnit, getUpgradeProbability }) {
+      return (
+                  <div className="p-4 bg-slate-950/60 rounded border border-slate-800 col-span-2 space-y-3.5 mt-2 animate-fade-in">
+                    <div className="flex justify-between items-center border-b border-slate-900 pb-2">
+                      <span className="text-xs font-bold text-emerald-400 font-mono tracking-widest uppercase flex items-center space-x-1.5 font-bold">
+                        <span>📦 내 보유 장비 창고 (Inventory Warehouse)</span>
+                      </span>
+                      <span className="text-xs text-slate-500 font-mono">보관 {inventory.length}개</span>
+                    </div>
+
+                    {inventory.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-slate-600 font-mono border border-slate-900 border-dashed rounded">
+                        창고에 보관 중인 여비 장비가 없습니다. 위 상점에서 원하는 강 티어를 구매하세요.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1">
+                        {inventory.map((p) => {
+                          let partName = '';
+                          let specDetail = '';
+                          let badgeText = '';
+                          let badgeStyle = '';
+
+                          if (p.type === 'cpu') {
+                            partName = getCpuName(p.level, p.manufacturer);
+                            specDetail = `호환: ${p.manufacturer} / ${p.ddrGeneration}`;
+                            badgeText = 'CPU';
+                            badgeStyle = 'bg-emerald-950/50 text-emerald-400 border border-emerald-500/20';
+                          } else if (p.type === 'gpu') {
+                            partName = getGpuName(p.level, p);
+                            specDetail = `데미지 배율: x${getSummonUnit(p.level).dpsFactor.toFixed(1)}`;
+                            badgeText = 'GPU';
+                            badgeStyle = 'bg-cyan-950/50 text-cyan-400 border border-cyan-500/20';
+                          } else if (p.type === 'ram') {
+                            partName = getRamName(p.level, p);
+                            specDetail = `클럭: ${p.clockMhz}Mhz / ${p.capacityGb}GB / ${p.ddrGeneration}`;
+                            badgeText = 'RAM';
+                            badgeStyle = 'bg-emerald-950/50 text-emerald-400 border border-emerald-500/20';
+                          } else if (p.type === 'cooler') {
+                            partName = getCoolerName(p.level, p);
+                            specDetail = `쿨링: ${p.coolingCapacity}W / 방어력: +${p.level * 3}`;
+                            badgeText = 'COOLER';
+                            badgeStyle = 'bg-rose-950/50 text-rose-400 border border-rose-500/20';
+                          } else if (p.type === 'storage') {
+                            partName = `${p.capacityGb}GB ${p.storageType}`;
+                            specDetail = `속도: ${p.storageType === 'SSD' ? 'SSD 4X 가속' : 'HDD 기본'}`;
+                            badgeText = 'STORAGE';
+                            badgeStyle = 'bg-slate-800 text-slate-300';
+                          }
+
+                          const isMax = p.level >= OMG.getMaxLevel(p.type, p);
+                          const prob = isMax ? 0 : getUpgradeProbability(p.type, p.level, p);
+
+                          return (
+                            <div key={p.id} className="p-3 bg-slate-900/60 rounded border border-slate-800 hover:border-slate-700 transition flex flex-col justify-between space-y-2">
+                              <div>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className={`text-[11px] font-mono px-1.5 py-0.5 rounded font-bold ${badgeStyle}`}>
+                                    {badgeText}
+                                  </span>
+                                  <span className="text-xs font-mono text-slate-500">+{p.level}강</span>
+                                </div>
+                                <p className="text-sm font-bold text-slate-200 truncate">{partName}</p>
+                                <p className="text-[11px] text-slate-500 font-mono mt-0.5">{specDetail}</p>
+                                <p className="text-[11px] text-amber-500/80 font-mono mt-1">
+                                  [확률: {Math.round(prob * 100)}%] {!isMax && '⚠️실패 시 파괴'}
+                                </p>
+                              </div>
+                              
+                              <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-950">
+                                <button 
+                                  onClick={() => handleInventoryUpgrade(p.id)}
+                                  disabled={isUpgrading}
+                                  className="flex-1 py-1 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-[11px] font-bold font-mono transition disabled:opacity-50 text-center truncate"
+                                >
+                                  {isMax ? '최고강' : '강화하기'}
+                                </button>
+                                <button 
+                                  onClick={() => handleEquipComponent(p.id)}
+                                  className="flex-1 py-1 bg-cyan-500/10 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 border border-cyan-500/30 rounded text-[11px] font-bold font-mono transition text-center truncate"
+                                >
+                                  장착
+                                </button>
+                                <button 
+                                  onClick={() => handleSellComponent(p.id)}
+                                  className="flex-1 py-1 bg-rose-500/10 hover:bg-rose-500 hover:text-slate-950 text-rose-400 border border-rose-500/30 rounded text-[11px] font-bold font-mono transition text-center truncate"
+                                >
+                                  💰 {OMG.formatMineral(OMG.getShopSellPriceMinerals(p.type, p.level, p))}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+      );
+    }
+
+    // ResourceBar — App에서 분리한 순수 프레젠테이션 컴포넌트 (상단 자원 바)
+    function ResourceBar({ minerals, scaCoins, mineralFlash, rebirthCount, rebirthStat, rebirthIncomeMult, gameSpeedFrames, nickname, setIsSettingsOpen, onLogout }) {
+      return (
+          <header className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6 items-stretch bg-slate-900/60 p-3 sm:p-4 rounded-xl border border-emerald-500/20 neon-border-emerald min-w-0">
+            <div className="flex items-start sm:items-center gap-3 min-w-0">
+              <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-400 border border-emerald-500/30">
+                <span className="text-xl">🧠</span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <h1 className="text-sm text-slate-400 uppercase tracking-widest font-semibold">복원 제어 터미널</h1>
+                <p className="text-xs text-emerald-500 font-mono break-words">환생 {rebirthCount}회 · 환생수치 {rebirthStat.toLocaleString()} · 수입 x{rebirthIncomeMult.toFixed(2)} · 배속 {gameSpeedFrames}f</p>
+                <p className="text-sm text-slate-400 font-mono mt-0.5 flex items-center gap-2 flex-wrap">
+                  <span>👤 {nickname}</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsSettingsOpen(true)}
+                    className="px-2 py-0.5 text-xs border border-slate-600 rounded text-slate-300 hover:bg-slate-800"
+                  >
+                    ⚙️ 설정
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { if (onLogout) onLogout(); }}
+                    className="px-2 py-0.5 text-xs border border-rose-500/40 rounded text-rose-300 hover:bg-rose-500/10"
+                  >
+                    로그아웃
+                  </button>
+                </p>
+              </div>
+            </div>
+
+            <div className={`flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border transition-colors duration-300 ${
+              mineralFlash === 'gain' ? 'border-emerald-500/60 bg-emerald-950/30' :
+              mineralFlash === 'spend' ? 'border-amber-500/60 bg-amber-950/20' :
+              'border-slate-800'
+            }`}>
+              <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">MINERALS (원)</span>
+              <span className={`text-lg font-bold font-mono flex items-center space-x-1 transition-colors duration-300 ${
+                mineralFlash === 'gain' ? 'text-emerald-300 scale-105' :
+                mineralFlash === 'spend' ? 'text-amber-300' :
+                'text-emerald-400'
+              }`}>
+                <span>{minerals.toLocaleString()}<span className="text-slate-500 text-xs ml-1">원</span></span>
+              </span>
+            </div>
+
+
+            <div className="flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border border-cyan-500/30 neon-border-cyan">
+              <div className="flex items-center space-x-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
+                <span className="text-xs uppercase tracking-wider text-cyan-300 font-mono">SCA CLOUD COINS</span>
+              </div>
+              <span className="text-lg font-bold text-cyan-300 font-mono">
+                {scaCoins.toLocaleString()}
+              </span>
+            </div>
+          </header>
+      );
+    }
+
+    // IncomeLog — App에서 분리한 순수 프레젠테이션 컴포넌트 (수입 로그)
+    function IncomeLog({ combatLogs, isPartyHunting }) {
+      return (
+              <div className="p-4 bg-slate-950/90 rounded border border-emerald-500/30 neon-border-emerald flex flex-col space-y-2.5">
+                <div className="flex justify-between items-center border-b border-emerald-950 pb-2">
+                  <span className="text-xs text-emerald-400 font-mono tracking-widest uppercase flex items-center space-x-1.5 font-bold">
+                    <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+                    <span>수입 로그</span>
+                  </span>
+                  <span className="text-[11px] text-emerald-600 font-mono">{isPartyHunting ? 'PARTY' : 'WORK'}</span>
+                </div>
+                <div className="h-36 overflow-y-auto overscroll-contain font-mono text-xs text-emerald-400/90 space-y-1.5 select-text leading-relaxed">
+                  {combatLogs.map((log, idx) => (
+                    <div key={idx} className="transition-all duration-300 hover:text-emerald-300">{log}</div>
+                  ))}
+                </div>
+              </div>
+      );
+    }
+
     function App({ onLogout }) {
       // ----------------------------------------------------------------------
       // 1. 핵심 유저 재화 및 강화 피드백 상태 정의
@@ -2769,60 +3109,18 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           {/* ================================================================== */}
           {/* 상단 자원 바 */}
           {/* ================================================================== */}
-          <header className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6 items-stretch bg-slate-900/60 p-3 sm:p-4 rounded-xl border border-emerald-500/20 neon-border-emerald min-w-0">
-            <div className="flex items-start sm:items-center gap-3 min-w-0">
-              <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-400 border border-emerald-500/30">
-                <span className="text-xl">🧠</span>
-              </div>
-              <div className="min-w-0 flex-1">
-                <h1 className="text-sm text-slate-400 uppercase tracking-widest font-semibold">복원 제어 터미널</h1>
-                <p className="text-xs text-emerald-500 font-mono break-words">환생 {rebirthCount}회 · 환생수치 {rebirthStat.toLocaleString()} · 수입 x{rebirthIncomeMult.toFixed(2)} · 배속 {gameSpeedFrames}f</p>
-                <p className="text-sm text-slate-400 font-mono mt-0.5 flex items-center gap-2 flex-wrap">
-                  <span>👤 {nickname}</span>
-                  <button
-                    type="button"
-                    onClick={() => setIsSettingsOpen(true)}
-                    className="px-2 py-0.5 text-xs border border-slate-600 rounded text-slate-300 hover:bg-slate-800"
-                  >
-                    ⚙️ 설정
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { if (onLogout) onLogout(); }}
-                    className="px-2 py-0.5 text-xs border border-rose-500/40 rounded text-rose-300 hover:bg-rose-500/10"
-                  >
-                    로그아웃
-                  </button>
-                </p>
-              </div>
-            </div>
-
-            <div className={`flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border transition-colors duration-300 ${
-              mineralFlash === 'gain' ? 'border-emerald-500/60 bg-emerald-950/30' :
-              mineralFlash === 'spend' ? 'border-amber-500/60 bg-amber-950/20' :
-              'border-slate-800'
-            }`}>
-              <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">MINERALS (원)</span>
-              <span className={`text-lg font-bold font-mono flex items-center space-x-1 transition-colors duration-300 ${
-                mineralFlash === 'gain' ? 'text-emerald-300 scale-105' :
-                mineralFlash === 'spend' ? 'text-amber-300' :
-                'text-emerald-400'
-              }`}>
-                <span>{minerals.toLocaleString()}<span className="text-slate-500 text-xs ml-1">원</span></span>
-              </span>
-            </div>
-
-
-            <div className="flex items-center justify-between p-3 bg-slate-950/80 rounded-lg border border-cyan-500/30 neon-border-cyan">
-              <div className="flex items-center space-x-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
-                <span className="text-xs uppercase tracking-wider text-cyan-300 font-mono">SCA CLOUD COINS</span>
-              </div>
-              <span className="text-lg font-bold text-cyan-300 font-mono">
-                {scaCoins.toLocaleString()}
-              </span>
-            </div>
-          </header>
+          <ResourceBar
+            minerals={minerals}
+            scaCoins={scaCoins}
+            mineralFlash={mineralFlash}
+            rebirthCount={rebirthCount}
+            rebirthStat={rebirthStat}
+            rebirthIncomeMult={rebirthIncomeMult}
+            gameSpeedFrames={gameSpeedFrames}
+            nickname={nickname}
+            setIsSettingsOpen={setIsSettingsOpen}
+            onLogout={onLogout}
+          />
           <div className="mb-4 flex gap-2 flex-wrap">
             <button onClick={() => setShowScaCenter(v => !v)} className="px-3 py-2 text-xs font-mono border border-cyan-500/30 rounded text-cyan-300">🏛️ SCA 센터</button>
             <button 
@@ -2891,161 +3189,27 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           {/* ================================================================== */}
           <main className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 min-w-0">
             
-            <section className="lg:col-span-5 bg-slate-900/40 p-4 sm:p-6 rounded-xl border border-slate-800 flex flex-col space-y-4 sm:space-y-6 min-w-0">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 border-b border-slate-800 pb-3">
-                <h2 className="text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2">
-                  <span className="text-emerald-400 text-lg mr-1.5">🖥️</span>
-                  <span>내 하드웨어 모니터</span>
-                </h2>
-                <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">DDR {cpu.ddrGeneration} SYSTEM</span>
-              </div>
-
-              {(specs.penalties.isOverheated || specs.penalties.isSocketMismatched || specs.penalties.isDdrMismatched) && (
-                <div className="p-4 bg-rose-950/20 border border-rose-500/50 rounded-lg neon-border-rose space-y-2.5 animate-pulse">
-                  <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest font-mono flex items-center space-x-1.5">
-                    <span className="text-lg mr-1">⚠️</span>
-                    <span>시스템 임계 경고 감지됨</span>
-                  </h3>
-                  
-                  {specs.penalties.isOverheated && (
-                    <div className="text-xs text-rose-400 font-mono">
-                      ⚠️ OVERHEAT ERROR: CPU 요구 열량({specs.cpuHeatDemand})이 쿨러 능력({cooler.coolingCapacity})을 초과했습니다. 초당 미네랄 수입이 50% 삭감되었으며 유닛 방어력이 반감되었습니다.
-                    </div>
-                  )}
-
-                  {specs.penalties.isSocketMismatched && (
-                    <div className="text-xs text-rose-400 font-mono">
-                      ⚠️ SOCKET MISMATCH: CPU 제조사({cpu.manufacturer})와 메인보드 소켓 제조사({motherboard.socketManufacturer})가 불일치하여 유닛 한도가 절반으로 축소됩니다.
-                    </div>
-                  )}
-
-                  {specs.penalties.isDdrMismatched && (
-                    <div className="text-xs text-rose-400 font-mono">
-                      ❌ COMPATIBILITY ERROR: DDR 규격 혼용 오류 발생. 초당 HP Decay 디버프({specs.penalties.hpDecayRate * 100}%/초)가 활성화됩니다.
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
-                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-start gap-2 min-w-0">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-slate-500 font-mono">CPU PROCESSOR</p>
-                    <p className="text-base font-semibold text-slate-200">{getCpuName(cpu.level)}</p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">Grade: +{cpu.level}강</p>
-                  </div>
-                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{cpu.ddrGeneration}</span>
-                </div>
-
-                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-start gap-2 min-w-0">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-slate-500 font-mono">GPU ENGINE</p>
-                    <p className="text-base font-semibold text-slate-200">{getGpuName(gpu.level, gpu)}</p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">+{gpu.level}강 · {OMG.GPU_GRADE_NAMES[gpuGrade]} · 공격 {OMG.getGpuAttackPower(gpu, scaUpgrades)}</p>
-                  </div>
-                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">PCI-E</span>
-                </div>
-
-                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-start gap-2 min-w-0 md:col-span-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-slate-500 font-mono">SYSTEM RAM (MEM)</p>
-                    <p className="text-base font-semibold text-slate-200 break-words">{getRamName(ram.level, ram)}</p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5 break-words">Grade: +{ram.level || 1}강{ram.ramVariant === 'overclock' ? ' OC' : ''} · 유효 {effectiveRamGb}GB ({ramSlots}슬롯×{ram.capacityGb}GB) · {ram.clockMhz}MHz · 공속 {ramAttackFrames}f · 성능 {OMG.getRamPerfPerUnit(ram)}</p>
-                  </div>
-                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{ram.ddrGeneration}</span>
-                </div>
-
-                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex justify-between items-center">
-                  <div>
-                    <p className="text-xs text-slate-500 font-mono">COOLING BLADE</p>
-                    <p className="text-base font-semibold text-slate-200">{getCoolerName(cooler.level, cooler)}</p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{(cooler.coolerKind === 'water' ? '수랭' : '공랭')} · Cap: {cooler.coolingCapacity}W / +{cooler.level}강</p>
-                  </div>
-                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{cooler.coolerKind === 'water' ? '수랭' : '공랭'}</span>
-                </div>
-
-                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 col-span-1 md:col-span-2">
-                  <div>
-                    <p className="text-xs text-slate-500 font-mono">MOTHERBOARD</p>
-                    <p className="text-base font-semibold text-slate-200">{motherboard.name || `${motherboard.socketManufacturer} Board`}</p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{motherboard.socketManufacturer} · {motherboard.supportedDdrGeneration} · 실드 +{motherboard.shieldIncrease}</p>
-                  </div>
-                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">{motherboard.supportedDdrGeneration} SLOT</span>
-                </div>
-
-                <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 col-span-1 md:col-span-2">
-                  <div>
-                    <p className="text-xs text-slate-500 font-mono">STORAGE SYSTEM</p>
-                    <p className="text-base font-semibold text-slate-200">{getStorageName(storage.level || 1, storage)}</p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">+{storage.level || 1}강 · {storage.capacityGb}GB · {(storage.storageKind === 'nvme' || storage.type === 'SSD') ? 'NVMe SSD' : 'HDD'} · 다운로드 x{specs.storageDownloadMult}</p>
-                  </div>
-                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{storage.type === 'SSD' ? 'SSD 4X FASTER' : 'HDD BASE'}</span>
-                </div>
-              </div>
-
-              <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-lg flex flex-col space-y-3 font-mono">
-                <h3 className="text-xs text-slate-400 uppercase tracking-widest border-b border-slate-800 pb-1.5 flex items-center space-x-1">
-                  <span className="text-emerald-400 text-sm mr-1">🛡️</span>
-                  <span>유닛 전투 스펙 매니페스트</span>
-                </h3>
-                <div className="grid grid-cols-2 gap-y-2.5 gap-x-4 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">필드 유닛 상한:</span>
-                    <span className="text-emerald-400 font-bold">{specs.unitLimit}기</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">RAM (작업/사냥):</span>
-                    <span className="text-emerald-400 font-bold">{specs.workRamUsed}GB / {specs.huntRamFree}GB · GPU {specs.gpuRamPerUnit}GB/기</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">게임 사냥 유닛:</span>
-                    <span className="text-emerald-400 font-bold">{specs.maxHuntingUnits}기</span>
-                  </div>
-                  <div className="flex justify-between col-span-2 text-cyan-300 font-semibold border-b border-slate-900 pb-1.5 mt-0.5">
-                    <span>👾 소환 스타 유닛:</span>
-                    <span>{getSummonUnit(cpu.level).emoji} {getSummonUnit(cpu.level).name}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">유닛 HP/실드:</span>
-                    <span className="text-emerald-400 font-bold">{specs.unitHp} / {specs.unitShield}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">유닛 단일데미지:</span>
-                    <span className="text-emerald-400 font-bold">{specs.unitDamage}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">공격 주기(공속):</span>
-                    <span className="text-cyan-400 font-bold">{specs.attackSpeedSec}초 · RAM {specs.ramAttackFrames}f · {specs.ramClockMhz}MHz · 성능 {OMG.getRamPerfPerUnit(specs.ram)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">방어력(쿨러반영):</span>
-                    <span className="text-emerald-400 font-bold">{specs.unitDefense}</span>
-                  </div>
-                  <div className="flex justify-between col-span-2 border-t border-slate-900 pt-2 text-sm">
-                    <span className="text-slate-500">1기 DPS (연구소·레이드 기준):</span>
-                    <span className="text-cyan-400 font-bold font-mono">
-                      {OMG.calcUnitDps(specs.unitDamage, specs.attackSpeedSec).toLocaleString()} DPS
-                    </span>
-                  </div>
-                  <div className="flex justify-between col-span-2 text-xs">
-                    <span className="text-slate-500">전체 {specs.unitLimit}기 합산 DPS:</span>
-                    <span className="text-slate-400 font-mono">
-                      {(OMG.calcUnitDps(specs.unitDamage, specs.attackSpeedSec) * specs.unitLimit).toLocaleString()} DPS
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 bg-slate-950/60 rounded border border-slate-800">
-                <button 
-                  onClick={joinRaidRoom}
-                  className="w-full flex items-center justify-center space-x-2 py-3 bg-cyan-500 hover:bg-cyan-400 active:scale-95 transition text-slate-950 font-bold rounded-lg font-mono text-sm shadow-lg shadow-cyan-500/20"
-                >
-                  <span className="text-sm mr-1">⚔️</span>
-                  <span>100층 레이드 참가</span>
-                </button>
-              </div>
-            </section>
+            <HardwareMonitor
+              specs={specs}
+              cpu={cpu}
+              gpu={gpu}
+              gpuGrade={gpuGrade}
+              scaUpgrades={scaUpgrades}
+              ram={ram}
+              ramSlots={ramSlots}
+              effectiveRamGb={effectiveRamGb}
+              ramAttackFrames={ramAttackFrames}
+              cooler={cooler}
+              motherboard={motherboard}
+              storage={storage}
+              joinRaidRoom={joinRaidRoom}
+              getCpuName={getCpuName}
+              getGpuName={getGpuName}
+              getRamName={getRamName}
+              getCoolerName={getCoolerName}
+              getStorageName={getStorageName}
+              getSummonUnit={getSummonUnit}
+            />
 
             <section className="lg:col-span-7 flex flex-col space-y-4 sm:space-y-6 min-w-0">
               
@@ -3267,99 +3431,19 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   {/* ================================================================== */}
                   {/* 보유 장비 창고 (인벤토리) */}
                   {/* ================================================================== */}
-                  <div className="p-4 bg-slate-950/60 rounded border border-slate-800 col-span-2 space-y-3.5 mt-2 animate-fade-in">
-                    <div className="flex justify-between items-center border-b border-slate-900 pb-2">
-                      <span className="text-xs font-bold text-emerald-400 font-mono tracking-widest uppercase flex items-center space-x-1.5 font-bold">
-                        <span>📦 내 보유 장비 창고 (Inventory Warehouse)</span>
-                      </span>
-                      <span className="text-xs text-slate-500 font-mono">보관 {inventory.length}개</span>
-                    </div>
-
-                    {inventory.length === 0 ? (
-                      <div className="py-8 text-center text-xs text-slate-600 font-mono border border-slate-900 border-dashed rounded">
-                        창고에 보관 중인 여비 장비가 없습니다. 위 상점에서 원하는 강 티어를 구매하세요.
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1">
-                        {inventory.map((p) => {
-                          let partName = '';
-                          let specDetail = '';
-                          let badgeText = '';
-                          let badgeStyle = '';
-
-                          if (p.type === 'cpu') {
-                            partName = getCpuName(p.level, p.manufacturer);
-                            specDetail = `호환: ${p.manufacturer} / ${p.ddrGeneration}`;
-                            badgeText = 'CPU';
-                            badgeStyle = 'bg-emerald-950/50 text-emerald-400 border border-emerald-500/20';
-                          } else if (p.type === 'gpu') {
-                            partName = getGpuName(p.level, p);
-                            specDetail = `데미지 배율: x${getSummonUnit(p.level).dpsFactor.toFixed(1)}`;
-                            badgeText = 'GPU';
-                            badgeStyle = 'bg-cyan-950/50 text-cyan-400 border border-cyan-500/20';
-                          } else if (p.type === 'ram') {
-                            partName = getRamName(p.level, p);
-                            specDetail = `클럭: ${p.clockMhz}Mhz / ${p.capacityGb}GB / ${p.ddrGeneration}`;
-                            badgeText = 'RAM';
-                            badgeStyle = 'bg-emerald-950/50 text-emerald-400 border border-emerald-500/20';
-                          } else if (p.type === 'cooler') {
-                            partName = getCoolerName(p.level, p);
-                            specDetail = `쿨링: ${p.coolingCapacity}W / 방어력: +${p.level * 3}`;
-                            badgeText = 'COOLER';
-                            badgeStyle = 'bg-rose-950/50 text-rose-400 border border-rose-500/20';
-                          } else if (p.type === 'storage') {
-                            partName = `${p.capacityGb}GB ${p.storageType}`;
-                            specDetail = `속도: ${p.storageType === 'SSD' ? 'SSD 4X 가속' : 'HDD 기본'}`;
-                            badgeText = 'STORAGE';
-                            badgeStyle = 'bg-slate-800 text-slate-300';
-                          }
-
-                          const isMax = p.level >= OMG.getMaxLevel(p.type, p);
-                          const prob = isMax ? 0 : getUpgradeProbability(p.type, p.level, p);
-
-                          return (
-                            <div key={p.id} className="p-3 bg-slate-900/60 rounded border border-slate-800 hover:border-slate-700 transition flex flex-col justify-between space-y-2">
-                              <div>
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className={`text-[11px] font-mono px-1.5 py-0.5 rounded font-bold ${badgeStyle}`}>
-                                    {badgeText}
-                                  </span>
-                                  <span className="text-xs font-mono text-slate-500">+{p.level}강</span>
-                                </div>
-                                <p className="text-sm font-bold text-slate-200 truncate">{partName}</p>
-                                <p className="text-[11px] text-slate-500 font-mono mt-0.5">{specDetail}</p>
-                                <p className="text-[11px] text-amber-500/80 font-mono mt-1">
-                                  [확률: {Math.round(prob * 100)}%] {!isMax && '⚠️실패 시 파괴'}
-                                </p>
-                              </div>
-                              
-                              <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-950">
-                                <button 
-                                  onClick={() => handleInventoryUpgrade(p.id)}
-                                  disabled={isUpgrading}
-                                  className="flex-1 py-1 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-[11px] font-bold font-mono transition disabled:opacity-50 text-center truncate"
-                                >
-                                  {isMax ? '최고강' : '강화하기'}
-                                </button>
-                                <button 
-                                  onClick={() => handleEquipComponent(p.id)}
-                                  className="flex-1 py-1 bg-cyan-500/10 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 border border-cyan-500/30 rounded text-[11px] font-bold font-mono transition text-center truncate"
-                                >
-                                  장착
-                                </button>
-                                <button 
-                                  onClick={() => handleSellComponent(p.id)}
-                                  className="flex-1 py-1 bg-rose-500/10 hover:bg-rose-500 hover:text-slate-950 text-rose-400 border border-rose-500/30 rounded text-[11px] font-bold font-mono transition text-center truncate"
-                                >
-                                  💰 {OMG.formatMineral(OMG.getShopSellPriceMinerals(p.type, p.level, p))}
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  <InventoryVault
+                    inventory={inventory}
+                    isUpgrading={isUpgrading}
+                    handleInventoryUpgrade={handleInventoryUpgrade}
+                    handleEquipComponent={handleEquipComponent}
+                    handleSellComponent={handleSellComponent}
+                    getCpuName={getCpuName}
+                    getGpuName={getGpuName}
+                    getRamName={getRamName}
+                    getCoolerName={getCoolerName}
+                    getSummonUnit={getSummonUnit}
+                    getUpgradeProbability={getUpgradeProbability}
+                  />
 
                 </div>
               </div>
@@ -3556,20 +3640,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 })()}
               </div>
 
-              <div className="p-4 bg-slate-950/90 rounded border border-emerald-500/30 neon-border-emerald flex flex-col space-y-2.5">
-                <div className="flex justify-between items-center border-b border-emerald-950 pb-2">
-                  <span className="text-xs text-emerald-400 font-mono tracking-widest uppercase flex items-center space-x-1.5 font-bold">
-                    <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
-                    <span>수입 로그</span>
-                  </span>
-                  <span className="text-[11px] text-emerald-600 font-mono">{isPartyHunting ? 'PARTY' : 'WORK'}</span>
-                </div>
-                <div className="h-36 overflow-y-auto overscroll-contain font-mono text-xs text-emerald-400/90 space-y-1.5 select-text leading-relaxed">
-                  {combatLogs.map((log, idx) => (
-                    <div key={idx} className="transition-all duration-300 hover:text-emerald-300">{log}</div>
-                  ))}
-                </div>
-              </div>
+              <IncomeLog combatLogs={combatLogs} isPartyHunting={isPartyHunting} />
             </section>
           </main>
 
