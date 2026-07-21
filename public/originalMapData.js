@@ -1743,6 +1743,14 @@ function getPartLevel(part) {
     return MINING_AMPLIFIER_SPEC.baseSpeedFrames / Math.max(1, frames);
   }
 
+  // 레이드 플레이어 DPS 표시용 = 일반 하드웨어(성능수치) + 채굴봇(채굴력 × 배율).
+  // ⚠️ RAID_MINING_DPS_MULT 는 src/raidCombat.ts 의 RAID_MINING_DPS_MULT 와 반드시 일치해야 한다
+  //   (레이드 DPS 실제 계산은 서버 raidCombat 권위 — 여기 함수는 프론트 예상치 표시 전용).
+  const RAID_MINING_DPS_MULT = 75;
+  function calcRaidPlayerDps(perfScore, miningPower) {
+    return Math.round(Math.max(0, perfScore || 0) + Math.max(0, miningPower || 0) * RAID_MINING_DPS_MULT);
+  }
+
   const RAID_CUMULATIVE_REWARDS = {
     0: 0,
     10: 1000,
@@ -1841,7 +1849,7 @@ function getPartLevel(part) {
     getMaxUnlockedPartyTierIndex, resolvePartyHuntingTierIndex, calcOptimalWorkUnits, toDownloadTargetSnapshot,
     getCpuSummonDpsFactor, calcUnitDamageForIncome, calcIncomeDamageMultiplier,
     createIntelCpu11InventoryItem,
-    getMiningPower, getMiningAttackFrames, getMiningSpeedMultiplier, isMiningAmplifierUnlocked, canPurchaseScaShopItem, getScaShopItemHint, MINING_AMPLIFIER_SPEC,
+    getMiningPower, getMiningAttackFrames, getMiningSpeedMultiplier, calcRaidPlayerDps, isMiningAmplifierUnlocked, canPurchaseScaShopItem, getScaShopItemHint, MINING_AMPLIFIER_SPEC,
     RAID_CUMULATIVE_REWARDS, setScaUpgradesRef,
     OVERCLOCK_LAB_SPECS, OVERCLOCK_LAB_RESPAWN_SEC,
     calcUnitDps, calcOverclockLabAttackSpeedSec, calcOverclockLabUnitDps,

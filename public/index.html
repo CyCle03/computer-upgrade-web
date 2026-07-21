@@ -1288,7 +1288,7 @@
                     <span className="text-emerald-400 font-bold">{specs.unitDefense}</span>
                   </div>
                   <div className="flex justify-between col-span-2 border-t border-slate-900 pt-2 text-sm">
-                    <span className="text-slate-500">1기 DPS (연구소·레이드 기준):</span>
+                    <span className="text-slate-500">1기 DPS (연구소 기준):</span>
                     <span className="text-cyan-400 font-bold font-mono">
                       {OMG.calcUnitDps(specs.unitDamage, specs.attackSpeedSec).toLocaleString()} DPS
                     </span>
@@ -1299,6 +1299,19 @@
                       {(OMG.calcUnitDps(specs.unitDamage, specs.attackSpeedSec) * specs.unitLimit).toLocaleString()} DPS
                     </span>
                   </div>
+                  {(() => {
+                    const _perf = OMG.calcPartyPerformanceScore({ cpu, gpu, ram, cooler, ramSlots }, scaUpgrades);
+                    const _mine = OMG.getMiningPower(scaUpgrades);
+                    return (
+                      <div className="flex justify-between col-span-2 border-t border-slate-900 pt-2 text-sm">
+                        <span className="text-slate-500">⚔️ 레이드 예상 DPS:</span>
+                        <span className="text-cyan-300 font-bold font-mono text-right">
+                          {OMG.calcRaidPlayerDps(_perf, _mine).toLocaleString()}
+                          <span className="block text-[9px] text-slate-500 font-normal">하드웨어(성능수치) {_perf.toLocaleString()} + 채굴봇 {_mine.toLocaleString()}×75</span>
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
