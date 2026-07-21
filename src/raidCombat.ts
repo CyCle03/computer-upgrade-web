@@ -8,11 +8,14 @@
  * RaidRoomState 는 이 모듈을 호출하는 얇은 파사드로 남고, 방/참가자 상태·타이머·
  * 소켓 브로드캐스트·보상 트리거 같은 부수효과만 담당한다.
  */
-import { ComputerSpecs } from './types';
 
 /** 보스 HP 공식 상수 */
 export const RAID_BOSS_BASE_HP = 1000;
-export const RAID_BOSS_HP_GROWTH = 1.28; // 층당 기하급수 성장 배율(1층 1,000 → 100층 약 41조)
+// 층당 기하급수 성장 배율. 1.14 → 100층 약 3.4억 HP(30초 클리어에 ~1,150만 DPS 필요).
+// 재설계: 일반 하드웨어(성능수치)만으론 ~60층, 채굴력을 올려야 60→100층 도달.
+export const RAID_BOSS_HP_GROWTH = 1.14;
+// 레이드 채굴봇 DPS 배율 — 채굴력이 레이드의 핵심 스케일. 맥스 채굴(19.5만)×75 ≈ 1,463만.
+export const RAID_MINING_DPS_MULT = 75;
 
 /**
  * 보스 HP 공식 — 1층 1,000부터 층당 1.28배 기하급수 성장.
@@ -25,24 +28,20 @@ export function getBossMaxHpForFloor(floor: number): number {
 /** DPS 계산에 필요한 최소 입력(순수 계산용) — RaidPlayer 가 이 형태를 만족한다. */
 export interface DpsInput {
   isDead: boolean;
-  specs: Pick<ComputerSpecs, 'unitDamage' | 'attackSpeedSec' | 'unitLimit'>;
-  miningPower: number;
+  perfScore: number;   // 일반 하드웨어(컴퓨터) 공격력 = 성능수치(레이드 baseline)
+  miningPower: number; // 채굴봇 채굴력(채굴 공속 반영된 effective 값)
 }
 
 /**
- * 개별 플레이어 DPS — 사망 시 0.
- * 기본 DPS = (1초 / 공격주기) × 데미지 × 유닛수(전투 유닛).
- * 채굴력(= 채굴 공격력 × 채굴 공속 = 채굴봇의 초당 데미지)은 퍼센트 증폭이 아니라
- * 보스 채굴 시 그 수치 그대로 DPS 에 가산한다. → DPS = baseDps + miningPower.
+ * 개별 플레이어 레이드 DPS — 사망 시 0.
+ * 일반 하드웨어 공격력 = 성능수치(baseline), 채굴봇 = 채굴력 × RAID_MINING_DPS_MULT(핵심 스케일).
+ * → 하드웨어만으론 저층까지만, 채굴 증폭기(공격력+공속)를 올려야 고층/100층 도달.
  */
 export function calculatePlayerDps(player: DpsInput): number {
   if (player.isDead) return 0;
-
-  const { unitDamage, attackSpeedSec, unitLimit } = player.specs;
-  const shotsPerSec = 1 / attackSpeedSec;
-  const baseDps = Math.round(shotsPerSec * unitDamage * unitLimit);
-
-  return baseDps + Math.max(0, player.miningPower || 0);
+  const hardwareDps = Math.max(0, player.perfScore || 0);
+  const miningDps = Math.max(0, player.miningPower || 0) * RAID_MINING_DPS_MULT;
+  return Math.round(hardwareDps + miningDps);
 }
 
 /** DDR 세대 불일치 HP Decay 의 1틱 감쇠량. */

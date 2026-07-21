@@ -1,6 +1,7 @@
 import { ComputerParts, ComputerSpecs } from './types';
 import { HardwareSimulator } from './hardwareSimulator';
 import { calcMiningPower } from './scaUpgrades';
+import { loadOmg } from './omgLoader';
 import * as RaidCombat from './raidCombat';
 
 /**
@@ -16,6 +17,7 @@ export interface RaidPlayer {
   currentHp: number;        // DDR 오류에 의한 HP Decay 적용용 실시간 HP
   isDead: boolean;           // 유닛 사망 상태 여부
   dpsContribution: number;   // 실시간 초당 DPS 기여량
+  perfScore: number;         // 일반 하드웨어 공격력 = 성능수치(레이드 baseline)
   miningPower: number;       // 채굴증폭기 채굴력(채굴 공속이 이미 반영된 effective 값)
 }
 
@@ -64,6 +66,9 @@ export class RaidRoomState {
     // 하드웨어 사양 사전 계산
     const specs = HardwareSimulator.calculateComputerSpecs(parts, scaUpgrades);
     const miningPower = calcMiningPower(scaUpgrades);
+    // 일반 하드웨어 공격력 = 성능수치(레이드 baseline). 채굴봇 DPS 는 raidCombat 이 채굴력으로 계산.
+    const perfScore = Number((loadOmg() as { calcPartyPerformanceScore: (p: unknown, s: unknown) => number })
+      .calcPartyPerformanceScore(parts, scaUpgrades)) || 0;
 
     const newPlayer: RaidPlayer = {
       socketId,
@@ -75,6 +80,7 @@ export class RaidRoomState {
       currentHp: specs.unitHp, // 초기 HP
       isDead: false,
       dpsContribution: 0,
+      perfScore,
       miningPower,
     };
 
