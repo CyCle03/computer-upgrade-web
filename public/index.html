@@ -1461,7 +1461,7 @@
     }
 
     // GamingPanel — App에서 분리한 순수 프레젠테이션 컴포넌트
-    function GamingPanel({ activeGame, effectiveUnlockedGameIndex, huntActiveForIncome, specs, huntKillTimeSec, huntCombatStatus, isDownloading, huntPerKillPerUnit, huntIncomePerSec, downloadTarget, downloadProgress, downloadValidation, startDownload, storage }) {
+    function GamingPanel({ activeGame, effectiveUnlockedGameIndex, huntActiveForIncome, specs, huntKillTimeSec, huntCombatStatus, isDownloading, isPartyHunting, huntPerKillPerUnit, huntIncomePerSec, downloadTarget, downloadProgress, downloadValidation, startDownload, storage }) {
       return (
                   <div className="p-4 bg-slate-950/60 rounded border border-cyan-900/40 space-y-3">
                     <span className="text-xs text-cyan-400 font-mono uppercase font-bold">🎮 게임 사냥 (Gaming)</span>
@@ -1474,7 +1474,7 @@
                       attackSpeedSec={specs.attackSpeedSec}
                       damage={specs.unitDamage}
                       respawning={huntCombatStatus.huntRespawning}
-                      active={!isDownloading && huntActiveForIncome > 0}
+                      active={!isDownloading && !isPartyHunting && huntActiveForIncome > 0}
                       accent="cyan"
                     />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-36 overflow-y-auto pr-1">
@@ -1493,12 +1493,18 @@
                     <p className="text-xs text-slate-400 break-words">
                       배치 <strong className="text-cyan-400">{specs.maxHuntingUnits}기</strong>
                       (RAM 잔여 {specs.huntRamFree}GB / CPU {specs.cpuHuntRamPerUnit}GB·기 · 코어 {specs.ramAllocation.maxByCpu} · GPU참고 {specs.gpuRamPerUnit}GB·기)
-                      · 교전 <strong className="text-cyan-400">{huntActiveForIncome}</strong>/{specs.maxHuntingUnits}기
-                      {huntCombatStatus.huntRespawning > 0 ? (
-                        <span className="text-amber-400/90"> · 리스폰 {huntCombatStatus.huntRespawning}기</span>
-                      ) : null}
-                      · 처치당 <strong className="text-cyan-400">{OMG.formatMineral(huntPerKillPerUnit)}/기</strong>
-                      <span className="text-slate-500"> · 초당 약 <strong className="text-cyan-400">{isDownloading ? '0원' : OMG.formatMineral(huntIncomePerSec)}</strong></span>
+                      {isPartyHunting ? (
+                        <span className="text-purple-300"> · 파티 ON — 사냥 중단</span>
+                      ) : (
+                        <>
+                          · 교전 <strong className="text-cyan-400">{huntActiveForIncome}</strong>/{specs.maxHuntingUnits}기
+                          {huntCombatStatus.huntRespawning > 0 ? (
+                            <span className="text-amber-400/90"> · 리스폰 {huntCombatStatus.huntRespawning}기</span>
+                          ) : null}
+                          · 처치당 <strong className="text-cyan-400">{OMG.formatMineral(huntPerKillPerUnit)}/기</strong>
+                          <span className="text-slate-500"> · 초당 약 <strong className="text-cyan-400">{isDownloading ? '0원' : OMG.formatMineral(huntIncomePerSec)}</strong></span>
+                        </>
+                      )}
                     </p>
                     {downloadTarget ? (
                       <>
@@ -4178,6 +4184,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     huntKillTimeSec={huntKillTimeSec}
                     huntCombatStatus={huntCombatStatus}
                     isDownloading={isDownloading}
+                    isPartyHunting={isPartyHunting}
                     huntPerKillPerUnit={huntPerKillPerUnit}
                     huntIncomePerSec={huntIncomePerSec}
                     downloadTarget={downloadTarget}
