@@ -107,6 +107,10 @@ function omgCoverage(): Record<string, unknown> {
   for (let lv = 1; lv <= 14; lv++) {
     safe(`getCpuSummonDpsFactor.${lv}`, () => OMG.getCpuSummonDpsFactor({ manufacturer: 'Intel', level: lv }));
   }
+  // 파티 틱 간격 — 채굴력이 높을수록 빨라짐(전력이 파티 수입에 유의미). 채굴 공격력 레벨 = miningPower/500.
+  for (const mp of [0, 10000, 40000, 100000]) {
+    safe(`calcPartyTickMs.mining${mp}`, () => OMG.calcPartyTickMs({ miningAmplifierUnlock: true, miningAmplifier: mp / 500 }));
+  }
   for (const clk of [1333, 1600, 2400, 3200, 4800, 6000]) {
     safe(`calcRamAttackFrames.${clk}`, () =>
       OMG.calcRamAttackFrames({ level: 5, clockMhz: clk, capacityGb: 8, ddrGeneration: 'DDR4' }));

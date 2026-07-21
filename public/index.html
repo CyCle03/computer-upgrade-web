@@ -1540,7 +1540,7 @@
                   <span className="text-purple-400 text-lg mr-1.5">👥</span>
                   <span>파티 사냥터</span>
                 </h2>
-                <p className="text-xs text-slate-400 break-words">원 + SCA 코인 · 파티 ON 시 작업 수입 중단 · 성능 {partyPerfScore.toLocaleString()} · 환생수치 {rebirthStat.toLocaleString()} · 채굴력 {partyMiningPower.toLocaleString()}</p>
+                <p className="text-xs text-slate-400 break-words">원 + SCA 코인 · 파티 ON 시 작업 수입 중단 · 성능 {partyPerfScore.toLocaleString()} · 환생수치 {rebirthStat.toLocaleString()} · 채굴력 {partyMiningPower.toLocaleString()} (틱 가속)</p>
                 <div className="flex flex-wrap items-center gap-2">
                   <button onClick={handleTogglePartyHunting} className={`text-sm px-3 py-1.5 rounded font-mono font-bold border ${isPartyHunting ? 'bg-purple-600 border-purple-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-300'}`}>{isPartyHunting ? '파티 ON' : '파티 OFF'}</button>
                 </div>
@@ -1555,13 +1555,14 @@
                 </div>
                 {isPartyHunting && OMG.PARTY_HUNTING_TIERS[partyHuntingTier] && (() => {
                   const _tier = OMG.PARTY_HUNTING_TIERS[partyHuntingTier];
-                  const _tickSec = Math.max(1, Math.round(OMG.calcGameSpeedTickMs(scaUpgrades, 3000) / 1000));
+                  const _tickMs = OMG.calcPartyTickMs(scaUpgrades);
+                  const _tickSec = Math.max(1, Math.round(_tickMs / 1000));
                   const _nextIn = _tickSec - (partyElapsedSec % _tickSec);
                   const _mins = Math.floor(partyElapsedSec / 60);
                   const _secs = partyElapsedSec % 60;
                   return (
                     <div className="space-y-1">
-                      <p className="text-xs text-purple-300 font-mono">선택: {_tier.name} · {_tickSec}초당 +{OMG.calcPartyMineralPerTick(_tier, incomeBonusRate)}원 +{_tier.scaCoins}C</p>
+                      <p className="text-xs text-purple-300 font-mono">선택: {_tier.name} · {(_tickMs / 1000).toFixed(1)}초당 +{OMG.calcPartyMineralPerTick(_tier, incomeBonusRate)}원 +{_tier.scaCoins}C · 채굴력 {partyMiningPower.toLocaleString()} 반영</p>
                       <p className="text-xs text-purple-400/70 font-mono">⏱ 경과 {_mins > 0 ? `${_mins}분 ${_secs}초` : `${_secs}초`} · 다음 틱까지 {_nextIn}초</p>
                     </div>
                   );

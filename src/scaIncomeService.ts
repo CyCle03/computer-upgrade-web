@@ -5,7 +5,6 @@ import { applyScaWalletDelta } from './scaWalletService';
 import { StateKey } from './stateKeys';
 import { parseScaUpgrades } from './scaUpgrades';
 
-const PARTY_BASE_TICK_MS = 3000;
 const MAX_PARTY_TICKS_PER_REQUEST = 200;
 
 export interface ScaRebirthResult {
@@ -206,7 +205,7 @@ export class ScaIncomeService {
         };
       }
 
-      const partyTickMs = omg.calcGameSpeedTickMs(scaUpgrades, PARTY_BASE_TICK_MS);
+      const partyTickMs = omg.calcPartyTickMs(scaUpgrades);
       const nowMs = Date.now();
       const lastClaimMs = Number(state[StateKey.partyLastClaimMs]) || nowMs;
       const elapsed = Math.max(0, nowMs - lastClaimMs);

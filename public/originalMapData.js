@@ -805,6 +805,20 @@
     return Math.max(50, Math.round(base / calcGameSpeedMultiplier(scaUpgrades)));
   }
 
+  /**
+   * 파티 사냥 틱 간격(ms) — 게임 배속 + 채굴력에 따라 빨라진다.
+   * 채굴봇(채굴력)이 파티 보스를 빠르게 처치할수록 틱이 짧아져 시간당 미네랄·SCA 수입이 늘어난다.
+   * 채굴력 PARTY_TICK_MINING_DIVISOR 당 배속 +1배, 하한 PARTY_MIN_TICK_MS.
+   * → 같은 티어라도 채굴력이 높으면 수입이 더 빨리 들어온다(전력이 파티에 유의미).
+   */
+  const PARTY_TICK_MINING_DIVISOR = 20000; // 채굴력 이만큼당 파티 틱 속도 +1배
+  const PARTY_MIN_TICK_MS = 500;           // 파티 틱 하한(기본 3초 기준 최대 ~6배)
+  function calcPartyTickMs(scaUpgrades) {
+    const gameSpeedTick = calcGameSpeedTickMs(scaUpgrades, 3000);
+    const miningFactor = 1 + getMiningPower(scaUpgrades) / PARTY_TICK_MINING_DIVISOR;
+    return Math.max(PARTY_MIN_TICK_MS, Math.round(gameSpeedTick / miningFactor));
+  }
+
   /** 타격 주기(프레임) — 장착 RAM 공격 딜레이만 (GPU는 공격력만) */
   function calcIncomeAttackFrames(scaUpgrades, ramAttackFrames) {
     return Math.max(1, ramAttackFrames != null ? ramAttackFrames : calcRamAttackFrames(null));
@@ -1757,7 +1771,7 @@ function getPartLevel(part) {
     calcRebirthStartMinerals, calcRebirthIncomeMultiplier,
     calcIncomeBonus, calcProbBonus,
     REBIRTH_REWARD_TIERS, getRebirthRewardTier, calcRebirthScaRewardByRebirthStat, applyRebirthStatCorrection, calcRebirthOutcome,
-    calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcIncomeAttackFrames, calcAttackIntervalSec, calcIncomeEventIntervalMs,
+    calcGameSpeedFrames, calcGameSpeedWaitFrames, calcGameSpeedMultiplier, calcGameSpeedTickMs, calcPartyTickMs, calcIncomeAttackFrames, calcAttackIntervalSec, calcIncomeEventIntervalMs,
     calcShieldDamagePerHit, calcHpDamagePerHit, calcHitsToKillTarget, calcKillTimeSec, calcKillsPerSecond, calcHitsPerSecond, getWorkMobSpec, getGameMobSpec, getMobAttackPerHit, mobCanCounterattack,
     consumeElapsedTicks, calcAutoLoopIntervalMs, calcManualUpgradeDelayMs,
     MINERAL_INCOME_SCALE, MINERAL_DAMAGE_INCOME_EXP,

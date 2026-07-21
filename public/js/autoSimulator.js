@@ -691,7 +691,7 @@
       const tierIdx = resolvePartyTier(ctx);
       const tier = tierIdx >= 0 ? OMG.PARTY_HUNTING_TIERS[tierIdx] : null;
       if (tier) {
-        const partyTickMs = OMG.calcGameSpeedTickMs(ctx.scaUpgrades || {}, 3000);
+        const partyTickMs = OMG.calcPartyTickMs(ctx.scaUpgrades || {});
         let partyRem = (ctx.remParty || 0) + elapsedMs;
         const partyConsumed = OMG.consumeElapsedTicks(partyRem, partyTickMs, MAX_INCOME_TICKS);
         ctx.remParty = partyConsumed.remainderMs;
@@ -780,7 +780,7 @@
       const tierIdx = resolvePartyTier(ctx);
       const tier = tierIdx >= 0 ? OMG.PARTY_HUNTING_TIERS[tierIdx] : null;
       if (tier) {
-        const partyTickMs = OMG.calcGameSpeedTickMs(ctx.scaUpgrades || {}, 3000);
+        const partyTickMs = OMG.calcPartyTickMs(ctx.scaUpgrades || {});
         const autoTickMs = OMG.calcAutoLoopIntervalMs(ctx.scaUpgrades || {});
       let partyRem = (ctx.remParty || 0) + elapsedMs;
       let autoRem = (ctx.remAuto || 0) + elapsedMs;
