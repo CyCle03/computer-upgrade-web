@@ -1186,12 +1186,17 @@
     return getGpuTierAttack(tier, calcGpuGrade(scaUpgrades || {}));
   }
 
-  /** CPU 소환 유닛 DPS 배율 — index.html getSummonUnit 과 동일 */
-  const CPU_SUMMON_DPS_FACTORS = [1.0, 1.5, 2.2, 3.2, 4.8, 7.2, 11.0, 16.0, 25.0, 45.0];
+  /**
+   * CPU 소환 유닛 DPS 배율 (단일 소스).
+   * Intel CPU는 14강(i5-14600K)까지 존재하므로 11~14강 배율도 정의한다.
+   * index.html getSummonUnit 은 이 값을 OMG.getCpuSummonDpsFactor 로 읽는다(값 중복 금지).
+   * 11~14강 곡선: 10강(45.0)에서 강당 ×1.6 — 수입은 √압축(MINERAL_DAMAGE_INCOME_EXP=0.5)이라 배수는 완만.
+   */
+  const CPU_SUMMON_DPS_FACTORS = [1.0, 1.5, 2.2, 3.2, 4.8, 7.2, 11.0, 16.0, 25.0, 45.0, 72.0, 115.0, 185.0, 296.0];
   const INCOME_REF_UNIT_DAMAGE = 2;
 
   function getCpuSummonDpsFactor(cpu) {
-    const lv = Math.max(1, Math.min(10, getPartLevel(cpu)));
+    const lv = Math.max(1, Math.min(CPU_SUMMON_DPS_FACTORS.length, getPartLevel(cpu)));
     return CPU_SUMMON_DPS_FACTORS[lv - 1] || lv * 5;
   }
 

@@ -1225,19 +1225,25 @@
       ]);
 
       const getSummonUnit = (level) => {
+        // 이름/이모지만 프론트에 두고, DPS 배율은 OMG(originalMapData.js) 단일 소스에서 읽는다(값 중복 금지).
         const units = {
-          1: { name: '테란 마린 (Marine)', emoji: '🔫', dpsFactor: 1.0 },
-          2: { name: '테란 고스트 (Ghost)', emoji: '👁️', dpsFactor: 1.5 },
-          3: { name: '프로토스 드라군 (Dragoon)', emoji: '🦀', dpsFactor: 2.2 },
-          4: { name: '저그 히드라리스크 (Hydralisk)', emoji: '🐍', dpsFactor: 3.2 },
-          5: { name: '테란 영웅 시즈 탱크 (Siege Tank)', emoji: '💥', dpsFactor: 4.8 },
-          6: { name: '프로토스 하이 템플러 / 아칸 (Archon)', emoji: '⚡', dpsFactor: 7.2 },
-          7: { name: '프로토스 우주모함 캐리어 (Carrier)', emoji: '🛸', dpsFactor: 11.0 },
-          8: { name: '테란 전투순양함 배틀크루저 (Battlecruiser)', emoji: '🚢', dpsFactor: 16.0 },
-          9: { name: '프로토스 전설 영웅 제라툴 (Zeratul)', emoji: '🗡️', dpsFactor: 25.0 },
-          10: { name: '최종 테란 기함 하이페리온 (Hyperion)', emoji: '🌟', dpsFactor: 45.0 }
+          1: { name: '테란 마린 (Marine)', emoji: '🔫' },
+          2: { name: '테란 고스트 (Ghost)', emoji: '👁️' },
+          3: { name: '프로토스 드라군 (Dragoon)', emoji: '🦀' },
+          4: { name: '저그 히드라리스크 (Hydralisk)', emoji: '🐍' },
+          5: { name: '테란 영웅 시즈 탱크 (Siege Tank)', emoji: '💥' },
+          6: { name: '프로토스 하이 템플러 / 아칸 (Archon)', emoji: '⚡' },
+          7: { name: '프로토스 우주모함 캐리어 (Carrier)', emoji: '🛸' },
+          8: { name: '테란 전투순양함 배틀크루저 (Battlecruiser)', emoji: '🚢' },
+          9: { name: '프로토스 전설 영웅 제라툴 (Zeratul)', emoji: '🗡️' },
+          10: { name: '최종 테란 기함 하이페리온 (Hyperion)', emoji: '🌟' },
+          11: { name: '프로토스 모선 마더십 (Mothership)', emoji: '🌀' },
+          12: { name: '저그 초월체 오버마인드 (Overmind)', emoji: '🧠' },
+          13: { name: '공허의 지배자 아몬 (Amon)', emoji: '👹' },
+          14: { name: '초월 존재 젤나가 (Xel\'Naga)', emoji: '✨' }
         };
-        return units[level] || { name: '미확인 차원 유닛', emoji: '👽', dpsFactor: level * 5 };
+        const meta = units[level] || { name: '미확인 차원 유닛', emoji: '👽' };
+        return { ...meta, dpsFactor: OMG.getCpuSummonDpsFactor({ level }) };
       };
 
       const getRaidBossName = (floor) => {

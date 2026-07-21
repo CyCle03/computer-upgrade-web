@@ -103,6 +103,10 @@ function omgCoverage(): Record<string, unknown> {
   for (let lv = 1; lv <= 10; lv++) {
     safe(`getGpuAttackPower.${lv}`, () => OMG.getGpuAttackPower({ level: lv }, {}));
   }
+  // CPU 소환 DPS 배율 — Intel 14강까지(11~14강 확장 값)를 스냅샷에 고정, 프론트/백엔드 단일 소스 드리프트 감지
+  for (let lv = 1; lv <= 14; lv++) {
+    safe(`getCpuSummonDpsFactor.${lv}`, () => OMG.getCpuSummonDpsFactor({ manufacturer: 'Intel', level: lv }));
+  }
   for (const clk of [1333, 1600, 2400, 3200, 4800, 6000]) {
     safe(`calcRamAttackFrames.${clk}`, () =>
       OMG.calcRamAttackFrames({ level: 5, clockMhz: clk, capacityGb: 8, ddrGeneration: 'DDR4' }));
