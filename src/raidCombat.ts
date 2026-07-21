@@ -27,12 +27,13 @@ export interface DpsInput {
   isDead: boolean;
   specs: Pick<ComputerSpecs, 'unitDamage' | 'attackSpeedSec' | 'unitLimit'>;
   miningPower: number;
-  miningSpeedMult: number;
 }
 
 /**
- * 개별 플레이어 DPS — 사망 시 0, 채굴증폭기(채굴력·공속) 배율 반영.
+ * 개별 플레이어 DPS — 사망 시 0, 채굴증폭기 배율 반영.
  * 기본 DPS = (1초 / 공격주기) × 데미지 × 유닛수.
+ * 채굴 공속은 이제 miningPower(채굴력)에 이미 접혀 들어가므로 여기서 별도 speedMult 를
+ * 곱하지 않는다(이중계상 방지). → DPS = baseDps × ampMult(채굴력).
  */
 export function calculatePlayerDps(player: DpsInput): number {
   if (player.isDead) return 0;
@@ -42,8 +43,7 @@ export function calculatePlayerDps(player: DpsInput): number {
   const baseDps = Math.round(shotsPerSec * unitDamage * unitLimit);
 
   const ampMult = player.miningPower > 0 ? 1 + player.miningPower / 10000 : 1;
-  const speedMult = player.miningSpeedMult || 1;
-  return Math.round(baseDps * ampMult * speedMult);
+  return Math.round(baseDps * ampMult);
 }
 
 /** DDR 세대 불일치 HP Decay 의 1틱 감쇠량. */

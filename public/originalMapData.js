@@ -1665,7 +1665,10 @@ function getPartLevel(part) {
   function getMiningPower(scaUpgrades) {
     if (!isMiningAmplifierUnlocked(scaUpgrades)) return 0;
     const u = scaUpgrades || {};
-    return (u.miningAmplifier || 0) * MINING_AMPLIFIER_SPEC.powerPerLevel;
+    // 채굴 공속(miningAmplifierSpeed)이 채굴력을 증폭한다:
+    //   effective 채굴력 = 기본(레벨×500) × 채굴 공속 배율(1~3배).
+    //   레이드 DPS·파티 티어 해금 모두 이 effective 값을 쓴다(레이드는 speedMult 별도 곱 제거).
+    return Math.round((u.miningAmplifier || 0) * MINING_AMPLIFIER_SPEC.powerPerLevel * getMiningSpeedMultiplier(scaUpgrades));
   }
 
   function getMiningAttackFrames(scaUpgrades) {

@@ -46,13 +46,16 @@ check('unlock 플래그 true → true', isMiningAmplifierUnlocked({ miningAmplif
 check('miningAmplifier 1 → true', isMiningAmplifierUnlocked({ miningAmplifier: 1 }) === true);
 check('miningAmplifier 0 → false', isMiningAmplifierUnlocked({ miningAmplifier: 0 }) === false);
 
-// --- calcMiningPower (level × 500) ------------------------------------------
+// --- calcMiningPower (level × 500 × 채굴 공속 배율) --------------------------
 console.log('\n[calcMiningPower]');
 check('미해금 → 0', calcMiningPower({}) === 0);
-check('unlock + level 3 → 1500', calcMiningPower({ miningAmplifierUnlock: true, miningAmplifier: 3 }) === 1500);
-check('level 3(암묵 해금) → 1500', calcMiningPower({ miningAmplifier: 3 }) === 1500);
+check('unlock + level 3 (공속 0) → 1500', calcMiningPower({ miningAmplifierUnlock: true, miningAmplifier: 3 }) === 1500);
+check('level 3(암묵 해금, 공속 0) → 1500', calcMiningPower({ miningAmplifier: 3 }) === 1500);
 check('level 0 → 0(미해금 취급)', calcMiningPower({ miningAmplifier: 0 }) === 0);
 check('null → 0', calcMiningPower(null) === 0);
+// 채굴 공속(miningAmplifierSpeed)이 채굴력을 증폭: 기본 × 공속배율(24/max(8,24-lv))
+check('level 3 + 공속 4 → 1800 (1500 × 1.2)', calcMiningPower({ miningAmplifierUnlock: true, miningAmplifier: 3, miningAmplifierSpeed: 4 }) === 1800);
+check('level 2 + 공속 16(최대 ×3) → 3000 (1000 × 3)', calcMiningPower({ miningAmplifierUnlock: true, miningAmplifier: 2, miningAmplifierSpeed: 16 }) === 3000);
 
 // --- calcMiningSpeedMult (24 / max(8, 24-lv)) -------------------------------
 console.log('\n[calcMiningSpeedMult]');

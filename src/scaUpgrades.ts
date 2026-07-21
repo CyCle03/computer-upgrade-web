@@ -28,10 +28,13 @@ export function isMiningAmplifierUnlocked(scaUpgrades?: ScaUpgrades | null): boo
   return !!(scaUpgrades.miningAmplifierUnlock || (Number(scaUpgrades.miningAmplifier) || 0) > 0);
 }
 
-/** 채굴력. OMG.getMiningPower 와 동일 로직. */
+/**
+ * 채굴력. OMG.getMiningPower 와 동일 로직.
+ * 채굴 공속(miningAmplifierSpeed)이 채굴력을 증폭한다 → 기본(레벨×500) × 채굴 공속 배율.
+ */
 export function calcMiningPower(scaUpgrades?: ScaUpgrades | null): number {
   if (!isMiningAmplifierUnlocked(scaUpgrades)) return 0;
-  return (Number(scaUpgrades!.miningAmplifier) || 0) * MINING_POWER_PER_LEVEL;
+  return Math.round((Number(scaUpgrades!.miningAmplifier) || 0) * MINING_POWER_PER_LEVEL * calcMiningSpeedMult(scaUpgrades));
 }
 
 /** 채굴증폭기 공속 배율. OMG.getMiningSpeedMultiplier 와 동일 로직. */

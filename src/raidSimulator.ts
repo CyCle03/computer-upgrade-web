@@ -1,6 +1,6 @@
 import { ComputerParts, ComputerSpecs } from './types';
 import { HardwareSimulator } from './hardwareSimulator';
-import { calcMiningPower, calcMiningSpeedMult } from './scaUpgrades';
+import { calcMiningPower } from './scaUpgrades';
 import * as RaidCombat from './raidCombat';
 
 /**
@@ -16,8 +16,7 @@ export interface RaidPlayer {
   currentHp: number;        // DDR 오류에 의한 HP Decay 적용용 실시간 HP
   isDead: boolean;           // 유닛 사망 상태 여부
   dpsContribution: number;   // 실시간 초당 DPS 기여량
-  miningPower: number;       // 채굴증폭기에 의한 채굴력
-  miningSpeedMult: number;   // 채굴증폭기 공속 배율
+  miningPower: number;       // 채굴증폭기 채굴력(채굴 공속이 이미 반영된 effective 값)
 }
 
 /**
@@ -65,7 +64,6 @@ export class RaidRoomState {
     // 하드웨어 사양 사전 계산
     const specs = HardwareSimulator.calculateComputerSpecs(parts, scaUpgrades);
     const miningPower = calcMiningPower(scaUpgrades);
-    const miningSpeedMult = calcMiningSpeedMult(scaUpgrades);
 
     const newPlayer: RaidPlayer = {
       socketId,
@@ -78,7 +76,6 @@ export class RaidRoomState {
       isDead: false,
       dpsContribution: 0,
       miningPower,
-      miningSpeedMult,
     };
 
     // 실시간 DPS 기여도 계산 (초당 공격 횟수 * 데미지 * 유닛수 * 채굴증폭기 배율)

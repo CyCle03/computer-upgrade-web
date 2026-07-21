@@ -40,17 +40,15 @@ const mkPlayer = (over: any = {}) => ({
   isDead: false,
   specs: baseSpecs,
   miningPower: 0,
-  miningSpeedMult: 1,
   ...over,
 });
 // shotsPerSec=1/0.5=2, baseDps=round(2*100*4)=800
 check('기본 DPS = 800', calculatePlayerDps(mkPlayer()) === 800, String(calculatePlayerDps(mkPlayer())));
 check('사망 시 0', calculatePlayerDps(mkPlayer({ isDead: true })) === 0);
-// miningPower 10000 → ampMult = 1 + 1 = 2 → 1600
+// miningPower 10000 → ampMult = 1 + 1 = 2 → 1600 (채굴 공속은 miningPower 에 이미 접혀 있음)
 check('채굴력 10000 → 배수 2 → 1600', calculatePlayerDps(mkPlayer({ miningPower: 10000 })) === 1600, String(calculatePlayerDps(mkPlayer({ miningPower: 10000 }))));
-// miningSpeedMult 1.5 → round(800*1*1.5)=1200
-check('공속 배율 1.5 → 1200', calculatePlayerDps(mkPlayer({ miningSpeedMult: 1.5 })) === 1200, String(calculatePlayerDps(mkPlayer({ miningSpeedMult: 1.5 }))));
-check('miningSpeedMult 0/누락 시 1로 취급', calculatePlayerDps(mkPlayer({ miningSpeedMult: 0 })) === 800);
+// DPS 식은 이제 baseDps × ampMult(채굴력)뿐 — 별도 공속 배율 곱 없음(이중계상 방지)
+check('miningPower 0 → 배수 1 → 800', calculatePlayerDps(mkPlayer({ miningPower: 0 })) === 800);
 
 // --- HP Decay 산식 ---------------------------------------------------------
 console.log('\n[hpDecayAmount]');
