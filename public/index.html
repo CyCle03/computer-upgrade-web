@@ -2331,6 +2331,7 @@
       const gameStateRef = useRef({});
       const wallClockRef = useRef({ lastMs: Date.now() });
       const hiddenAtRef = useRef(null);
+      const partyClaimAtRef = useRef(0); // 파티 SCA 청구 스로틀 — game_states 행 락 경합(구매 지연) 방지
       const tickRemainderRef = useRef({ workHunt: 0, party: 0, auto: 0 });
       const [huntCombatStatus, setHuntCombatStatus] = useState({
         workTotal: 0, workActive: 0, workRespawning: 0,
@@ -3462,7 +3463,10 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         gameStateRef.current.minerals = simCtx.minerals;
         scheduleInventoryUi(simCtx.inventory, opts);
         setMinerals(simCtx.minerals);
-        if (simCtx.scaPartyTicks > 0) {
+        // 파티 SCA 청구는 최소 3초 간격으로 스로틀 — 서버 game_states 행 락 경합(구매·저장 지연) 방지.
+        // 미네랄은 위에서 매 틱 반영되고, 여기선 누적 틱을 배치로만 서버에 청구(서버는 경과시간 기반 지급이라 손실 없음).
+        if (simCtx.scaPartyTicks > 0 && (Date.now() - partyClaimAtRef.current >= 3000)) {
+          partyClaimAtRef.current = Date.now();
           const tierIdx = simCtx.partyHuntingTier;
           const ticks = simCtx.scaPartyTicks;
           const partyMineral = Math.round(simCtx.partyMineralGained || 0);
