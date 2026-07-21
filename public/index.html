@@ -648,7 +648,7 @@
     }
 
     // 실시간 100층 보스 레이드 오버레이 모달 (App에서 분리 — 순수 프레젠테이션)
-    function RaidModal({ raidState, myId, todayHighestClaimedFloor, rewardMessage, errorMessage, toggleReady, leaveRaidRoom, getRaidBossName, formatRemainingRewardRange }) {
+    function RaidModal({ raidState, myId, todayHighestClaimedFloor, rewardMessage, errorMessage, toggleReady, leaveRaidRoom, getRaidBossName, formatRemainingRewardRange, raidResult, onCloseResult }) {
       return (
             <div role="dialog" aria-modal="true" aria-label="실시간 100층 보스 등반 레이드" className="fixed inset-0 bg-slate-950/90 flex items-end sm:items-center justify-center p-2 sm:p-4 z-50 backdrop-blur-sm">
               <div className="bg-slate-950 border border-cyan-500/30 rounded-2xl w-full max-w-4xl p-4 sm:p-6 neon-border-cyan flex flex-col space-y-4 sm:space-y-6 max-h-[92vh] sm:max-h-[90vh] overflow-y-auto min-w-0">
@@ -667,6 +667,36 @@
                   </button>
                 </div>
 
+                {raidResult && (
+                  <div className="flex flex-col items-center justify-center py-8 space-y-5 text-center">
+                    <div className={`text-2xl sm:text-3xl font-extrabold font-mono tracking-wider ${raidResult.won ? 'text-emerald-300' : 'text-rose-300'}`}>
+                      {raidResult.won ? '🏆 100층 등반 성공!' : '⛔ 레이드 종료 · 시간 초과'}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl">
+                      <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl">
+                        <div className="text-[11px] text-slate-500 font-mono uppercase tracking-wider">도달 층</div>
+                        <div className="text-xl font-bold text-cyan-300 font-mono mt-1">{raidResult.floor}층</div>
+                      </div>
+                      <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl">
+                        <div className="text-[11px] text-slate-500 font-mono uppercase tracking-wider">이번 레이드 획득</div>
+                        <div className="text-xl font-bold text-amber-300 font-mono mt-1">SCA +{(raidResult.reward || 0).toLocaleString()}</div>
+                      </div>
+                      <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl">
+                        <div className="text-[11px] text-slate-500 font-mono uppercase tracking-wider">오늘 수령 최고 층</div>
+                        <div className="text-xl font-bold text-emerald-300 font-mono mt-1">{todayHighestClaimedFloor}층</div>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-mono">보상은 하루 1회 · 오늘 남은 구간: {formatRemainingRewardRange(todayHighestClaimedFloor)}</p>
+                    <button
+                      type="button"
+                      onClick={onCloseResult}
+                      className="px-8 py-3 bg-cyan-500 hover:bg-cyan-400 active:scale-95 transition text-slate-950 font-bold rounded-lg font-mono text-sm shadow-lg shadow-cyan-500/20"
+                    >
+                      대기실로
+                    </button>
+                  </div>
+                )}
+
                 {errorMessage && (
                   <div className="p-3.5 bg-rose-950/20 border border-rose-500/50 rounded-lg text-xs font-mono text-rose-400 animate-pulse">
                     ⚠️ 에러 감지: {errorMessage}
@@ -679,7 +709,7 @@
                   </div>
                 )}
 
-                {raidState && raidState.status === 'waiting' && (
+                {!raidResult && raidState && raidState.status === 'waiting' && (
                   <div className="flex flex-col items-center justify-center py-10 space-y-6">
                     <p className="text-slate-400 font-mono text-center">
                       레이드 대기실에 진입했습니다. 버스 방 번호: <strong className="text-cyan-400">carry-room-100</strong><br />
@@ -724,7 +754,7 @@
                   </div>
                 )}
 
-                {raidState && (raidState.status === 'fighting' || raidState.status === 'won' || raidState.status === 'lost') && (
+                {!raidResult && raidState && (raidState.status === 'fighting' || raidState.status === 'won' || raidState.status === 'lost') && (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     
                     <div className="lg:col-span-2 flex flex-col space-y-6">
@@ -1865,6 +1895,9 @@
       const [todayHighestClaimedFloor, setTodayHighestClaimedFloor] = useState(0);
       const [rewardMessage, setRewardMessage] = useState(null);
       const [errorMessage, setErrorMessage] = useState(null);
+      const [raidResult, setRaidResult] = useState(null); // 레이드 종료 결과창 스냅샷 { won, floor, reward }
+      const sessionRewardRef = useRef(0);   // 이번 레이드 세션 누적 보상(claimedCoins 합)
+      const prevStatusRef = useRef(null);   // 직전 room_state.status (fighting→won/lost 전이 감지용)
       const [myId] = useState(() => {
         const saved = localStorage.getItem('sca_myId');
         // [고증 보안 패치] PostgreSQL UUID 규격 준수를 위한 클렌징 작업 (36글자 UUID 규격 준수 검사)
@@ -1907,6 +1940,9 @@
       const joinRaidRoom = () => {
         setErrorMessage(null);
         setRewardMessage(null);
+        setRaidResult(null);
+        sessionRewardRef.current = 0;
+        prevStatusRef.current = null;
         setIsRaidOpen(true);
         refreshRaidProgress();
 
@@ -1929,6 +1965,21 @@
         });
 
         socketCon.on('room_state', (state) => {
+          const prev = prevStatusRef.current;
+          // 새 전투 시작(→fighting) 시 세션 누적·결과창 리셋
+          if (state.status === 'fighting' && prev !== 'fighting') {
+            sessionRewardRef.current = 0;
+            setRaidResult(null);
+          }
+          // fighting → won/lost 전이 순간 결과를 스냅샷(7초 뒤 waiting 리셋이 덮어쓰기 전에)
+          if (prev === 'fighting' && (state.status === 'won' || state.status === 'lost')) {
+            setRaidResult({
+              won: state.status === 'won',
+              floor: state.currentFloor,
+              reward: sessionRewardRef.current,
+            });
+          }
+          prevStatusRef.current = state.status;
           setRaidState(state);
         });
 
@@ -1939,6 +1990,7 @@
           }
           if (txResult.success) {
             const total = Number(txResult.currentTotalCoins) || 0;
+            sessionRewardRef.current += Number(txResult.claimedCoins) || 0;
             setScaCoins(total);
             localStorage.setItem('sca_scaCoins', String(total));
             pushToast(`레이드 ${clearedFloor}층 · SCA +${txResult.claimedCoins.toLocaleString()} (잔액 ${total.toLocaleString()})`, 'success', 3500);
@@ -1995,9 +2047,13 @@
         setIsRaidOpen(false);
       };
 
+      // 결과창 닫기(클라 상태 — 서버 7초 자동 리셋과 독립)
+      const closeResult = () => setRaidResult(null);
+
       return {
         isRaidOpen, raidState, todayHighestClaimedFloor, rewardMessage, errorMessage, myId,
         formatRemainingRewardRange, joinRaidRoom, leaveRaidRoom, toggleReady, closeRaid,
+        raidResult, closeResult,
       };
     }
 
@@ -2421,6 +2477,7 @@
       const {
         isRaidOpen, raidState, todayHighestClaimedFloor, rewardMessage, errorMessage, myId,
         formatRemainingRewardRange, joinRaidRoom, leaveRaidRoom, toggleReady, closeRaid,
+        raidResult, closeResult,
       } = useRaidSocket({ cpu, gpu, ram, cooler, motherboard, storage, scaUpgrades, setScaCoins, setOverclockData, pushToast });
       const [isSettingsOpen, setIsSettingsOpen] = useState(false);
       const [isResettingAccount, setIsResettingAccount] = useState(false);
@@ -4228,6 +4285,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               leaveRaidRoom={leaveRaidRoom}
               getRaidBossName={getRaidBossName}
               formatRemainingRewardRange={formatRemainingRewardRange}
+              raidResult={raidResult}
+              onCloseResult={closeResult}
             />
           )}
 
