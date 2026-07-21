@@ -220,6 +220,7 @@ export class RaidRoomState {
     this.recalculateTotalDps();
     
     // 4. 연쇄 관통(Overkill Multi-Floor Clear) — 순수 규칙은 raidCombat.resolveOverkill 에 위임
+    const floorBefore = this.currentFloor;
     const overkill = RaidCombat.resolveOverkill({
       totalDps: this.totalDps,
       currentFloor: this.currentFloor,
@@ -229,6 +230,10 @@ export class RaidRoomState {
     this.currentFloor = overkill.floor;
     this.bossMaxHp = overkill.bossMaxHp;
     this.bossCurrentHp = overkill.bossCurrentHp;
+    // 층을 하나라도 넘겼으면 다음 층 제한시간을 새로 부여(층당 30초). 리팩터 전 initFloor 가 하던 리셋.
+    if (overkill.floor > floorBefore) {
+      this.timeLeft = 30;
+    }
 
     if (overkill.won) {
       // 100층 최종 등반 승리 — 원본과 동일하게 승리 틱의 마일스톤 보상은 지급하지 않고 즉시 종료
