@@ -376,7 +376,7 @@ python scripts/dump_map_context.py          # → scripts/_map_context.txt
 
 ### 3.10 웹 복원판 상점 UI (2026-06)
 
-원작 일반 상점을 **미네랄(원) 1:1** 결제 + **◀▶ 티어 선택** 카드로 구현 (`public/index.html`).
+원작 일반 상점을 **미네랄(원) 1:1** 결제 + **◀▶ 티어 선택** 카드로 구현 (`frontend/src/app.jsx`).
 
 | 기능 | 설명 |
 |------|------|
@@ -655,7 +655,7 @@ SCA 「게임 배속 +1프레임」은 **실시간 N배가 아닙니다.** EUD `
 
 ## 8. 웹 복원판 구현 현황
 
-가격 기준: `docs/spreadsheet-prices-v1.2.9.md` · 데이터: `public/originalMapData.js` · UI: `public/index.html`
+가격 기준: `docs/spreadsheet-prices-v1.2.9.md` · 데이터: `public/originalMapData.js` · UI: `frontend/src/app.jsx`
 
 ### 8.1 원작 대비 구현 완료 (✅)
 
@@ -733,7 +733,7 @@ EUD 미공개로 **정확 수치 미확인**, 아래는 웹 구현용 근사치�
 | `docs/map-extract-v1.2.9.md` | **맵 문자열 추출본만** (`scenario.chk` CP949 · 패치노트/추정 제외) |
 | `docs/spreadsheet-prices-v1.2.9.md` | **부품 구매가 고정본** (스프레드시트 2026-06-01) |
 | `public/originalMapData.js` | V1.2.9 부품·상점·사냥터 데이터 (`tier.cost` = 고정본과 동기화) |
-| `public/index.html` | 웹 복원판 React UI (상점 ◀▶, AUTO, 작업 유닛, 장착 패널) |
+| `frontend/src/app.jsx` | 웹 복원판 React UI (상점 ◀▶, AUTO, 작업 유닛, 장착 패널) |
 | `scripts/extract_scx_strings.py` · `scripts/build_map_extract_doc.py` | SCX `scenario.chk` 추출·문서 재생성 |
 | `scripts/compare_map_spreadsheet.py` · `scripts/dump_map_context.py` | 맵 `N원`/`N코인` vs 스프레드시트 부품가·수입 분류 (§3.9.4) |
 | `schema.sql` | 웹 DB 스키마 |

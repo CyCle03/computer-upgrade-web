@@ -26,7 +26,7 @@
 | **일일 레이드 보상** | 10~100층 마일스톤(10층 단위) 클리어 시 SCA 코인 지급. 하루 1회 리셋, 중복 수령·Race Condition 방지 |
 | **실시간 레이드** | Socket.io 기반 4인 파티 100층 보스 레이드 시뮬레이션 |
 | **하드웨어 시뮬레이터** | CPU/GPU/RAM/쿨러/메인보드/저장장치 조합에 따른 DPS·페널티 연산 |
-| **웹 대시보드** | `public/index.html` + `public/originalMapData.js` — V1.2.9 (미네랄 1:1, 누적 저장·DDR·램 슬롯, CPU 사냥 RAM, GPU 등급/표시명, ◀▶ 상점, AUTO, 레이드) |
+| **웹 대시보드** | `frontend/src/app.jsx` + `public/originalMapData.js` — V1.2.9 (미네랄 1:1, 누적 저장·DDR·램 슬롯, CPU 사냥 RAM, GPU 등급/표시명, ◀▶ 상점, AUTO, 레이드) |
 
 ## 기술 스택
 
@@ -34,14 +34,20 @@
 - **HTTP:** Express
 - **실시간:** Socket.io
 - **DB:** PostgreSQL (`pg`)
-- **프론트:** React 18 (CDN), Tailwind CSS
+- **프론트:** React 18 + Tailwind CSS (esbuild 번들, 빌드 타임 — CDN·인-브라우저 Babel 없음)
 
 ## 프로젝트 구조
 
 ```
 .
+├── frontend/src/
+│   ├── app.jsx             # 웹 복원판 대시보드 (React SPA, UI 전부)
+│   ├── styles.css          # Tailwind 지시자 + 커스텀 CSS
+│   └── fonts.css           # 셀프 호스팅 웹폰트 (vendor-fonts.js 생성물)
 ├── public/
-│   ├── index.html          # 웹 복원판 대시보드 (React SPA)
+│   ├── index.html          # #root + 스크립트 태그만 있는 껍데기
+│   ├── build/              # 번들 산출물 app.js·app.css (gitignore, 배포 시 빌드)
+│   ├── fonts/              # 셀프 호스팅 woff2
 │   ├── js/gameSync.js      # 로그인·진행도 동기화 헬퍼
 │   └── originalMapData.js  # V1.2.9 부품·상점·작업·사냥 데이터
 ├── docs/

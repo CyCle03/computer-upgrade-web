@@ -167,7 +167,7 @@
 - `getShopCatalog()` — 구매 가능 강만 `costMinerals` 포함해 반환
 - `getShopTierCostMinerals()` — `tier.cost` 그대로 (원 1:1)
 - `getShopSellPriceMinerals()` — 판매가 50%
-- `public/index.html` — ◀▶ 상점 UI · AUTO · 장착 패널
+- `frontend/src/app.jsx` — ◀▶ 상점 UI · AUTO · 장착 패널
 
 ---
 

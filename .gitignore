@@ -6,3 +6,6 @@ __pycache__/
 scripts/_*.txt
 scripts/_*.json
 .claude/
+
+# 프론트엔드 번들 산출물 (scripts/build-frontend.js가 생성, 배포 시 빌드)
+public/build/

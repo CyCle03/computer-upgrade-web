@@ -25,9 +25,13 @@ const httpServer = createServer(app);
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
+// 정적 파일은 CORS 정책 대상이 아니므로 cors 미들웨어보다 먼저 둔다.
+// (웹폰트는 same-origin이어도 브라우저가 CORS 모드로 받아 Origin 헤더를 붙인다 —
+//  cors가 앞에 있으면 허용 목록에 없는 오리진에서 woff2가 500으로 떨어진다.)
+app.use(express.static('public'));
+
 app.use(cors(createExpressCorsOptions()));
 app.use(express.json());
-app.use(express.static('public'));
 
 app.get('/health', (_req: Request, res: Response) => {
   res.json({
