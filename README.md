@@ -7,7 +7,8 @@
 
 ## 라이브 데모
 
-배포된 서비스: **[https://computer-upgrade-web.duckdns.org](https://computer-upgrade-web.duckdns.org)**
+배포된 서비스: **[https://pc.elcherlab.com](https://pc.elcherlab.com)**
+(구 주소 `computer-upgrade-web.duckdns.org` 는 여기로 301 리다이렉트됩니다)
 
 웹 대시보드·실시간 레이드·보상 API를 바로 체험할 수 있습니다.
 
@@ -122,7 +123,7 @@ npm run dev
 
 브라우저에서 [http://localhost:3000](http://localhost:3000) 으로 접속합니다.
 
-배포 환경: [https://computer-upgrade-web.duckdns.org](https://computer-upgrade-web.duckdns.org)
+배포 환경: [https://pc.elcherlab.com](https://pc.elcherlab.com)
 
 ### 5. 프로덕션 빌드 및 실행
 
