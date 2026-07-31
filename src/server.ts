@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 import { createExpressCorsOptions } from './corsConfig';
 import { isDbReady, testConnection } from './db';
 import { RewardService } from './rewardService';
-import { AuthService, AuthError } from './authService';
+import { userIdFromCookieHeader, AUTH_ORIGIN } from './sharedAuth';
 import { StateService } from './stateService';
 import { ScaShopService } from './scaShopService';
 import { ScaIncomeService } from './scaIncomeService';
@@ -50,12 +50,8 @@ function getUserId(req: Request): string {
   return (req as AuthedRequest).userId;
 }
 
-// Authorization 헤더에서 Bearer 토큰 추출.
-function extractToken(req: Request): string | null {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) return null;
-  return header.slice('Bearer '.length).trim() || null;
-}
+// 인증은 통합 로그인(auth.elcherlab.com)이 발급한 .elcherlab.com 도메인 쿠키로 한다.
+// 같은 등록 도메인이라 이 앱으로 오는 요청에 브라우저가 알아서 실어 보낸다.
 
 // DB 연결 보장 미들웨어: 미연결 시 재시도 후 실패하면 503.
 const ensureDb: RequestHandler = async (_req, res, next) => {
@@ -66,9 +62,9 @@ const ensureDb: RequestHandler = async (_req, res, next) => {
   });
 };
 
-// 인증 미들웨어: 유효한 토큰이면 req.userId 설정, 아니면 401.
+// 인증 미들웨어: 통합 세션 쿠키가 유효하면 req.userId(로컬 users.id) 설정, 아니면 401.
 const requireAuth: RequestHandler = async (req, res, next) => {
-  const userId = await AuthService.resolveToken(extractToken(req));
+  const userId = await userIdFromCookieHeader(req.headers.cookie);
   if (!userId) {
     res.status(401).json({ success: false, message: '로그인이 필요합니다.' });
     return;
@@ -77,45 +73,11 @@ const requireAuth: RequestHandler = async (req, res, next) => {
   next();
 };
 
-// 회원가입
-app.post('/api/auth/register', ensureDb, async (req: Request, res: Response) => {
-  try {
-    const { username, password } = req.body ?? {};
-    const result = await AuthService.register(username, password);
-    return res.status(201).json({ success: true, ...result });
-  } catch (error: unknown) {
-    if (error instanceof AuthError) {
-      return res.status(error.status).json({ success: false, message: error.message });
-    }
-    console.error('[AuthAPI] register error:', error);
-    return res.status(500).json({ success: false, message: '회원가입 처리 중 오류가 발생했습니다.' });
-  }
-});
-
-// 로그인
-app.post('/api/auth/login', ensureDb, async (req: Request, res: Response) => {
-  try {
-    const { username, password } = req.body ?? {};
-    const result = await AuthService.login(username, password);
-    return res.status(200).json({ success: true, ...result });
-  } catch (error: unknown) {
-    if (error instanceof AuthError) {
-      return res.status(error.status).json({ success: false, message: error.message });
-    }
-    console.error('[AuthAPI] login error:', error);
-    return res.status(500).json({ success: false, message: '로그인 처리 중 오류가 발생했습니다.' });
-  }
-});
-
-// 로그아웃 (세션 토큰 폐기)
-app.post('/api/auth/logout', ensureDb, async (req: Request, res: Response) => {
-  try {
-    await AuthService.logout(extractToken(req));
-    return res.status(200).json({ success: true });
-  } catch (error: unknown) {
-    console.error('[AuthAPI] logout error:', error);
-    return res.status(500).json({ success: false, message: '로그아웃 처리 중 오류가 발생했습니다.' });
-  }
+// 가입·로그인·로그아웃은 통합 인증(auth.elcherlab.com)이 소유한다.
+// 이 앱은 발급된 쿠키를 검증만 하므로 해당 라우트를 두지 않는다.
+// 프론트가 어디로 보낼지 알아야 하므로 주소만 공개한다(비로그인도 필요).
+app.get('/api/auth/origin', (_req: Request, res: Response) => {
+  res.json({ success: true, authOrigin: AUTH_ORIGIN });
 });
 
 // 계정 진행도 초기화 (닉네임·로그인 유지)
