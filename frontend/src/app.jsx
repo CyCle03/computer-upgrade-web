@@ -1894,7 +1894,7 @@ import * as ReactDOM from 'react-dom/client';
       };
 
       const refreshRaidProgress = async () => {
-        if (!GameSync.getToken()) return;
+        if (!GameSync.hasSession()) return;
         try {
           const data = await GameSync.fetchRaidProgress();
           if (data && data.highestClaimedFloor != null) {
@@ -3197,7 +3197,7 @@ import * as ReactDOM from 'react-dom/client';
         const parts = { cpu, gpu, ram, cooler, storage };
         const outcome = OMG.calcRebirthOutcome(parts, rebirthStat);
         const startMinerals = OMG.calcRebirthStartMinerals(scaUpgrades);
-        if (!GameSync.getToken()) {
+        if (!GameSync.hasSession()) {
           alert('환생 SCA 지급을 위해 로그인이 필요합니다.');
           return;
         }
@@ -3455,7 +3455,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             const tierName = OMG.PARTY_HUNTING_TIERS[tierIdx]?.name || `T${tierIdx + 1}`;
             setCombatLogs(prev => [...prev.slice(-7), `💎 [PARTY] ${tierName} 파티 ${ticks}틱 수입 +${partyMineral.toLocaleString()} 미네랄`]);
           }
-          if (GameSync.getToken()) {
+          if (GameSync.hasSession()) {
             GameSync.claimPartyIncome(tierIdx, ticks, { cpu, gpu, ram, cooler, storage })
               .then((data) => { if (data && data.grantedSca > 0) setScaCoins(data.scaCoins); })
               .catch(() => {});
@@ -3932,7 +3932,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       const handleTogglePartyHunting = () => {
         setIsPartyHunting((v) => {
           const next = !v;
-          if (next && GameSync.getToken()) {
+          if (next && GameSync.hasSession()) {
             const parts = { cpu, gpu, ram, cooler, storage };
             GameSync.startPartyHunting(partyHuntingTier, parts).catch(() => {});
           }
@@ -3948,7 +3948,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         }
         setPartyHuntingTier(idx);
         setIsPartyHunting(true);
-        if (GameSync.getToken()) {
+        if (GameSync.hasSession()) {
           const parts = { cpu, gpu, ram, cooler, storage };
           GameSync.startPartyHunting(idx, parts).catch(() => {});
         }
@@ -4328,8 +4328,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
 
       // 최초 로드 시 저장된 토큰이 있으면 서버 진행도를 불러와 자동 로그인
       useEffect(() => {
-        const token = GameSync.getToken();
-        if (!token) { setPhase('auth'); return; }
+        // 세션은 HttpOnly 쿠키라 값을 읽을 수 없다 → 로그인 표식으로 판단하고,
+        // 실제 유효성은 아래 loadFromServer 가 서버에 물어 확인한다(401이면 auth 로).
+        if (!GameSync.hasSession()) { setPhase('auth'); return; }
         let cancelled = false;
         const timeoutId = setTimeout(() => {
           if (cancelled) return;
@@ -4370,7 +4371,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
 
           // 계정 전환 시 이전 계정의 로컬 데이터가 섞이지 않도록 정리
           GameSync.clearLocalGameState();
-          GameSync.setAuth(res.token, res.userId, res.nickname);
+          GameSync.setAuth(res.userId, res.nickname);
 
           const state = await GameSync.loadFromServer();
           if (state && Object.keys(state).length > 0) {

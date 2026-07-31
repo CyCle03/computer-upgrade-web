@@ -10,6 +10,12 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
+-- 통합 로그인(auth.elcherlab.com)의 계정 uuid.
+-- 게임 데이터가 users.id 를 외래키로 여러 곳에서 참조하므로 id 는 그대로 두고,
+-- 이 열로 통합 계정과 연결한다. 기존 행은 migrate 로 채운다(NULL 허용).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS identity_id UUID;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_identity ON users(identity_id);
+
 -- 3. 세션 휘발성 인게임 재화 테이블 생성
 -- 방 퇴장 시 또는 특정 세션 종료 시 애플리케이션 단에서 해당 유저의 값을 0으로 UPDATE 가능
 CREATE TABLE IF NOT EXISTS in_game_currencies (
