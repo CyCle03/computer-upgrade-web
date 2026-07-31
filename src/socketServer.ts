@@ -4,18 +4,22 @@ import { RaidRoomState } from './raidSimulator';
 import { RewardService } from './rewardService';
 import { ComputerParts } from './types';
 import { pool } from './db';
-import { userIdFromCookieHeader } from './sharedAuth';
+import { AuthService } from './authService';
 import { getSocketCorsOrigin } from './corsConfig';
 
 // 활성화된 레이드 방 저장소
 const activeRooms: Map<string, RaidRoomState> = new Map();
 
-/**
- * Socket.io 연결 시 통합 세션 쿠키를 검증해 socket.data.userId 를 설정한다.
- * 핸드셰이크는 같은 출처라 브라우저가 .elcherlab.com 쿠키를 실어 보낸다.
- */
+/** Socket.io 연결 시 Bearer 토큰을 검증해 socket.data.userId를 설정한다. */
 async function authenticateSocket(socket: Socket): Promise<string | null> {
-  return userIdFromCookieHeader(socket.handshake.headers.cookie);
+  const token =
+    (socket.handshake.auth?.token as string | undefined) ||
+    (socket.handshake.headers.authorization?.startsWith('Bearer ')
+      ? socket.handshake.headers.authorization.slice('Bearer '.length).trim()
+      : undefined);
+
+  if (!token) return null;
+  return AuthService.resolveToken(token);
 }
 
 /**
