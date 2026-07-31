@@ -2273,11 +2273,6 @@ import * as ReactDOM from 'react-dom/client';
       };
 
       useEffect(() => {
-        lastInventorySigRef.current = inventorySignature(inventory);
-        gameStateRef.current.inventory = inventory;
-      }, [inventory]);
-
-      useEffect(() => {
         if (!hasActiveAuto && pendingInventoryRef.current) {
           flushInventoryUi(pendingInventoryRef.current, { force: true });
         }
@@ -2404,6 +2399,15 @@ import * as ReactDOM from 'react-dom/client';
           { id: 'inv-cooler-1', type: 'cooler', level: 1, coolingCapacity: 500, coolerKind: 'air' },
           { id: 'inv-storage-1', type: 'storage', level: 1, storageType: 'HDD', storageKind: 'hdd', capacityGb: 60 }
       ]));
+
+      // 주의: 이 effect 는 반드시 inventory 선언 **아래**에 있어야 한다.
+      // 의존성 배열 [inventory] 는 렌더 시점에 평가되므로, 선언보다 위에 두면
+      // TDZ(ReferenceError: Cannot access 'inventory' before initialization)로
+      // App 마운트가 통째로 죽는다 — 로그인 후 게임 화면에서만 터져서 늦게 발견됨.
+      useEffect(() => {
+        lastInventorySigRef.current = inventorySignature(inventory);
+        gameStateRef.current.inventory = inventory;
+      }, [inventory]);
 
       // ----------------------------------------------------------------------
       // 3. 사냥터 및 다운로드 진행 상태 정의
