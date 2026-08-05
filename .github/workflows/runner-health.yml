@@ -65,7 +65,7 @@ jobs:
           title="🚨 배포 파이프라인 정지 감지 (러너 offline 의심)"
           body=$(cat <<EOF
           Deploy 워크플로우가 **${STUCK_MIN}분 넘게 진행되지 못하고** 있습니다.
-          self-hosted 러너(\`web-game-server\`)가 offline 일 가능성이 높습니다.
+          self-hosted 러너(\`pc-runner\`)가 offline 일 가능성이 높습니다.
 
           멈춘 run:
           \`\`\`
@@ -74,7 +74,7 @@ jobs:
 
           **복구:** 러너 인스턴스에서
           \`\`\`
-          sudo systemctl start actions.runner.CyCle03-computer-upgrade-web.web-game-server.service
+          sudo systemctl start actions.runner.CyCle03-computer-upgrade-web.pc-runner.service
           \`\`\`
           온라인이 되면 큐에 걸린 배포가 자동 실행됩니다.
 

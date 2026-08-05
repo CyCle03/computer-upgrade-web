@@ -37,7 +37,7 @@ if [ -n "${stuck:-}" ]; then
   echo "🚨 ${STUCK_MIN}분 넘게 멈춘 배포:"
   echo "$stuck"
   echo ""
-  echo "복구: 러너에서  sudo systemctl start actions.runner.CyCle03-computer-upgrade-web.web-game-server.service"
+  echo "복구: 러너에서  sudo systemctl start actions.runner.CyCle03-computer-upgrade-web.pc-runner.service"
   exit 1
 else
   echo "✅ 멈춘 배포 없음. 파이프라인 정상."
