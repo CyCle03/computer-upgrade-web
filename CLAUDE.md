@@ -55,7 +55,10 @@ npm run jsxcheck            # frontend/src/app.jsx 구문 게이트(TS 파서) �
 - **`main`에 push → self-hosted 러너(Oracle Cloud ARM, `pc-runner`)가 자동 배포** (`.github/workflows/deploy.yml`): `git reset --hard origin/main` → `npm run build` → `systemctl restart`. 서비스: <https://pc.elcherlab.com/>
 - `npm run build` = **프론트 번들(esbuild+Tailwind) → `tsc`** 순서. 즉 배포 때 `public/build/` 가 새로 만들어진다(저장소에는 없음). 프론트만 고친 커밋도 반드시 이 빌드를 거쳐야 반영된다.
 - 리버스 프록시는 서버의 Caddy(`/etc/caddy/Caddyfile`)가 담당하고 보안 헤더(HSTS·CSP·X-Frame-Options 등)도 거기서 붙인다. CSP가 `script-src 'self'; style-src 'self'` 라 **외부 CDN·인라인 스크립트를 추가하면 즉시 차단된다** — 새 라이브러리는 npm으로 받아 번들에 넣을 것.
-- **주의: 러너가 offline이면 배포가 조용히 `queued`로 멈춘다**(실패 알림 없음). 배포가 안 될 땐 `npm run health`로 러너/큐 상태부터 확인. `.github/workflows/runner-health.yml`이 30분마다 감지해 이슈를 연다.
+- **주의: 러너가 offline이면 배포가 조용히 `queued`로 멈춘다**(실패 알림 없음). 배포가 안 될 땐 `npm run health`로 러너/큐 상태부터 확인.
+- 감시는 두 겹이다.
+  - `.github/workflows/runner-health.yml` — cron 은 `*/30` 이지만 **GitHub 스케줄러가 크게 밀어서 실제 간격은 2~6시간**이다(무료 계정의 짧은 주기 schedule 은 보장되지 않는다). 러너 자체가 죽어도 GitHub 이 대신 봐주는 최후의 보루로만 여길 것 — 즉각 감지를 기대하면 안 된다.
+  - 서버의 `runner-health.timer` (5분 주기, `/opt/monitor/check-runners.sh`) — 러너 4개의 systemd 상태를 직접 보므로 이쪽이 실질적인 감시다. 서버가 통째로 죽으면 같이 죽지만, 그 경우 사이트가 내려가 바로 드러난다.
 - 러너 복구: 인스턴스에서 `sudo systemctl start actions.runner.CyCle03-computer-upgrade-web.pc-runner.service`.
 
 ## 관례 / 함정
