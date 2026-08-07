@@ -8,7 +8,6 @@
 ## 라이브 데모
 
 배포된 서비스: **[https://pc.elcherlab.com](https://pc.elcherlab.com)**
-(구 주소 `computer-upgrade-web.duckdns.org` 는 여기로 301 리다이렉트됩니다)
 
 웹 대시보드·실시간 레이드·보상 API를 바로 체험할 수 있습니다.
 
@@ -104,7 +103,7 @@ cp .env.example .env
 | `DB_POOL_MAX` | `20` | 커넥션 풀 최대 크기 |
 | `DB_SSL` | `false` | 클라우드 DB SSL 사용 여부 |
 | `USE_RPC` | `false` | `true`: PL/pgSQL RPC 사용 / `false`: Node.js 트랜잭션 사용 |
-| `ALLOWED_ORIGINS` | (환경별 기본값) | CORS·Socket.io 허용 오리진 (쉼표 구분). development 미설정 시 전체 허용, production 미설정 시 Render URL만 허용 |
+| `ALLOWED_ORIGINS` | (환경별 기본값) | CORS·Socket.io 허용 오리진 (쉼표 구분). development 미설정 시 전체 허용, production 미설정 시 `https://pc.elcherlab.com` 만 허용 |
 
 ### 3. 데이터베이스 초기화
 

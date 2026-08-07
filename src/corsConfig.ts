@@ -13,8 +13,9 @@ export function getAllowedOrigins(): string[] | null {
   if (process.env.NODE_ENV !== 'production') {
     return null; // null = 모든 오리진 허용
   }
-  // 현재 서비스 도메인 두 개(주 도메인 + 구 duckdns). 정적 파일은 이 정책을 타지 않는다.
-  return ['https://pc.elcherlab.com', 'https://computer-upgrade-web.duckdns.org'];
+  // 현재 서비스 도메인. 정적 파일은 이 정책을 타지 않는다.
+  // 구 duckdns 주소는 2026-08-07 에 Caddy 블록·DNS 까지 걷어내 더 이상 오지 않는다.
+  return ['https://pc.elcherlab.com'];
 }
 
 function isOriginAllowed(origin: string | undefined, allowed: string[] | null): boolean {
