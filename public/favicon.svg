@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="컴퓨터 강화하기">
+  <!-- CPU 칩 — 게임 주제(부품 강화)를 16px 에서도 알아볼 수 있는 최소 형태로.
+       배경을 깔지 않고 투명으로 둬서 밝은/어두운 탭 바 양쪽에서 다 읽힌다. -->
+  <g fill="#10b981">
+    <!-- 핀: 상·하·좌·우 3개씩 -->
+    <rect x="11" y="3" width="2" height="4" rx="1"/>
+    <rect x="15" y="3" width="2" height="4" rx="1"/>
+    <rect x="19" y="3" width="2" height="4" rx="1"/>
+    <rect x="11" y="25" width="2" height="4" rx="1"/>
+    <rect x="15" y="25" width="2" height="4" rx="1"/>
+    <rect x="19" y="25" width="2" height="4" rx="1"/>
+    <rect x="3" y="11" width="4" height="2" rx="1"/>
+    <rect x="3" y="15" width="4" height="2" rx="1"/>
+    <rect x="3" y="19" width="4" height="2" rx="1"/>
+    <rect x="25" y="11" width="4" height="2" rx="1"/>
+    <rect x="25" y="15" width="4" height="2" rx="1"/>
+    <rect x="25" y="19" width="4" height="2" rx="1"/>
+    <!-- 칩 몸통 -->
+    <rect x="6" y="6" width="20" height="20" rx="3"/>
+  </g>
+  <!-- 다이(die) — 몸통을 파내 테두리만 남긴다 -->
+  <rect x="10" y="10" width="12" height="12" rx="2" fill="#022c22"/>
+  <!-- 강화 표식: 위로 향한 화살촉 -->
+  <path d="M16 12.5l4 5h-2.6v2.5h-2.8v-2.5H12z" fill="#6ee7b7"/>
+</svg>
