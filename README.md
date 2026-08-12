@@ -1,3 +1,5 @@
+**한국어** | [English](README.en.md)
+
 # usemap-restore-backend
 
 스타크래프트 유즈맵 **「컴퓨터 강화하기」** 웹 복원판의 백엔드 서버입니다.  
