@@ -107,6 +107,44 @@ app.post('/internal/delete-user', ensureDb, async (req: Request, res: Response) 
   }
 });
 
+/** 열람권(제35조) — 통합 인증의 "내 데이터 내려받기"가 부른다. 같은 토큰으로 확인한다. */
+app.post('/internal/export-user', ensureDb, async (req: Request, res: Response) => {
+  if (!verifyInternal(req.headers['x-internal-auth'])) {
+    return res.status(403).json({ success: false, message: 'forbidden' });
+  }
+  const userId = (req.body as { userId?: unknown } | undefined)?.userId;
+  if (typeof userId !== 'string' || !userId) {
+    return res.status(400).json({ success: false, message: 'userId 가 필요합니다.' });
+  }
+  try {
+    const u = await pool.query(
+      'SELECT id, nickname, created_at FROM users WHERE identity_id = $1',
+      [userId]
+    );
+    if (!u.rowCount) {
+      return res.json({ 서비스: '컴퓨터 강화하기 (pc.elcherlab.com)', 저장된데이터: null });
+    }
+    const localId = u.rows[0].id;
+    const [state, perm, ingame, raid] = await Promise.all([
+      pool.query('SELECT state, updated_at FROM game_states WHERE user_id = $1', [localId]),
+      pool.query('SELECT * FROM permanent_currencies WHERE user_id = $1', [localId]),
+      pool.query('SELECT * FROM in_game_currencies WHERE user_id = $1', [localId]),
+      pool.query('SELECT * FROM daily_raid_progresses WHERE user_id = $1', [localId]),
+    ]);
+    return res.json({
+      서비스: '컴퓨터 강화하기 (pc.elcherlab.com)',
+      계정: { 게임내닉네임: u.rows[0].nickname, 생성일: u.rows[0].created_at },
+      게임진행상태: state.rows[0] || null,
+      영구재화: perm.rows[0] || null,
+      인게임재화: ingame.rows[0] || null,
+      일일레이드진행도: raid.rows[0] || null,
+    });
+  } catch (error: unknown) {
+    console.error('[export-user] error:', error);
+    return res.status(500).json({ success: false, message: '조회 중 오류가 발생했습니다.' });
+  }
+});
+
 // 계정 진행도 초기화 (닉네임·로그인 유지)
 app.post('/api/account/reset', ensureDb, requireAuth, async (req: Request, res: Response) => {
   try {
