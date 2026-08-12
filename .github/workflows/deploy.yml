@@ -20,8 +20,35 @@ concurrency:
 
 jobs:
   deploy:
+    # 공개 저장소 + self-hosted 러너 조합이라, 포크에서 실행되어 남의 코드가
+    # 서버에서 돌지 않도록 저장소를 못박는다. (pull_request 트리거도 두지 않는다)
+    if: github.repository == 'CyCle03/computer-upgrade-web'
     runs-on: self-hosted
     steps:
+      # 검사는 러너 작업공간에 따로 받아서 한다. 아래 배포 스텝은 실서버
+      # 디렉터리에서 git reset --hard 를 하므로, 거기서 검사하면 이미 나쁜
+      # 코드가 배포된 뒤가 된다. 여기서 걸리면 배포 스텝 자체가 돌지 않는다.
+      - name: 검사용 코드 가져오기
+        uses: actions/checkout@v4
+
+      # 브라우저로 나가는 코드에만 건다. src/*.ts 는 서버라 console.log 가
+      # 정상적인 로깅이다(journald 로 간다). public/build 는 생성물이라 제외한다.
+      - name: 개발 로그 검사 (브라우저 코드)
+        run: |
+          if grep -rn 'console\.log\|\bdebugger\b' frontend/src public/js --include='*.js' --include='*.jsx' | grep -v 'const debugLog'; then
+            echo "브라우저로 나가는 코드에 console.log 또는 debugger 가 있습니다. debugLog() 를 쓰세요."
+            exit 1
+          fi
+          echo "개발 로그 없음"
+
+      - name: CSP 회귀 검사 (인라인 핸들러 금지)
+        run: |
+          if grep -nE ' on[a-z]+=' public/index.html; then
+            echo "인라인 이벤트 핸들러가 있습니다."
+            exit 1
+          fi
+          echo "인라인 스크립트 없음"
+
       - name: Pull, build & restart
         working-directory: /home/ubuntu/computer-upgrade-web
         run: |

@@ -17,6 +17,25 @@
 import React from 'react';
 import * as ReactDOM from 'react-dom/client';
 
+/**
+ * 개발용 로그. 배포본에서는 아무 것도 찍지 않는다.
+ *
+ * **켜는 조건을 적는다** — 끄는 조건을 적으면 배포처가 늘 때마다 뒤집혀
+ * 그대로 새어 나간다(사이버 클리커에서 실제로 그렇게 DEBUG 콘솔이 나갔다).
+ * 로컬(localhost·127.0.0.1)에서 자동으로 켜지고, 배포본에서는 ?debug=1 로 연다.
+ *
+ * console.error 는 이걸 쓰지 않는다. 진짜 오류는 배포본에서도 남아야
+ * 이용자가 콘솔을 캡처해 보내줄 수 있다.
+ */
+const DEBUG_ENABLED = (() => {
+  if (typeof window === 'undefined' || !window.location) return false;
+  const { hostname, search } = window.location;
+  if (new URLSearchParams(search || '').get('debug') === '1') return true;
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+})();
+
+const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
+
     /** @jsxRuntime classic */
     const { useState, useEffect, useMemo, useRef } = React;
     const OMG = window.OriginalMapGame;
@@ -1922,7 +1941,7 @@ import * as ReactDOM from 'react-dom/client';
         });
 
         socketCon.on('connect', () => {
-          console.log('[Socket] Connected to server.');
+          debugLog('[Socket] Connected to server.');
           socketCon.emit('joinRoom', {
             roomId: 'carry-room-100',
             parts: { cpu, gpu, ram, cooler, motherboard, storage },
@@ -1982,7 +2001,7 @@ import * as ReactDOM from 'react-dom/client';
         });
 
         socketCon.on('disconnect', (reason) => {
-          console.log('[Socket] Disconnected:', reason);
+          debugLog('[Socket] Disconnected:', reason);
           setErrorMessage(`🔴 [실시간 연결 끊김] 서버와의 실시간 네트워크 연결이 유실되었습니다 (원인: ${reason}). 레이드 참여방에서 이탈되었으니 다시 [레이드 입장]을 눌러 도전해 주시기 바랍니다.`);
           setRaidState(null);
           setSocket(null);
