@@ -4352,16 +4352,21 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       const [error, setError] = useState(null);
       const [loading, setLoading] = useState(false);
 
-      // 최초 로드 시 저장된 토큰이 있으면 서버 진행도를 불러와 자동 로그인
+      // 최초 로드 시 서버에 세션을 물어 자동 로그인
       useEffect(() => {
-        // 세션은 HttpOnly 쿠키라 값을 읽을 수 없다 → 로그인 표식으로 판단하고,
-        // 실제 유효성은 아래 loadFromServer 가 서버에 물어 확인한다(401이면 auth 로).
-        if (!GameSync.hasSession()) { setPhase('auth'); return; }
+        // 세션은 HttpOnly 쿠키라 값을 읽을 수 없다. 예전에는 로컬 표식
+        // (sca_loggedIn)이 없으면 곧장 로그인 화면으로 갔는데, 그러면 통합 로그인의
+        // 핵심인 "다른 서비스에서 이미 로그인한 새 브라우저"를 놓친다 — 쿠키는
+        // .elcherlab.com 도메인이라 이미 붙어 있고 서버도 /api/state 를 200 으로
+        // 받아주는데 pc 만 로그인 화면을 띄웠다(gm·chat·pet·cc·bm 은 다 인식했다).
+        // 그래서 표식이 없어도 일단 서버에 물어보고, 401 이면 그때 로그인 화면으로 간다.
+        const hadLocalMark = GameSync.hasSession();
         let cancelled = false;
         const timeoutId = setTimeout(() => {
           if (cancelled) return;
           GameSync.clearAuth();
-          setError('서버 동기화 시간이 초과되었습니다. 다시 로그인해 주세요.');
+          // 로그인한 적 없는 방문자에게 "다시 로그인" 은 말이 안 된다
+          if (hadLocalMark) setError('서버 동기화 시간이 초과되었습니다. 다시 로그인해 주세요.');
           setPhase('auth');
         }, 12000);
         (async () => {
@@ -4375,7 +4380,13 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             if (cancelled) return;
             clearTimeout(timeoutId);
             GameSync.clearAuth();
-            setError(e.message || '진행도를 불러오지 못했습니다.');
+            // 401 은 이제 정상 경로다(비로그인 방문자). 표식이 있었을 때만
+            // 만료를 알리고, 그 밖의 오류(네트워크·서버)는 그대로 보여준다.
+            if (/UNAUTHORIZED/.test(e.message || '')) {
+              if (hadLocalMark) setError('세션이 만료되었습니다. 다시 로그인해 주세요.');
+            } else {
+              setError(e.message || '진행도를 불러오지 못했습니다.');
+            }
             setPhase('auth');
           }
         })();
