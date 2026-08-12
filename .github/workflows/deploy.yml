@@ -5,6 +5,13 @@ name: Deploy
 on:
   push:
     branches: [main]
+    # 문서만 고친 푸시로 재빌드·재시작하지 않는다.
+    # 재시작하면 레이드 중인 socket.io 연결이 끊기는데, .md 는 서빙되지도
+    # 런타임에 읽히지도 않아 얻는 게 없다. 코드와 문서를 같이 담은 푸시는
+    # 그대로 배포되고, 문서만 담은 푸시는 다음 배포의
+    # git reset --hard origin/main 때 함께 따라온다.
+    paths-ignore:
+      - '**.md'
   workflow_dispatch: {}   # Actions 탭에서 수동 실행도 가능
 
 concurrency:
