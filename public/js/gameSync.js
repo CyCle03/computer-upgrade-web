@@ -104,12 +104,12 @@
     },
 
     /** 가입·로그인은 통합 인증이 처리하고 쿠키를 발급한다(다른 출처 → credentials 필요). */
-    async _authRequest(path, username, password) {
+    async _authRequest(path, username, password, extra) {
       const origin = await authOrigin();
       const res = await fetch(origin + path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, ...(extra || {}) }),
         credentials: 'include',
       });
       const data = await res.json().catch(() => ({}));
@@ -118,8 +118,9 @@
       this.setAuth(u.id, u.username);
       return { userId: u.id, nickname: u.username };
     },
-    register(username, password) {
-      return this._authRequest('/api/signup', username, password);
+    // 가입에는 만 14세 확인이 필요하다 — 체크가 없으면 통합 인증이 400 으로 막는다.
+    register(username, password, ageConfirm) {
+      return this._authRequest('/api/signup', username, password, { ageConfirm: ageConfirm === true });
     },
     login(username, password) {
       return this._authRequest('/api/login', username, password);

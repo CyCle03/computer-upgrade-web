@@ -4327,6 +4327,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       const [mode, setMode] = useState('login');      // login | register
       const [username, setUsername] = useState('');
       const [password, setPassword] = useState('');
+      // 만 14세 미만은 법정대리인 동의 없이 가입시킬 수 없다(개인정보 보호법 제22조의2).
+      // 생년월일을 받지 않는 대신 확인을 받고, 통합 인증도 같은 조건으로 막는다.
+      const [ageConfirm, setAgeConfirm] = useState(false);
       const [error, setError] = useState(null);
       const [loading, setLoading] = useState(false);
 
@@ -4371,7 +4374,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           const name = username.trim();
           const res = mode === 'login'
             ? await GameSync.login(name, password)
-            : await GameSync.register(name, password);
+            : await GameSync.register(name, password, ageConfirm);
 
           // 계정 전환 시 이전 계정의 로컬 데이터가 섞이지 않도록 정리
           GameSync.clearLocalGameState();
@@ -4450,6 +4453,22 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 />
               </div>
 
+              {mode === 'register' && (
+                <label className="flex items-start gap-2 text-xs text-slate-400 font-mono cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={ageConfirm}
+                    onChange={(e) => setAgeConfirm(e.target.checked)}
+                    className="mt-0.5 shrink-0 accent-emerald-500"
+                  />
+                  <span>
+                    만 14세 이상이며,{' '}
+                    <a href="https://elcherlab.com/terms.html" target="_blank" rel="noopener noreferrer" className="text-emerald-400 underline">이용약관</a>과{' '}
+                    <a href="https://elcherlab.com/privacy.html" target="_blank" rel="noopener noreferrer" className="text-emerald-400 underline">개인정보처리방침</a>에 동의합니다.
+                  </span>
+                </label>
+              )}
+
               {error && (
                 <p className="text-xs text-rose-400 font-mono bg-rose-500/10 border border-rose-500/30 rounded px-3 py-2">
                   {error}
@@ -4468,11 +4487,17 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             <div className="text-center text-xs text-slate-400 font-mono">
               {mode === 'login' ? '계정이 없으신가요? ' : '이미 계정이 있으신가요? '}
               <button
-                onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); }}
+                onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); setAgeConfirm(false); }}
                 className="text-emerald-400 underline"
               >
                 {mode === 'login' ? '회원가입' : '로그인'}
               </button>
+            </div>
+
+            <div className="text-center text-[11px] text-slate-500 font-mono space-x-2">
+              <a href="https://elcherlab.com/terms.html" target="_blank" rel="noopener noreferrer" className="underline">이용약관</a>
+              <a href="https://elcherlab.com/privacy.html" target="_blank" rel="noopener noreferrer" className="underline">개인정보처리방침</a>
+              <a href="https://auth.elcherlab.com/account" target="_blank" rel="noopener noreferrer" className="underline">내 계정</a>
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { pool } from './db';
 
 /**
@@ -26,6 +26,17 @@ if (!AUTH_SECRET || AUTH_SECRET.length < 32) {
 export interface SharedSession {
   uid: string; // 통합 계정 uuid
   username: string;
+}
+
+/**
+ * 통합 인증이 탈퇴 처리 중에 부르는 내부 호출의 신원 확인.
+ * 세션 서명 비밀값 자체를 헤더에 싣지 않으려고, 거기서 유도한 토큰을 쓴다.
+ */
+const INTERNAL_TOKEN = createHash('sha256').update(`${AUTH_SECRET}:internal-delete`).digest('hex');
+
+export function verifyInternal(value: unknown): boolean {
+  if (typeof value !== 'string' || value.length !== INTERNAL_TOKEN.length) return false;
+  return timingSafeEqual(Buffer.from(value), Buffer.from(INTERNAL_TOKEN));
 }
 
 function unb64url(s: string): Buffer {

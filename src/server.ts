@@ -3,9 +3,9 @@ import { createServer } from 'http';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createExpressCorsOptions } from './corsConfig';
-import { isDbReady, testConnection } from './db';
+import { isDbReady, pool, testConnection } from './db';
 import { RewardService } from './rewardService';
-import { userIdFromCookieHeader, AUTH_ORIGIN } from './sharedAuth';
+import { userIdFromCookieHeader, verifyInternal, AUTH_ORIGIN } from './sharedAuth';
 import { StateService } from './stateService';
 import { ScaShopService } from './scaShopService';
 import { ScaIncomeService } from './scaIncomeService';
@@ -78,6 +78,33 @@ const requireAuth: RequestHandler = async (req, res, next) => {
 // 프론트가 어디로 보낼지 알아야 하므로 주소만 공개한다(비로그인도 필요).
 app.get('/api/auth/origin', (_req: Request, res: Response) => {
   res.json({ success: true, authOrigin: AUTH_ORIGIN });
+});
+
+/**
+ * 통합 인증(auth.elcherlab.com)이 탈퇴 처리 중에 부르는 내부 엔드포인트.
+ * Caddy 가 이 호스트의 모든 경로를 프록시하므로 공개 주소로도 닿는다 —
+ * 공유 시크릿에서 유도한 토큰을 반드시 확인한다.
+ *
+ * public.users 한 줄만 지우면 게임 데이터는 전부 따라 지워진다
+ * (game_states·재화·레이드 진행도·세션이 users.id 를 on delete cascade 로 참조).
+ * 지울 행이 없어도 성공으로 본다 — auth 가 실패한 서비스만 다시 부르므로 멱등이어야 한다.
+ */
+app.post('/internal/delete-user', ensureDb, async (req: Request, res: Response) => {
+  if (!verifyInternal(req.headers['x-internal-auth'])) {
+    return res.status(403).json({ success: false, message: 'forbidden' });
+  }
+  const userId = (req.body as { userId?: unknown } | undefined)?.userId;
+  if (typeof userId !== 'string' || !userId) {
+    return res.status(400).json({ success: false, message: 'userId 가 필요합니다.' });
+  }
+  try {
+    const r = await pool.query('DELETE FROM users WHERE identity_id = $1', [userId]);
+    console.log(`[delete-user] ${userId} → users ${r.rowCount}행 삭제(연관 데이터 cascade)`);
+    return res.json({ success: true, removed: r.rowCount });
+  } catch (error: unknown) {
+    console.error('[delete-user] error:', error);
+    return res.status(500).json({ success: false, message: '삭제 중 오류가 발생했습니다.' });
+  }
 });
 
 // 계정 진행도 초기화 (닉네임·로그인 유지)
