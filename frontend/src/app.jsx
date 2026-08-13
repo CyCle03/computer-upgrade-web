@@ -16,6 +16,7 @@
  */
 import React from 'react';
 import * as ReactDOM from 'react-dom/client';
+import { t, tOr, getLang, setLang, toggleLang, useLang, mineral } from './i18n.js';
 
 /**
  * 개발용 로그. 배포본에서는 아무 것도 찍지 않는다.
@@ -55,11 +56,36 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
       }
     }
 
+    /**
+     * 이름 사전 찾기.
+     * 데이터 표(originalMapData.js)는 한국어 원문을 그대로 들고 있고 세이브에도 그
+     * 값이 들어간다(메인보드·다운로드 대상). 그래서 표를 번역하지 않고 **화면에 낼
+     * 때만** index/id 로 사전을 찾는다 — 사전에 없으면 원문이 그대로 나온다.
+     */
+    const workTaskName = (task) => (task ? tOr('omg.work.' + task.taskIndex, task.name) : '');
+    const gameName = (g) => (g ? tOr('omg.game.' + g.gameIndex, g.name) : '');
+    const partyTierName = (idx, tier) => tOr('omg.party.' + idx, (tier && tier.name) || '');
+    const boardName = (name) => {
+      const i = (OMG.MOTHERBOARDS || []).findIndex((b) => b.name === name);
+      return i >= 0 ? tOr('omg.mb.' + i, name) : name;
+    };
+
+    /** 로그 인자 자리에 들어가는 이름 — 그릴 때 옮기도록 표식으로 넘긴다. */
+    const gameNameVar = (g) => ({ $k: 'key', key: 'omg.game.' + g.gameIndex, fallback: g.name });
+    const partyTierVar = (idx) => ({
+      $k: 'key',
+      key: 'omg.party.' + idx,
+      fallback: (OMG.PARTY_HUNTING_TIERS[idx] && OMG.PARTY_HUNTING_TIERS[idx].name) || ('T' + (idx + 1)),
+    });
+
+    /** 로그·피드는 {k, v} 로 쌓아 두고 그릴 때 옮긴다(언어를 바꾸면 옛 줄도 따라온다). */
+    const renderLog = (entry) => (typeof entry === 'string' ? entry : t(entry.k, entry.v));
+
     if (!OMG || !OMG.WORK_TASKS) {
       document.getElementById('root').innerHTML = (
         '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:2rem;font-family:monospace;color:#fca5a5;text-align:center">'
-        + '<div><p style="font-size:1.1rem;margin-bottom:0.5rem">게임 데이터를 불러오지 못했습니다.</p>'
-        + '<p style="color:#94a3b8;font-size:0.85rem">서버(npm start)로 접속했는지, /originalMapData.js 가 로드되는지 확인해 주세요.</p></div></div>'
+        + '<div><p style="font-size:1.1rem;margin-bottom:0.5rem">' + t('boot.fail') + '</p>'
+        + '<p style="color:#94a3b8;font-size:0.85rem">' + t('boot.failHint') + '</p></div></div>'
       );
       throw new Error('OriginalMapGame is not available');
     }
@@ -77,14 +103,14 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
           return (
             <div className="min-h-screen flex items-center justify-center p-6">
               <div className="max-w-lg w-full bg-rose-950/40 border border-rose-500/40 rounded-xl p-6 space-y-3 font-mono text-sm">
-                <p className="text-rose-300 font-bold">화면을 표시하지 못했습니다</p>
+                <p className="text-rose-300 font-bold">{t('err.render')}</p>
                 <p className="text-slate-300 break-words">{String(this.state.error && this.state.error.message || this.state.error)}</p>
                 <button
                   type="button"
                   onClick={() => window.location.reload()}
                   className="px-4 py-2 rounded bg-rose-500/20 border border-rose-500/50 text-rose-200"
                 >
-                  새로고침
+                  {t('err.reload')}
                 </button>
               </div>
             </div>
@@ -106,11 +132,11 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
     };
     const HUNT_SCENE_MOBS = ['👾', '🐛', '🦠', '👹', '🤖', '💀', '🐙', '👻', '🎃', '🐉'];
 
-    function HuntScene({ units, totalUnits, monsterName, killTimeSec, attackSpeedSec, damage, respawning, active, accent }) {
+    function HuntScene({ units, totalUnits, monsterName, mobSeed, killTimeSec, attackSpeedSec, damage, respawning, active, accent }) {
       const canvasRef = useRef(null);
       const stateRef = useRef(null);
       const propsRef = useRef({});
-      propsRef.current = { units, totalUnits, monsterName, killTimeSec, attackSpeedSec, damage, respawning, active, accent };
+      propsRef.current = { units, totalUnits, monsterName, mobSeed, killTimeSec, attackSpeedSec, damage, respawning, active, accent };
 
       useEffect(() => {
         const canvas = canvasRef.current;
@@ -125,6 +151,8 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
           dead: false, respawnT: 0, kills: 0, fireAcc: 0,
         });
 
+        // 몹 이모지는 이름 해시로 고르는데, 언어를 바꿔도 같은 몹이 나오도록
+        // 번역된 이름이 아니라 원문 이름(mobSeed)으로 해시한다.
         function mobFor(name) {
           if (!name) return '🏆';
           let hsum = 0;
@@ -200,7 +228,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                 const a = Math.random() * Math.PI * 2, s = 40 + Math.random() * 180;
                 S.particles.push({ x: monX, y: monY, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5 + Math.random() * 0.35, r: 1.5 + Math.random() * 2.5 });
               }
-              S.floats.push({ x: monX, y: monY - 18, txt: '처치!', life: 0.9, col: '#fca5a5' });
+              S.floats.push({ x: monX, y: monY - 18, txt: t('scene.kill'), life: 0.9, col: '#fca5a5' });
             }
           } else if (S.dead) {
             S.respawnT -= dt;
@@ -279,7 +307,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
               ctx.font = '30px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
               ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
               if (S.monHitFlash > 0.02) { ctx.shadowColor = '#fecaca'; ctx.shadowBlur = 16 * S.monHitFlash; }
-              ctx.fillText(mobFor(p.monsterName), mx, my);
+              ctx.fillText(mobFor(p.mobSeed || p.monsterName), mx, my);
               ctx.restore();
               // HP 바
               const bw = 54, bh = 6, bx = monX - bw / 2, by = monY - 26;
@@ -318,14 +346,14 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
           ctx.textAlign = 'left'; ctx.textBaseline = 'top';
           ctx.font = '11px ui-monospace, monospace';
           ctx.fillStyle = 'rgba(226,232,240,0.9)';
-          ctx.fillText((p.monsterName || '대기 중') + '  ⚔ ' + engaged + '/' + drawnTotal + '기', 10, 8);
+          ctx.fillText((p.monsterName || t('scene.idle')) + '  ⚔ ' + t('scene.units', { a: engaged, b: drawnTotal }), 10, 8);
           ctx.textAlign = 'right';
           ctx.fillStyle = 'rgba(148,163,184,0.85)';
-          ctx.fillText('처치 ' + S.kills + (p.respawning > 0 ? ' · 리스폰 ' + p.respawning + '기' : ''), w - 10, 8);
+          ctx.fillText(t('scene.kills', { n: S.kills }) + (p.respawning > 0 ? t('scene.respawn', { n: p.respawning }) : ''), w - 10, 8);
           if (!alive && p.monsterName) {
             ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(148,163,184,0.7)';
             ctx.font = '11px ui-monospace, monospace';
-            ctx.fillText(p.active === false ? '⏸ 사냥 대기' : '⏳', w / 2, h - 26);
+            ctx.fillText(p.active === false ? t('scene.huntPaused') : '⏳', w / 2, h - 26);
           }
 
           raf = requestAnimationFrame(frame);
@@ -466,7 +494,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                 const a = Math.random() * Math.PI * 2, s = 40 + Math.random() * 150;
                 S.particles.push({ x: bx, y: by, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5 + Math.random() * 0.3, r: 1.5 + Math.random() * 2 });
               }
-              S.floats.push({ x: bx, y: by - 26, txt: '완성!', life: 0.9, col: col.bullet });
+              S.floats.push({ x: bx, y: by - 26, txt: t('scene.done'), life: 0.9, col: col.bullet });
             }
           } else if (S.done) {
             S.doneT -= dt;
@@ -577,13 +605,13 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
           ctx.textAlign = 'left'; ctx.textBaseline = 'top';
           ctx.font = '11px ui-monospace, monospace';
           ctx.fillStyle = 'rgba(226,232,240,0.9)';
-          ctx.fillText((p.taskName || '작업 대기') + '  🔧 ' + engaged + '/' + drawnTotal + '기', 10, 8);
+          ctx.fillText((p.taskName || t('scene.workIdle')) + '  🔧 ' + t('scene.units', { a: engaged, b: drawnTotal }), 10, 8);
           ctx.textAlign = 'right';
           ctx.fillStyle = 'rgba(148,163,184,0.85)';
-          ctx.fillText('완성 ' + S.cycles + (p.respawning > 0 ? ' · 리스폰 ' + p.respawning + '기' : ''), w - 10, 8);
+          ctx.fillText(t('scene.cycles', { n: S.cycles }) + (p.respawning > 0 ? t('scene.respawn', { n: p.respawning }) : ''), w - 10, 8);
           if (!working && p.taskName) {
             ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(148,163,184,0.7)';
-            ctx.fillText(p.active === false ? '⏸ 작업 대기' : '⏳', w / 2, h - 26);
+            ctx.fillText(p.active === false ? t('scene.workPaused') : '⏳', w / 2, h - 26);
           }
 
           raf = requestAnimationFrame(frame);
@@ -604,16 +632,16 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
     // 실시간 100층 보스 레이드 오버레이 모달 (App에서 분리 — 순수 프레젠테이션)
     function RaidModal({ raidState, myId, todayHighestClaimedFloor, rewardMessage, errorMessage, toggleReady, leaveRaidRoom, getRaidBossName, formatRemainingRewardRange, raidResult, onCloseResult }) {
       return (
-            <div role="dialog" aria-modal="true" aria-label="실시간 100층 보스 등반 레이드" className="fixed inset-0 bg-slate-950/90 flex items-end sm:items-center justify-center p-2 sm:p-4 z-50 backdrop-blur-sm">
+            <div role="dialog" aria-modal="true" aria-label={t('raid.title')} className="fixed inset-0 bg-slate-950/90 flex items-end sm:items-center justify-center p-2 sm:p-4 z-50 backdrop-blur-sm">
               <div className="bg-slate-950 border border-cyan-500/30 rounded-2xl w-full max-w-4xl p-4 sm:p-6 neon-border-cyan flex flex-col space-y-4 sm:space-y-6 max-h-[92vh] sm:max-h-[90vh] overflow-y-auto min-w-0">
 
                 <div className="flex justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-4">
                   <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                     <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping shrink-0"></span>
-                    <h2 className="text-sm sm:text-lg font-bold text-cyan-400 uppercase tracking-widest font-mono break-words">실시간 100층 보스 등반 레이드</h2>
+                    <h2 className="text-sm sm:text-lg font-bold text-cyan-400 uppercase tracking-widest font-mono break-words">{t('raid.title')}</h2>
                   </div>
                   <button
-                    aria-label="레이드 나가기"
+                    aria-label={t('raid.leave')}
                     onClick={leaveRaidRoom}
                     className="p-2 hover:bg-slate-900 border border-slate-800 hover:border-rose-500/40 rounded-lg text-slate-400 hover:text-rose-500 transition"
                   >
@@ -624,36 +652,36 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                 {raidResult && (
                   <div className="flex flex-col items-center justify-center py-8 space-y-5 text-center">
                     <div className={`text-2xl sm:text-3xl font-extrabold font-mono tracking-wider ${raidResult.won ? 'text-emerald-300' : 'text-rose-300'}`}>
-                      {raidResult.won ? '🏆 100층 등반 성공!' : '⛔ 레이드 종료 · 시간 초과'}
+                      {raidResult.won ? t('raid.won') : t('raid.lost')}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl">
                       <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl">
-                        <div className="text-[11px] text-slate-500 font-mono uppercase tracking-wider">도달 층</div>
-                        <div className="text-xl font-bold text-cyan-300 font-mono mt-1">{raidResult.floor}층</div>
+                        <div className="text-[11px] text-slate-500 font-mono uppercase tracking-wider">{t('raid.floorReached')}</div>
+                        <div className="text-xl font-bold text-cyan-300 font-mono mt-1">{t('raid.floorN', { n: raidResult.floor })}</div>
                       </div>
                       <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl">
-                        <div className="text-[11px] text-slate-500 font-mono uppercase tracking-wider">이번 레이드 획득</div>
+                        <div className="text-[11px] text-slate-500 font-mono uppercase tracking-wider">{t('raid.thisRun')}</div>
                         <div className="text-xl font-bold text-amber-300 font-mono mt-1">SCA +{(raidResult.reward || 0).toLocaleString()}</div>
                       </div>
                       <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl">
-                        <div className="text-[11px] text-slate-500 font-mono uppercase tracking-wider">오늘 수령 최고 층</div>
-                        <div className="text-xl font-bold text-emerald-300 font-mono mt-1">{todayHighestClaimedFloor}층</div>
+                        <div className="text-[11px] text-slate-500 font-mono uppercase tracking-wider">{t('raid.todayTop')}</div>
+                        <div className="text-xl font-bold text-emerald-300 font-mono mt-1">{t('raid.floorN', { n: todayHighestClaimedFloor })}</div>
                       </div>
                     </div>
-                    <p className="text-[11px] text-slate-500 font-mono">보상은 하루 1회 · 오늘 남은 구간: {formatRemainingRewardRange(todayHighestClaimedFloor)}</p>
+                    <p className="text-[11px] text-slate-500 font-mono">{t('raid.dailyNote', { range: formatRemainingRewardRange(todayHighestClaimedFloor) })}</p>
                     <button
                       type="button"
                       onClick={onCloseResult}
                       className="px-8 py-3 bg-cyan-500 hover:bg-cyan-400 active:scale-95 transition text-slate-950 font-bold rounded-lg font-mono text-sm shadow-lg shadow-cyan-500/20"
                     >
-                      대기실로
+                      {t('raid.toLobby')}
                     </button>
                   </div>
                 )}
 
                 {errorMessage && (
                   <div className="p-3.5 bg-rose-950/20 border border-rose-500/50 rounded-lg text-xs font-mono text-rose-400 animate-pulse">
-                    ⚠️ 에러 감지: {errorMessage}
+                    {t('raid.errorDetected', { msg: errorMessage })}
                   </div>
                 )}
 
@@ -666,9 +694,9 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                 {!raidResult && raidState && raidState.status === 'waiting' && (
                   <div className="flex flex-col items-center justify-center py-10 space-y-6">
                     <p className="text-slate-400 font-mono text-center">
-                      레이드 대기실에 진입했습니다. 버스 방 번호: <strong className="text-cyan-400">carry-room-100</strong><br />
-                      <span className="text-slate-500">보스는 반격하지 않습니다 · 합산 DPS로 층당 30초 내 격파</span><br />
-                      모든 인원이 준비 완료 버튼을 누르면 실시간 100층 시뮬레이션 전투에 돌입합니다.
+                      {t('raid.lobbyEnter')} <strong className="text-cyan-400">carry-room-100</strong><br />
+                      <span className="text-slate-500">{t('raid.noCounter')}</span><br />
+                      {t('raid.allReadyNote')}
                     </p>
 
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 w-full">
@@ -680,12 +708,12 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                               <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isMe ? 'bg-cyan-500/10 text-cyan-400' : 'bg-slate-800 text-slate-400'} border border-slate-700`}>
                                 <span className="text-lg">👤</span>
                               </div>
-                              <span className="text-xs font-bold text-slate-200 mt-2 truncate max-w-[120px]">{p.nickname} {isMe && '(나)'}</span>
+                              <span className="text-xs font-bold text-slate-200 mt-2 truncate max-w-[120px]">{p.nickname} {isMe && t('raid.me')}</span>
                               <span className="text-[11px] text-slate-500 font-mono">DPS: {p.dpsContribution.toLocaleString()}</span>
                             </div>
 
                             <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded ${p.isReady ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/20' : 'bg-rose-950/40 text-rose-400 border border-rose-500/20'}`}>
-                              {p.isReady ? '준비 완료' : '대기 중'}
+                              {p.isReady ? t('raid.ready') : t('raid.waiting')}
                             </span>
                           </div>
                         );
@@ -694,7 +722,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                       {Array.from({ length: 4 - raidState.players.length }).map((_, idx) => (
                         <div key={idx} className="p-4 bg-slate-950/20 border border-slate-900 border-dashed rounded-lg flex flex-col items-center justify-center text-center text-slate-700 min-h-[120px]">
                           <span className="text-lg text-slate-700">➕</span>
-                          <span className="text-[11px] font-mono mt-1">대기 중...</span>
+                          <span className="text-[11px] font-mono mt-1">{t('raid.emptySlot')}</span>
                         </div>
                       ))}
                     </div>
@@ -703,7 +731,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                       onClick={toggleReady}
                       className="px-8 py-3.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 transition text-slate-950 font-bold rounded-lg font-mono text-sm shadow-lg shadow-emerald-500/20"
                     >
-                      {raidState.players.find(p => p.userId === myId)?.isReady ? '준비 취소' : '레이드 준비 완료'}
+                      {raidState.players.find(p => p.userId === myId)?.isReady ? t('raid.cancelReady') : t('raid.setReady')}
                     </button>
                   </div>
                 )}
@@ -721,15 +749,15 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                           FLOOR {raidState.currentFloor} <span className="text-base sm:text-lg text-slate-500">/ 100</span>
                         </div>
                         <div className="text-xs font-bold text-rose-400 font-mono mt-2 animate-pulse uppercase tracking-wider">
-                          🎯 타겟 보스: {getRaidBossName(raidState.currentFloor)}
+                          {t('raid.target', { name: getRaidBossName(raidState.currentFloor) })}
                         </div>
 
                         {raidState.status === 'won' ? (
-                          <span className="mt-3 text-xs font-bold text-emerald-400 uppercase tracking-widest font-mono border border-emerald-500/30 bg-emerald-950/20 px-3 py-1 rounded">100층 완전 등반 성공</span>
+                          <span className="mt-3 text-xs font-bold text-emerald-400 uppercase tracking-widest font-mono border border-emerald-500/30 bg-emerald-950/20 px-3 py-1 rounded">{t('raid.statusWon')}</span>
                         ) : raidState.status === 'lost' ? (
-                          <span className="mt-3 text-xs font-bold text-rose-400 uppercase tracking-widest font-mono border border-rose-500/30 bg-rose-950/20 px-3 py-1 rounded">시간 초과 패배</span>
+                          <span className="mt-3 text-xs font-bold text-rose-400 uppercase tracking-widest font-mono border border-rose-500/30 bg-rose-950/20 px-3 py-1 rounded">{t('raid.statusLost')}</span>
                         ) : (
-                          <span className="mt-3 text-xs font-bold text-cyan-400 uppercase tracking-widest font-mono border border-cyan-500/30 bg-cyan-950/20 px-3 py-1 rounded animate-pulse">전투 연산 진행 중</span>
+                          <span className="mt-3 text-xs font-bold text-cyan-400 uppercase tracking-widest font-mono border border-cyan-500/30 bg-cyan-950/20 px-3 py-1 rounded animate-pulse">{t('raid.statusFighting')}</span>
                         )}
                       </div>
 
@@ -737,7 +765,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 text-xs">
                           <span className="font-bold text-slate-300 uppercase tracking-wider font-mono flex items-center gap-1 shrink-0">
                             <span className="text-rose-500 text-sm">💀</span>
-                            <span>보스 개체 체력</span>
+                            <span>{t('raid.bossHp')}</span>
                           </span>
                           <span className="text-rose-400 font-mono font-bold text-[11px] sm:text-xs break-all text-right">
                             {raidState.bossCurrentHp.toLocaleString()} / {raidState.bossMaxHp.toLocaleString()} ({Math.round((raidState.bossCurrentHp / raidState.bossMaxHp) * 100)}%)
@@ -753,8 +781,8 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                         </div>
 
                         <div className="flex justify-between items-center text-xs font-mono pt-1 text-slate-500">
-                          <span>남은 타임아웃 제한 시간</span>
-                          <span className={`font-bold ${raidState.timeLeft <= 10 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`}>{raidState.timeLeft} 초</span>
+                          <span>{t('raid.timeLeft')}</span>
+                          <span className={`font-bold ${raidState.timeLeft <= 10 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`}>{t('raid.sec', { n: raidState.timeLeft })}</span>
                         </div>
                         <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
                           <div 
@@ -770,7 +798,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                       <div className="bg-slate-900/40 border border-slate-800 p-5 rounded-xl flex flex-col space-y-4">
                         <h3 className="text-xs text-slate-400 font-bold uppercase tracking-widest border-b border-slate-800 pb-2 flex items-center space-x-1">
                           <span className="text-cyan-400 text-sm mr-1">📊</span>
-                          <span>실시간 파티원 기여도</span>
+                          <span>{t('raid.contrib')}</span>
                         </h3>
 
                         <div className="space-y-4">
@@ -781,7 +809,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                               <div key={p.userId} className="space-y-1">
                                 <div className="flex justify-between text-xs font-mono">
                                   <span className={`truncate max-w-[140px] ${isMe ? 'text-cyan-300 font-bold' : 'text-slate-300'}`}>
-                                    {p.nickname} {isMe && '(나)'} {p.isDead && '(⚠️사망)'}
+                                    {p.nickname} {isMe && t('raid.me')} {p.isDead && t('raid.dead')}
                                   </span>
                                   <span className="text-slate-500 font-bold">{p.dpsContribution.toLocaleString()} DPS</span>
                                 </div>
@@ -793,7 +821,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                                   ></div>
                                 </div>
                                 <div className="flex justify-between text-[11px] font-mono text-slate-500">
-                                  <span>{p.isDead ? 'DDR에러 유닛 파괴됨' : `지분: ${Math.round(share)}%`}</span>
+                                  <span>{p.isDead ? t('raid.unitDestroyed') : t('raid.share', { p: Math.round(share) })}</span>
                                   {p.currentHp !== undefined && (
                                     <span>HP: {p.currentHp} / {p.maxHp}</span>
                                   )}
@@ -804,7 +832,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                         </div>
 
                         <div className="pt-3 border-t border-slate-800 flex justify-between items-center text-xs font-mono">
-                          <span className="text-slate-500">파티 합산 누적 DPS:</span>
+                          <span className="text-slate-500">{t('raid.totalDps')}</span>
                           <span className="text-cyan-400 font-bold">{raidState.totalDps.toLocaleString()}</span>
                         </div>
                       </div>
@@ -812,27 +840,27 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                       <div className="bg-slate-900/40 border border-slate-800 p-5 rounded-xl flex flex-col space-y-3 font-mono">
                         <h3 className="text-xs text-slate-400 uppercase tracking-widest border-b border-slate-800 pb-2 flex items-center space-x-1">
                           <span className="text-cyan-300 text-sm mr-1">🏆</span>
-                          <span>오늘 남은 보상 구간</span>
+                          <span>{t('raid.rewardLeft')}</span>
                         </h3>
                         <div className="flex flex-col space-y-2 text-xs">
                           <div className="flex justify-between">
-                            <span className="text-slate-500">수령 가능 마일스톤:</span>
-                            <span className="text-cyan-300 font-bold">10층 ~ 100층 (10층단위)</span>
+                            <span className="text-slate-500">{t('raid.milestones')}</span>
+                            <span className="text-cyan-300 font-bold">{t('raid.milestoneRange')}</span>
                           </div>
                           <div className="flex justify-between text-sm text-slate-400">
-                            <span>오늘 수령 완료 최고 층:</span>
-                            <span className="text-cyan-300 font-bold">{todayHighestClaimedFloor}층</span>
+                            <span>{t('raid.claimedTop')}</span>
+                            <span className="text-cyan-300 font-bold">{t('raid.floorN', { n: todayHighestClaimedFloor })}</span>
                           </div>
                           <div className="flex justify-between text-sm text-slate-400">
-                            <span>오늘 남은 보상 구간:</span>
+                            <span>{t('raid.remainRange')}</span>
                             <span className="text-emerald-400 font-bold">
                               {formatRemainingRewardRange(todayHighestClaimedFloor)}
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-500 mt-2 border-t border-slate-900 pt-2 leading-relaxed">
-                            * 100층 완등 시 최대 80,000 SCA 코인 획득 가능 (유저 환생 수치 비례 증폭)
+                            {t('raid.note1')}
                             <br />
-                            * 보상은 하루에 단 한 번, 날짜가 바뀌면 수령 완료 최고 층수가 0으로 리셋되며 다시 처음부터 순차로 차분 획득 가능합니다.
+                            {t('raid.note2')}
                           </p>
                         </div>
                       </div>
@@ -853,7 +881,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
             <div className="fixed inset-0 bg-slate-950/80 flex items-end sm:items-center justify-center p-3 sm:p-4 z-50 backdrop-blur-sm">
               <div className="bg-slate-950 border border-slate-700 rounded-2xl w-full max-w-md p-4 sm:p-6 flex flex-col space-y-5 shadow-xl max-h-[92vh] overflow-y-auto">
                 <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-                  <h2 className="text-sm font-bold text-slate-200 uppercase tracking-widest font-mono">⚙️ 설정</h2>
+                  <h2 className="text-sm font-bold text-slate-200 uppercase tracking-widest font-mono">{t('settings.title')}</h2>
                   <button
                     type="button"
                     onClick={() => !isResettingAccount && setIsSettingsOpen(false)}
@@ -865,9 +893,9 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                 </div>
 
                 <div className="space-y-3">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">계정</h3>
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">{t('settings.account')}</h3>
                   <p className="text-xs text-slate-500 font-mono leading-relaxed">
-                    진행도를 처음부터 다시 시작합니다. SCA·부품·환생·레이드 기록이 모두 삭제되며, 닉네임과 비밀번호는 그대로 유지됩니다.
+                    {t('settings.resetDesc')}
                   </p>
                   <button
                     type="button"
@@ -875,7 +903,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                     disabled={isResettingAccount}
                     className="w-full px-4 py-2.5 bg-rose-950/40 border border-rose-500/50 rounded-lg text-sm font-mono text-rose-300 hover:bg-rose-950/60 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {isResettingAccount ? '초기화 중...' : '🗑️ 계정 초기화'}
+                    {isResettingAccount ? t('settings.resetting') : t('settings.reset')}
                   </button>
                 </div>
               </div>
@@ -889,37 +917,37 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
             <section className="mb-4 p-4 border border-emerald-500/20 rounded-xl space-y-3 bg-slate-950/60 font-mono">
               <div className="flex justify-between items-center border-b border-slate-900 pb-2">
                 <h2 className="text-sm font-bold text-emerald-300 flex items-center gap-1.5">
-                  <span>🧪 오버클럭 연구소</span>
+                  <span>{t('oc.title')}</span>
                   <span className="text-[10px] bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded-full border border-emerald-800/40">
-                    파밍 Lv.{effectiveOverclockLabLevel}
+                    {t('oc.farmLv', { lv: effectiveOverclockLabLevel })}
                   </span>
                 </h2>
                 <span className="text-[10px] text-slate-500">
                   {dpsForNextOverclockLab != null
-                    ? `Lv.${nextOverclockLabLevel} 필요 1기 DPS ≥ ${dpsForNextOverclockLab.toLocaleString()}`
-                    : '최고 레벨 파밍 중'}
+                    ? t('oc.nextNeed', { lv: nextOverclockLabLevel, dps: dpsForNextOverclockLab.toLocaleString() })
+                    : t('oc.maxFarm')}
                 </span>
               </div>
 
               {/* 현재 해금된 영구 오버클럭 상태 */}
               <div className="text-[10px] text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
-                <div>DDR4 오버클럭: <strong className={overclockData.ddr4Overclocked ? "text-emerald-400" : "text-slate-500"}>{overclockData.ddr4Overclocked ? "OC-4000 해금됨" : "미해금"}</strong></div>
-                <div>DDR5 오버클럭 단계: <strong className={overclockData.ddr5OverclockedStep > 0 ? "text-emerald-400" : "text-slate-500"}>
-                  {overclockData.ddr5OverclockedStep === 1 ? "OC-6000 해금됨" :
-                   overclockData.ddr5OverclockedStep === 2 ? "OC-7200 해금됨" :
-                   overclockData.ddr5OverclockedStep === 3 ? "OC-8000 해금됨" : "미해금"}
+                <div>{t('oc.ddr4')} <strong className={overclockData.ddr4Overclocked ? "text-emerald-400" : "text-slate-500"}>{overclockData.ddr4Overclocked ? t('oc.oc4000') : t('oc.locked')}</strong></div>
+                <div>{t('oc.ddr5')} <strong className={overclockData.ddr5OverclockedStep > 0 ? "text-emerald-400" : "text-slate-500"}>
+                  {overclockData.ddr5OverclockedStep === 1 ? t('oc.oc6000') :
+                   overclockData.ddr5OverclockedStep === 2 ? t('oc.oc7200') :
+                   overclockData.ddr5OverclockedStep === 3 ? t('oc.oc8000') : t('oc.locked')}
                 </strong></div>
               </div>
 
               {/* 원작 맵: 오버클럭 연구소 1~4레벨 건물명 + 내구도 표기 */}
               <div className="border border-slate-900 rounded-lg overflow-hidden text-[10px] font-mono mobile-table-scroll">
-                <div className="px-2 py-1.5 bg-slate-900/80 text-slate-400 text-[10px]">건물 스펙 (원작: 레벨별 연구소 트리거명)</div>
+                <div className="px-2 py-1.5 bg-slate-900/80 text-slate-400 text-[10px]">{t('oc.buildingSpec')}</div>
                 <div className="grid grid-cols-5 gap-px bg-slate-900 text-center mobile-table-inner">
-                  <div className="bg-slate-950 p-1.5 text-slate-500">레벨</div>
+                  <div className="bg-slate-950 p-1.5 text-slate-500">{t('oc.level')}</div>
                   <div className="bg-slate-950 p-1.5 text-slate-500">HP</div>
-                  <div className="bg-slate-950 p-1.5 text-slate-500">실드</div>
-                  <div className="bg-slate-950 p-1.5 text-slate-500">방어</div>
-                  <div className="bg-slate-950 p-1.5 text-slate-500">필요 DPS</div>
+                  <div className="bg-slate-950 p-1.5 text-slate-500">{t('oc.shield')}</div>
+                  <div className="bg-slate-950 p-1.5 text-slate-500">{t('oc.defense')}</div>
+                  <div className="bg-slate-950 p-1.5 text-slate-500">{t('oc.needDps')}</div>
                   {[1, 2, 3, 4].map((lv) => {
                     const b = OMG.OVERCLOCK_LAB_SPECS[lv];
                     const active = effectiveOverclockLabLevel === lv;
@@ -927,7 +955,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                       <React.Fragment key={lv}>
                         <div className={`bg-slate-950 p-1.5 text-left ${active ? 'text-emerald-300 font-bold' : 'text-slate-400'}`}>
                           Lv.{lv}{active ? ' ◀' : ''}
-                          <span className="block text-[9px] text-slate-600">연구소 {lv}레벨</span>
+                          <span className="block text-[9px] text-slate-600">{t('oc.labLv', { lv })}</span>
                         </div>
                         <div className={`bg-slate-950 p-1.5 ${active ? 'text-rose-300' : 'text-slate-300'}`}>{b.hp.toLocaleString()}</div>
                         <div className={`bg-slate-950 p-1.5 ${active ? 'text-cyan-300' : 'text-slate-300'}`}>{b.shield.toLocaleString()}</div>
@@ -937,19 +965,19 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                     );
                   })}
                 </div>
-                <p className="px-2 py-1 text-[9px] text-slate-600">파괴 시 OC 파츠 30% · 재생 {OMG.OVERCLOCK_LAB_RESPAWN_SEC}초 · 순DPS = 차출 1기 DPS − 방어력</p>
+                <p className="px-2 py-1 text-[9px] text-slate-600">{t('oc.dropNote', { sec: OMG.OVERCLOCK_LAB_RESPAWN_SEC })}</p>
               </div>
 
               {/* 연구소 건물 공격/파괴 패널 */}
               <div className="border border-slate-900 p-3 rounded-lg bg-slate-950/40 space-y-2">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-400">연구소 건물 내구도 및 실드</span>
+                  <span className="text-slate-400">{t('oc.hpShield')}</span>
                   {!overclockLabActive ? (
-                    <span className="text-slate-500 text-[10px] font-bold">⏸️ 유닛 미차출</span>
+                    <span className="text-slate-500 text-[10px] font-bold">{t('oc.noUnit')}</span>
                   ) : overclockLabCooldown > 0 ? (
-                    <span className="text-amber-400 text-[10px] font-bold">🔄 건물 재생성 ({overclockLabCooldown}초)</span>
+                    <span className="text-amber-400 text-[10px] font-bold">{t('oc.respawning', { sec: overclockLabCooldown })}</span>
                   ) : (
-                    <span className="text-emerald-400 text-[10px] font-bold">⚔️ 차출 유닛 1기 공격 중</span>
+                    <span className="text-emerald-400 text-[10px] font-bold">{t('oc.attacking')}</span>
                   )}
                 </div>
 
@@ -980,29 +1008,29 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                     </div>
 
                     <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono">
-                      <span>방어력: {OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.defense}</span>
-                      <span>차출 1기 DPS: <strong className="text-cyan-400">{overclockLabUnitDps.toLocaleString()}</strong></span>
+                      <span>{t('oc.defenseVal', { n: OMG.OVERCLOCK_LAB_SPECS[effectiveOverclockLabLevel]?.defense })}</span>
+                      <span>{t('oc.unitDps')} <strong className="text-cyan-400">{overclockLabUnitDps.toLocaleString()}</strong></span>
                     </div>
                     <button
                       type="button"
                       onClick={handleRecallOverclockLabUnit}
                       className="w-full mt-1 py-1 text-[10px] border border-slate-800 rounded text-slate-400 hover:border-rose-500/40 hover:text-rose-300"
                     >
-                      유닛 복귀 (작업·사냥 풀 +1기)
+                      {t('oc.recall')}
                     </button>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-4 bg-slate-950/80 rounded border border-dashed border-slate-900">
                     <p className="text-[11px] text-slate-500 mb-2 text-center leading-relaxed">
-                      작업·사냥 유닛 <strong className="text-emerald-400">1기</strong>를 차출해 연구소 건물을 공격합니다. (건물 반격 없음)<br />
-                      건물을 파괴하면 오버클럭 조율 파츠를 획득할 수 있습니다. (미네랄 불필요)
+                      {t('oc.assignDesc1a')}<strong className="text-emerald-400">{t('oc.oneUnit')}</strong>{t('oc.assignDesc1b')}<br />
+                      {t('oc.assignDesc2')}
                     </p>
                     <button 
                       onClick={handleAssignOverclockLabUnit}
                       disabled={effectiveUnitLimit < 1}
                       className="px-3 py-1.5 text-xs bg-emerald-950 border border-emerald-800 rounded hover:bg-emerald-900 text-emerald-300 disabled:opacity-40 disabled:pointer-events-none"
                     >
-                      유닛 1기 차출 · 연구소 공격 시작
+                      {t('oc.assign')}
                     </button>
                   </div>
                 )}
@@ -1015,14 +1043,14 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                 return (
                   <div className="border border-emerald-900/30 p-3 rounded-lg bg-emerald-950/5 space-y-3">
                     <div className="flex justify-between items-center text-xs">
-                      <span className="text-emerald-400 font-bold">🧰 미확인 재료 보관함</span>
-                      <span className="text-slate-500">보유 {parts.length} / 30</span>
+                      <span className="text-emerald-400 font-bold">{t('oc.vault')}</span>
+                      <span className="text-slate-500">{t('oc.held', { n: parts.length })}</span>
                     </div>
 
                     {parts.length === 0 ? (
                       <div className="py-3 text-center text-slate-500 text-[11px]">
-                        작업·사냥 유닛 1기 차출 공격으로 연구소를 파밍하면 미확인 재료가 이곳에 쌓입니다.<br />
-                        (드랍률 30% · 미네랄·레벨업 불필요 · 성능은 강화 성공 전까지 알 수 없음)
+                        {t('oc.vaultEmpty')}<br />
+                        {t('oc.vaultEmpty2')}
                       </div>
                     ) : (
                       <div className="flex flex-wrap gap-1.5">
@@ -1031,7 +1059,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                           return (
                             <button key={p.id} onClick={() => selectOcPart(p.id)}
                               className={`px-2 py-1 rounded text-[10px] border font-mono ${sel ? 'bg-emerald-900/60 border-emerald-500 text-emerald-200' : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:border-emerald-700/50'}`}>
-                              미확인 {p.generation}{p.tested ? ` ${Math.round(calcOcSuccessProb(p) * 100)}%` : ''}
+                              {t('oc.unknown', { gen: p.generation })}{p.tested ? ` ${Math.round(calcOcSuccessProb(p) * 100)}%` : ''}
                             </button>
                           );
                         })}
@@ -1041,7 +1069,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                     {selected && (
                       <div className="border-t border-slate-900 pt-3 space-y-3">
                         <div className="text-[11px] text-emerald-300 font-bold">
-                          🔧 조율 중: 미확인 {selected.generation} 재료 <span className="text-slate-500 font-normal">(목표 성능 비공개)</span>
+                          {t('oc.tuning', { gen: selected.generation })} <span className="text-slate-500 font-normal">{t('oc.targetHidden')}</span>
                         </div>
 
                         {/* CL, tRCD, tRP, tRAS 가감 컨트롤러 */}
@@ -1053,9 +1081,9 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                               <div key={param} className="flex items-center justify-between p-2 bg-slate-950/80 border border-slate-900 rounded text-xs">
                                 <span className="text-slate-400 font-mono">{label}</span>
                                 <div className="flex items-center gap-2">
-                                  <button aria-label={`${label} 감소`} onClick={() => adjustOcParam(param, -1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">−</button>
+                                  <button aria-label={t('oc.paramDown', { label })} onClick={() => adjustOcParam(param, -1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">−</button>
                                   <span className="text-white font-bold w-6 text-center">{currentVal}</span>
-                                  <button aria-label={`${label} 증가`} onClick={() => adjustOcParam(param, 1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">+</button>
+                                  <button aria-label={t('oc.paramUp', { label })} onClick={() => adjustOcParam(param, 1)} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded hover:text-emerald-400 font-bold">+</button>
                                 </div>
                               </div>
                             );
@@ -1064,11 +1092,11 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
 
                         {selected.tested ? (
                           <div className="text-center text-xs bg-slate-950 border border-emerald-900/40 rounded py-2">
-                            <span className="text-slate-400">현재 조율 성공 확률 </span>
+                            <span className="text-slate-400">{t('oc.successProb')}</span>
                             <strong className="text-emerald-300 text-base">{Math.round(calcOcSuccessProb(selected) * 100)}%</strong>
                           </div>
                         ) : (
-                          <div className="text-center text-[10px] text-slate-600 py-1">값을 조정한 뒤 [확률 테스트]로 성공 확률을 확인하세요.</div>
+                          <div className="text-center text-[10px] text-slate-600 py-1">{t('oc.testHint')}</div>
                         )}
 
                         <div className="flex gap-2">
@@ -1076,14 +1104,14 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                             onClick={testOcActivePart}
                             className="flex-1 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded hover:border-emerald-500/40 text-emerald-400"
                           >
-                            🔍 확률 테스트
+                            {t('oc.test')}
                           </button>
                           <button
                             onClick={attemptOcUpgrade}
                             disabled={!selected.tested}
                             className="flex-1 py-1.5 text-xs bg-emerald-950 border border-emerald-800/80 rounded hover:bg-emerald-900 text-emerald-300 font-bold disabled:opacity-40 disabled:pointer-events-none"
                           >
-                            ⚡ 강화 (성공 시 해금 · 실패 시 폭발)
+                            {t('oc.upgrade')}
                           </button>
                         </div>
                       </div>
@@ -1099,23 +1127,31 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
     function ScaCenterModal({ scaUpgrades, gameSpeedFrames, gameSpeedMult, ramAttackFrames, renderScaShopButton }) {
       return (
             <section className="mb-4 p-3 sm:p-4 border border-cyan-500/20 rounded-xl space-y-3 min-w-0">
-              <p className="text-xs font-mono text-cyan-300/80 break-words">다음 환생 시작 미네랄: <strong>{OMG.calcRebirthStartMinerals(scaUpgrades).toLocaleString()}원</strong> (상한 {OMG.REBIRTH_MINERAL_CAP.toLocaleString()}원) · 환생 미네랄 <strong>+10원 = {OMG.REBIRTH_MINERAL_SCA_PER_10} SCA</strong> 고정</p>
-              <p className="text-xs font-mono text-cyan-300/70 break-words">게임 배속 {gameSpeedFrames}프레임 (x{gameSpeedMult.toFixed(2)}) · RAM 공속 {ramAttackFrames}f · 다운로드 x{OMG.calcDownloadSpeedBonus(scaUpgrades).toFixed(1)} · {OMG.isMiningAmplifierUnlocked(scaUpgrades) ? `채굴력 ${OMG.getMiningPower(scaUpgrades).toLocaleString()} · ${OMG.getMiningAttackFrames(scaUpgrades)}f` : '채굴증폭기 미구축'}</p>
+              <p className="text-xs font-mono text-cyan-300/80 break-words">{t('sca.rebirthStart')}<strong>{t('sca.wonAmount', { n: OMG.calcRebirthStartMinerals(scaUpgrades).toLocaleString() })}</strong>{t('sca.rebirthCap', { cap: t('sca.wonAmount', { n: OMG.REBIRTH_MINERAL_CAP.toLocaleString() }) })}<strong>{t('sca.rebirthPer10', { sca: OMG.REBIRTH_MINERAL_SCA_PER_10 })}</strong>{t('sca.rebirthFixed')}</p>
+              <p className="text-xs font-mono text-cyan-300/70 break-words">{t('sca.speedLine', {
+                frames: gameSpeedFrames,
+                mult: gameSpeedMult.toFixed(2),
+                ram: ramAttackFrames,
+                dl: OMG.calcDownloadSpeedBonus(scaUpgrades).toFixed(1),
+                mining: OMG.isMiningAmplifierUnlocked(scaUpgrades)
+                  ? t('sca.miningOn', { power: OMG.getMiningPower(scaUpgrades).toLocaleString(), frames: OMG.getMiningAttackFrames(scaUpgrades) })
+                  : t('sca.miningOff'),
+              })}</p>
               <div className="space-y-3">
                 <div>
-                  <p className="text-[11px] font-bold text-slate-400 font-mono mb-2 uppercase tracking-wider">환생 미네랄</p>
+                  <p className="text-[11px] font-bold text-slate-400 font-mono mb-2 uppercase tracking-wider">{t('sca.groupRebirth')}</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {OMG.SCA_SHOP_ITEMS.filter((item) => item.mineralBonus).map(renderScaShopButton)}
                   </div>
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold text-slate-400 font-mono mb-2 uppercase tracking-wider">영구 업그레이드</p>
+                  <p className="text-[11px] font-bold text-slate-400 font-mono mb-2 uppercase tracking-wider">{t('sca.groupPermanent')}</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {OMG.SCA_SHOP_ITEMS.filter((item) => !item.mineralBonus && item.shopGroup !== 'mining').map(renderScaShopButton)}
                   </div>
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold text-amber-400/90 font-mono mb-2 uppercase tracking-wider">레이드 · 채굴증폭기</p>
+                  <p className="text-[11px] font-bold text-amber-400/90 font-mono mb-2 uppercase tracking-wider">{t('sca.groupMining')}</p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {OMG.SCA_SHOP_ITEMS.filter((item) => item.shopGroup === 'mining').map(renderScaShopButton)}
                   </div>
@@ -1132,7 +1168,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 border-b border-slate-800 pb-3">
                 <h2 className="text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2">
                   <span className="text-emerald-400 text-lg mr-1.5">🖥️</span>
-                  <span>내 하드웨어 모니터</span>
+                  <span>{t('hw.title')}</span>
                 </h2>
                 <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">DDR {cpu.ddrGeneration} SYSTEM</span>
               </div>
@@ -1141,24 +1177,24 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                 <div className="p-4 bg-rose-950/20 border border-rose-500/50 rounded-lg neon-border-rose space-y-2.5 animate-pulse">
                   <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest font-mono flex items-center space-x-1.5">
                     <span className="text-lg mr-1">⚠️</span>
-                    <span>시스템 임계 경고 감지됨</span>
+                    <span>{t('hw.warn')}</span>
                   </h3>
                   
                   {specs.penalties.isOverheated && (
                     <div className="text-xs text-rose-400 font-mono">
-                      ⚠️ OVERHEAT ERROR: CPU 요구 열량({specs.cpuHeatDemand})이 쿨러 능력({cooler.coolingCapacity})을 초과했습니다. 초당 미네랄 수입이 50% 삭감되었으며 유닛 방어력이 반감되었습니다.
+                      {t('hw.overheat', { demand: specs.cpuHeatDemand, capacity: cooler.coolingCapacity })}
                     </div>
                   )}
 
                   {specs.penalties.isSocketMismatched && (
                     <div className="text-xs text-rose-400 font-mono">
-                      ⚠️ SOCKET MISMATCH: CPU 제조사({cpu.manufacturer})와 메인보드 소켓 제조사({motherboard.socketManufacturer})가 불일치하여 유닛 한도가 절반으로 축소됩니다.
+                      {t('hw.socket', { cpu: cpu.manufacturer, board: motherboard.socketManufacturer })}
                     </div>
                   )}
 
                   {specs.penalties.isDdrMismatched && (
                     <div className="text-xs text-rose-400 font-mono">
-                      ❌ COMPATIBILITY ERROR: DDR 규격 혼용 오류 발생. 초당 HP Decay 디버프({specs.penalties.hpDecayRate * 100}%/초)가 활성화됩니다.
+                      {t('hw.ddr', { rate: specs.penalties.hpDecayRate * 100 })}
                     </div>
                   )}
                 </div>
@@ -1169,7 +1205,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                   <div className="min-w-0 flex-1">
                     <p className="text-xs text-slate-500 font-mono">CPU PROCESSOR</p>
                     <p className="text-base font-semibold text-slate-200">{getCpuName(cpu.level)}</p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">Grade: +{cpu.level}강</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{t('hw.grade', { lv: cpu.level })}</p>
                   </div>
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{cpu.ddrGeneration}</span>
                 </div>
@@ -1178,7 +1214,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                   <div className="min-w-0 flex-1">
                     <p className="text-xs text-slate-500 font-mono">GPU ENGINE</p>
                     <p className="text-base font-semibold text-slate-200">{getGpuName(gpu.level, gpu)}</p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">+{gpu.level}강 · {OMG.GPU_GRADE_NAMES[gpuGrade]} · 공격 {OMG.getGpuAttackPower(gpu, scaUpgrades)}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{t('hw.gpuLine', { lv: gpu.level, grade: OMG.getGpuGradeName(gpuGrade), atk: OMG.getGpuAttackPower(gpu, scaUpgrades) })}</p>
                   </div>
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">PCI-E</span>
                 </div>
@@ -1187,7 +1223,16 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                   <div className="min-w-0 flex-1">
                     <p className="text-xs text-slate-500 font-mono">SYSTEM RAM (MEM)</p>
                     <p className="text-base font-semibold text-slate-200 break-words">{getRamName(ram.level, ram)}</p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5 break-words">Grade: +{ram.level || 1}강{ram.ramVariant === 'overclock' ? ' OC' : ''} · 유효 {effectiveRamGb}GB ({ramSlots}슬롯×{ram.capacityGb}GB) · {ram.clockMhz}MHz · 공속 {ramAttackFrames}f · 성능 {OMG.getRamPerfPerUnit(ram)}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5 break-words">{t('hw.ramLine', {
+                      lv: ram.level || 1,
+                      oc: ram.ramVariant === 'overclock' ? ' OC' : '',
+                      gb: effectiveRamGb,
+                      slots: ramSlots,
+                      per: ram.capacityGb,
+                      mhz: ram.clockMhz,
+                      frames: ramAttackFrames,
+                      perf: OMG.getRamPerfPerUnit(ram),
+                    })}</p>
                   </div>
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">{ram.ddrGeneration}</span>
                 </div>
@@ -1196,16 +1241,16 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                   <div>
                     <p className="text-xs text-slate-500 font-mono">COOLING BLADE</p>
                     <p className="text-base font-semibold text-slate-200">{getCoolerName(cooler.level, cooler)}</p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{(cooler.coolerKind === 'water' ? '수랭' : '공랭')} · Cap: {cooler.coolingCapacity}W / +{cooler.level}강</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{t('hw.coolerLine', { kind: t(cooler.coolerKind === 'water' ? 'hw.water' : 'hw.air'), cap: cooler.coolingCapacity, lv: cooler.level })}</p>
                   </div>
-                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{cooler.coolerKind === 'water' ? '수랭' : '공랭'}</span>
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{t(cooler.coolerKind === 'water' ? 'hw.water' : 'hw.air')}</span>
                 </div>
 
                 <div className="p-3 bg-slate-950/60 rounded border border-slate-800 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 col-span-1 md:col-span-2">
                   <div>
                     <p className="text-xs text-slate-500 font-mono">MOTHERBOARD</p>
-                    <p className="text-base font-semibold text-slate-200">{motherboard.name || `${motherboard.socketManufacturer} Board`}</p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{motherboard.socketManufacturer} · {motherboard.supportedDdrGeneration} · 실드 +{motherboard.shieldIncrease}</p>
+                    <p className="text-base font-semibold text-slate-200">{motherboard.name ? boardName(motherboard.name) : `${motherboard.socketManufacturer} Board`}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{t('hw.boardLine', { mfr: motherboard.socketManufacturer, ddr: motherboard.supportedDdrGeneration, shield: motherboard.shieldIncrease })}</p>
                   </div>
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">{motherboard.supportedDdrGeneration} SLOT</span>
                 </div>
@@ -1214,7 +1259,12 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                   <div>
                     <p className="text-xs text-slate-500 font-mono">STORAGE SYSTEM</p>
                     <p className="text-base font-semibold text-slate-200">{getStorageName(storage.level || 1, storage)}</p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">+{storage.level || 1}강 · {storage.capacityGb}GB · {(storage.storageKind === 'nvme' || storage.type === 'SSD') ? 'NVMe SSD' : 'HDD'} · 다운로드 x{specs.storageDownloadMult}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{t('hw.storageLine', {
+                      lv: storage.level || 1,
+                      gb: storage.capacityGb,
+                      kind: (storage.storageKind === 'nvme' || storage.type === 'SSD') ? 'NVMe SSD' : 'HDD',
+                      mult: specs.storageDownloadMult,
+                    })}</p>
                   </div>
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{storage.type === 'SSD' ? 'SSD 4X FASTER' : 'HDD BASE'}</span>
                 </div>
@@ -1223,49 +1273,49 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
               <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-lg flex flex-col space-y-3 font-mono">
                 <h3 className="text-xs text-slate-400 uppercase tracking-widest border-b border-slate-800 pb-1.5 flex items-center space-x-1">
                   <span className="text-emerald-400 text-sm mr-1">🛡️</span>
-                  <span>유닛 전투 스펙 매니페스트</span>
+                  <span>{t('hw.manifest')}</span>
                 </h3>
                 <div className="grid grid-cols-2 gap-y-2.5 gap-x-4 text-xs">
                   <div className="flex justify-between">
-                    <span className="text-slate-500">필드 유닛 상한:</span>
-                    <span className="text-emerald-400 font-bold">{specs.unitLimit}기</span>
+                    <span className="text-slate-500">{t('hw.unitLimit')}</span>
+                    <span className="text-emerald-400 font-bold">{t('hw.unitsN', { n: specs.unitLimit })}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">RAM (작업/사냥):</span>
-                    <span className="text-emerald-400 font-bold">{specs.workRamUsed}GB / {specs.huntRamFree}GB · GPU {specs.gpuRamPerUnit}GB/기</span>
+                    <span className="text-slate-500">{t('hw.ramWorkHunt')}</span>
+                    <span className="text-emerald-400 font-bold">{t('hw.ramWorkHuntVal', { used: specs.workRamUsed, free: specs.huntRamFree, per: specs.gpuRamPerUnit })}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">게임 사냥 유닛:</span>
-                    <span className="text-emerald-400 font-bold">{specs.maxHuntingUnits}기</span>
+                    <span className="text-slate-500">{t('hw.huntUnits')}</span>
+                    <span className="text-emerald-400 font-bold">{t('hw.unitsN', { n: specs.maxHuntingUnits })}</span>
                   </div>
                   <div className="flex justify-between col-span-2 text-cyan-300 font-semibold border-b border-slate-900 pb-1.5 mt-0.5">
-                    <span>👾 소환 스타 유닛:</span>
+                    <span>{t('hw.summon')}</span>
                     <span>{getSummonUnit(cpu.level).emoji} {getSummonUnit(cpu.level).name}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">유닛 HP/실드:</span>
+                    <span className="text-slate-500">{t('hw.unitHpShield')}</span>
                     <span className="text-emerald-400 font-bold">{specs.unitHp} / {specs.unitShield}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">유닛 단일데미지:</span>
+                    <span className="text-slate-500">{t('hw.unitDamage')}</span>
                     <span className="text-emerald-400 font-bold">{specs.unitDamage}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">공격 주기(공속):</span>
-                    <span className="text-cyan-400 font-bold">{specs.attackSpeedSec}초 · RAM {specs.ramAttackFrames}f · {specs.ramClockMhz}MHz · 성능 {OMG.getRamPerfPerUnit(specs.ram)}</span>
+                    <span className="text-slate-500">{t('hw.attackCycle')}</span>
+                    <span className="text-cyan-400 font-bold">{t('hw.attackCycleVal', { sec: specs.attackSpeedSec, frames: specs.ramAttackFrames, mhz: specs.ramClockMhz, perf: OMG.getRamPerfPerUnit(specs.ram) })}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">방어력(쿨러반영):</span>
+                    <span className="text-slate-500">{t('hw.unitDefense')}</span>
                     <span className="text-emerald-400 font-bold">{specs.unitDefense}</span>
                   </div>
                   <div className="flex justify-between col-span-2 border-t border-slate-900 pt-2 text-sm">
-                    <span className="text-slate-500">1기 DPS (연구소 기준):</span>
+                    <span className="text-slate-500">{t('hw.dpsOne')}</span>
                     <span className="text-cyan-400 font-bold font-mono">
                       {OMG.calcUnitDps(specs.unitDamage, specs.attackSpeedSec).toLocaleString()} DPS
                     </span>
                   </div>
                   <div className="flex justify-between col-span-2 text-xs">
-                    <span className="text-slate-500">전체 {specs.unitLimit}기 합산 DPS:</span>
+                    <span className="text-slate-500">{t('hw.dpsAll', { n: specs.unitLimit })}</span>
                     <span className="text-slate-400 font-mono">
                       {(OMG.calcUnitDps(specs.unitDamage, specs.attackSpeedSec) * specs.unitLimit).toLocaleString()} DPS
                     </span>
@@ -1275,10 +1325,10 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                     const _mine = OMG.getMiningPower(scaUpgrades);
                     return (
                       <div className="flex justify-between col-span-2 border-t border-slate-900 pt-2 text-sm">
-                        <span className="text-slate-500">⚔️ 레이드 예상 DPS:</span>
+                        <span className="text-slate-500">{t('hw.raidDps')}</span>
                         <span className="text-cyan-300 font-bold font-mono text-right">
                           {OMG.calcRaidPlayerDps(_perf, _mine).toLocaleString()}
-                          <span className="block text-[9px] text-slate-500 font-normal">채굴봇 {OMG.calcRaidPlayerDps(0, _mine).toLocaleString()} + 하드웨어 {OMG.calcRaidPlayerDps(_perf, 0).toLocaleString()}(성능수치 {_perf.toLocaleString()})</span>
+                          <span className="block text-[9px] text-slate-500 font-normal">{t('hw.raidDpsBreak', { mining: OMG.calcRaidPlayerDps(0, _mine).toLocaleString(), hardware: OMG.calcRaidPlayerDps(_perf, 0).toLocaleString(), perf: _perf.toLocaleString() })}</span>
                         </span>
                       </div>
                     );
@@ -1292,7 +1342,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                   className="w-full flex items-center justify-center space-x-2 py-3 bg-cyan-500 hover:bg-cyan-400 active:scale-95 transition text-slate-950 font-bold rounded-lg font-mono text-sm shadow-lg shadow-cyan-500/20"
                 >
                   <span className="text-sm mr-1">⚔️</span>
-                  <span>100층 레이드 참가</span>
+                  <span>{t('raid.join')}</span>
                 </button>
               </div>
             </section>
@@ -1305,14 +1355,14 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                   <div className="p-4 bg-slate-950/60 rounded border border-slate-800 col-span-2 space-y-3.5 mt-2 animate-fade-in">
                     <div className="flex justify-between items-center border-b border-slate-900 pb-2">
                       <span className="text-xs font-bold text-emerald-400 font-mono tracking-widest uppercase flex items-center space-x-1.5 font-bold">
-                        <span>📦 내 보유 장비 창고 (Inventory Warehouse)</span>
+                        <span>{t('inv.title')}</span>
                       </span>
-                      <span className="text-xs text-slate-500 font-mono">보관 {inventory.length}개</span>
+                      <span className="text-xs text-slate-500 font-mono">{t('inv.count', { n: inventory.length })}</span>
                     </div>
 
                     {inventory.length === 0 ? (
                       <div className="py-8 text-center text-xs text-slate-600 font-mono border border-slate-900 border-dashed rounded">
-                        창고에 보관 중인 여비 장비가 없습니다. 위 상점에서 원하는 강 티어를 구매하세요.
+                        {t('inv.empty')}
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1">
@@ -1324,27 +1374,27 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
 
                           if (p.type === 'cpu') {
                             partName = getCpuName(p.level, p.manufacturer);
-                            specDetail = `호환: ${p.manufacturer} / ${p.ddrGeneration}`;
+                            specDetail = t('inv.cpuSpec', { mfr: p.manufacturer, ddr: p.ddrGeneration });
                             badgeText = 'CPU';
                             badgeStyle = 'bg-emerald-950/50 text-emerald-400 border border-emerald-500/20';
                           } else if (p.type === 'gpu') {
                             partName = getGpuName(p.level, p);
-                            specDetail = `데미지 배율: x${getSummonUnit(p.level).dpsFactor.toFixed(1)}`;
+                            specDetail = t('inv.gpuSpec', { mult: getSummonUnit(p.level).dpsFactor.toFixed(1) });
                             badgeText = 'GPU';
                             badgeStyle = 'bg-cyan-950/50 text-cyan-400 border border-cyan-500/20';
                           } else if (p.type === 'ram') {
                             partName = getRamName(p.level, p);
-                            specDetail = `클럭: ${p.clockMhz}Mhz / ${p.capacityGb}GB / ${p.ddrGeneration}`;
+                            specDetail = t('inv.ramSpec', { mhz: p.clockMhz, gb: p.capacityGb, ddr: p.ddrGeneration });
                             badgeText = 'RAM';
                             badgeStyle = 'bg-emerald-950/50 text-emerald-400 border border-emerald-500/20';
                           } else if (p.type === 'cooler') {
                             partName = getCoolerName(p.level, p);
-                            specDetail = `쿨링: ${p.coolingCapacity}W / 방어력: +${p.level * 3}`;
+                            specDetail = t('inv.coolerSpec', { cap: p.coolingCapacity, def: p.level * 3 });
                             badgeText = 'COOLER';
                             badgeStyle = 'bg-rose-950/50 text-rose-400 border border-rose-500/20';
                           } else if (p.type === 'storage') {
                             partName = `${p.capacityGb}GB ${p.storageType}`;
-                            specDetail = `속도: ${p.storageType === 'SSD' ? 'SSD 4X 가속' : 'HDD 기본'}`;
+                            specDetail = t('inv.storageSpec', { kind: t(p.storageType === 'SSD' ? 'inv.ssdFast' : 'inv.hddBase') });
                             badgeText = 'STORAGE';
                             badgeStyle = 'bg-slate-800 text-slate-300';
                           }
@@ -1359,12 +1409,12 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                                   <span className={`text-[11px] font-mono px-1.5 py-0.5 rounded font-bold ${badgeStyle}`}>
                                     {badgeText}
                                   </span>
-                                  <span className="text-xs font-mono text-slate-500">+{p.level}강</span>
+                                  <span className="text-xs font-mono text-slate-500">{t('inv.level', { lv: p.level })}</span>
                                 </div>
                                 <p className="text-sm font-bold text-slate-200 truncate">{partName}</p>
                                 <p className="text-[11px] text-slate-500 font-mono mt-0.5">{specDetail}</p>
                                 <p className="text-[11px] text-amber-500/80 font-mono mt-1">
-                                  [확률: {Math.round(prob * 100)}%] {!isMax && '⚠️실패 시 파괴'}
+                                  {t('inv.prob', { p: Math.round(prob * 100) })}{!isMax && t('inv.explodeWarn')}
                                 </p>
                               </div>
                               
@@ -1374,13 +1424,13 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                                   disabled={isUpgrading}
                                   className="flex-1 py-1 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-emerald-500/30 rounded text-[11px] font-bold font-mono transition disabled:opacity-50 text-center truncate"
                                 >
-                                  {isMax ? '최고강' : '강화하기'}
+                                  {isMax ? t('inv.max') : t('inv.upgrade')}
                                 </button>
                                 <button 
                                   onClick={() => handleEquipComponent(p.id)}
                                   className="flex-1 py-1 bg-cyan-500/10 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 border border-cyan-500/30 rounded text-[11px] font-bold font-mono transition text-center truncate"
                                 >
-                                  장착
+                                  {t('inv.equip')}
                                 </button>
                                 <button 
                                   onClick={() => handleSellComponent(p.id)}
@@ -1402,11 +1452,11 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
     function WorkPanel({ clearableWorkCount, workParts, specs, ramAttackFrames, scaUpgrades, workTaskIndex, setWorkTaskIndex, workCoinPerKillPerUnit, workPerKillPerUnit, workUnitMode, maxWorkUnits, setManualWorkUnits, effectiveWorkUnits, setWorkUnitMode, workIncomeIsCoin, formatWorkCoinAsMinerals, workCoinIncomePerSec, workIncomePerSec, isPartyHunting, ramAlloc, workActiveForIncome, huntCombatStatus, workClearStatus, workKillTimeSec }) {
       return (
                   <div className="p-4 bg-slate-950/60 rounded border border-emerald-900/40 space-y-3">
-                    <span className="text-xs text-emerald-400 font-mono uppercase font-bold">💼 작업 (Work) · 실행 가능 {clearableWorkCount}/{OMG.WORK_TASKS.length}</span>
+                    <span className="text-xs text-emerald-400 font-mono uppercase font-bold">{t('work.title', { done: clearableWorkCount, total: OMG.WORK_TASKS.length })}</span>
                     <WorkScene
                       units={workActiveForIncome}
                       totalUnits={effectiveWorkUnits}
-                      taskName={OMG.WORK_TASKS[workTaskIndex] ? OMG.WORK_TASKS[workTaskIndex].name : null}
+                      taskName={OMG.WORK_TASKS[workTaskIndex] ? workTaskName(OMG.WORK_TASKS[workTaskIndex]) : null}
                       cycleTimeSec={workKillTimeSec}
                       attackSpeedSec={specs.attackSpeedSec}
                       respawning={huntCombatStatus.workRespawning}
@@ -1425,50 +1475,54 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                             type="button"
                             disabled={!selectable}
                             onClick={() => selectable && setWorkTaskIndex(task.taskIndex)}
-                            title={selectable ? `1기 ${clear.killSec.toFixed(1)}초/파괴 · RAM ${task.requiredRamGb}GB+ · 처치당 ${task.coinPerUnit ? OMG.formatCoinsAsMinerals(task.coinPerUnit) : task.mineralPerUnit.toLocaleString() + '원'}/기` : reason}
+                            title={selectable ? t('work.tooltip', {
+                              sec: clear.killSec.toFixed(1),
+                              gb: task.requiredRamGb,
+                              income: task.coinPerUnit ? OMG.formatCoinsAsMinerals(task.coinPerUnit) : OMG.formatMineral(task.mineralPerUnit),
+                            }) : reason}
                             className={`text-xs px-2 py-1 rounded font-mono border ${active ? 'bg-emerald-600 border-emerald-500 text-white' : selectable ? 'bg-slate-900 border-slate-700 text-slate-300 hover:border-emerald-500/40' : 'bg-slate-950 border-slate-800 text-slate-600 opacity-50 cursor-not-allowed'}`}
                           >
-                            {active ? '▶ ' : ''}{task.taskIndex + 1}. {task.name}
+                            {active ? '▶ ' : ''}{task.taskIndex + 1}. {workTaskName(task)}
                             {task.coinPerUnit ? (
-                              <span className="block text-[10px] text-emerald-400/90">+{OMG.formatCoinsAsMinerals(task.coinPerUnit)}/처치·기{workTaskIndex === task.taskIndex && workCoinPerKillPerUnit !== task.coinPerUnit ? ` (실제 ${OMG.formatCoinsAsMinerals(workCoinPerKillPerUnit)})` : ''}</span>
+                              <span className="block text-[10px] text-emerald-400/90">{t('work.perKillCoin', { income: OMG.formatCoinsAsMinerals(task.coinPerUnit) })}{workTaskIndex === task.taskIndex && workCoinPerKillPerUnit !== task.coinPerUnit ? t('work.perKillActual', { income: OMG.formatCoinsAsMinerals(workCoinPerKillPerUnit) }) : ''}</span>
                             ) : (
-                              <span className="block text-[10px] text-emerald-400/90">+{task.mineralPerUnit.toLocaleString()}원/처치·기{workTaskIndex === task.taskIndex && workPerKillPerUnit !== task.mineralPerUnit ? ` (실제 ${workPerKillPerUnit}원)` : ''}</span>
+                              <span className="block text-[10px] text-emerald-400/90">{t('work.perKillMineral', { income: task.mineralPerUnit.toLocaleString() })}{workTaskIndex === task.taskIndex && workPerKillPerUnit !== task.mineralPerUnit ? t('work.perKillMineralActual', { income: workPerKillPerUnit }) : ''}</span>
                             )}
-                            <span className="block text-[10px] opacity-70">{selectable ? `${clear.killSec.toFixed(1)}초/기 · RAM ${task.requiredRamGb}GB` : (clear.failures[0] || '처치 불가')}</span>
+                            <span className="block text-[10px] opacity-70">{selectable ? t('work.killLine', { sec: clear.killSec.toFixed(1), gb: task.requiredRamGb }) : (clear.failures[0] || t('work.noClear'))}</span>
                           </button>
                         );
                       })}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                      <span>배치</span>
-                      <button type="button" aria-label="작업 유닛 1기 감소" disabled={workUnitMode === 'auto' || maxWorkUnits <= 0} onClick={() => setManualWorkUnits((n) => Math.max(0, n - 1))} className="px-2 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-40">◀</button>
-                      <strong className="text-emerald-400 font-mono">{effectiveWorkUnits}기</strong>
-                      <span className="text-slate-500">/ {maxWorkUnits}기</span>
-                      <button type="button" aria-label="작업 유닛 1기 증가" disabled={workUnitMode === 'auto' || maxWorkUnits <= 0} onClick={() => setManualWorkUnits((n) => Math.min(maxWorkUnits, n + 1))} className="px-2 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-40">▶</button>
-                      <button type="button" onClick={() => setWorkUnitMode('auto')} className={`px-2 py-0.5 rounded border text-xs font-mono ${workUnitMode === 'auto' ? 'bg-amber-500/20 border-amber-500 text-amber-300' : 'border-slate-700 text-slate-400'}`}>자동 최적</button>
-                      <button type="button" onClick={() => { setWorkUnitMode('manual'); setManualWorkUnits(effectiveWorkUnits); }} className={`px-2 py-0.5 rounded border text-xs font-mono ${workUnitMode === 'manual' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300' : 'border-slate-700 text-slate-400'}`}>수동</button>
+                      <span>{t('work.deploy')}</span>
+                      <button type="button" aria-label={t('work.unitDown')} disabled={workUnitMode === 'auto' || maxWorkUnits <= 0} onClick={() => setManualWorkUnits((n) => Math.max(0, n - 1))} className="px-2 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-40">◀</button>
+                      <strong className="text-emerald-400 font-mono">{t('work.unitsN', { n: effectiveWorkUnits })}</strong>
+                      <span className="text-slate-500">{t('work.ofN', { n: maxWorkUnits })}</span>
+                      <button type="button" aria-label={t('work.unitUp')} disabled={workUnitMode === 'auto' || maxWorkUnits <= 0} onClick={() => setManualWorkUnits((n) => Math.min(maxWorkUnits, n + 1))} className="px-2 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-40">▶</button>
+                      <button type="button" onClick={() => setWorkUnitMode('auto')} className={`px-2 py-0.5 rounded border text-xs font-mono ${workUnitMode === 'auto' ? 'bg-amber-500/20 border-amber-500 text-amber-300' : 'border-slate-700 text-slate-400'}`}>{t('work.auto')}</button>
+                      <button type="button" onClick={() => { setWorkUnitMode('manual'); setManualWorkUnits(effectiveWorkUnits); }} className={`px-2 py-0.5 rounded border text-xs font-mono ${workUnitMode === 'manual' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300' : 'border-slate-700 text-slate-400'}`}>{t('work.manual')}</button>
                     </div>
                     <p className="text-xs text-slate-400 break-words">
                       {workIncomeIsCoin ? (
                         <>
-                          처치당 <strong className="text-emerald-400">{formatWorkCoinAsMinerals(workCoinPerKillPerUnit)}/기</strong>
-                          <span className="text-slate-500"> · 초당 약 <strong className="text-emerald-400">{OMG.formatMineral(workCoinIncomePerSec * OMG.MINERAL_PER_COIN)}</strong></span>
+                          {t('work.perKill')}<strong className="text-emerald-400">{formatWorkCoinAsMinerals(workCoinPerKillPerUnit)}{t('work.perUnit')}</strong>
+                          <span className="text-slate-500">{t('work.perSec')}<strong className="text-emerald-400">{OMG.formatMineral(workCoinIncomePerSec * OMG.MINERAL_PER_COIN)}</strong></span>
                         </>
                       ) : (
                         <>
-                          처치당 <strong className="text-emerald-400">{OMG.formatMineral(workPerKillPerUnit)}/기</strong>
-                          <span className="text-slate-500"> · 초당 약 <strong className="text-emerald-400">{OMG.formatMineral(workIncomePerSec)}</strong></span>
+                          {t('work.perKill')}<strong className="text-emerald-400">{OMG.formatMineral(workPerKillPerUnit)}{t('work.perUnit')}</strong>
+                          <span className="text-slate-500">{t('work.perSec')}<strong className="text-emerald-400">{OMG.formatMineral(workIncomePerSec)}</strong></span>
                         </>
                       )}
-                      {isPartyHunting ? ' · 파티 ON — 작업 중단' : ramAlloc.canRunWork ? (
+                      {isPartyHunting ? t('work.partyOnStop') : ramAlloc.canRunWork ? (
                         <>
-                          {' · 교전 '}
-                          <strong className="text-emerald-400">{workActiveForIncome}</strong>/{effectiveWorkUnits}기
+                          {t('work.engaged')}
+                          <strong className="text-emerald-400">{workActiveForIncome}</strong>{t('work.slashUnits', { n: effectiveWorkUnits })}
                           {huntCombatStatus.workRespawning > 0 ? (
-                            <span className="text-amber-400/90"> · 리스폰 {huntCombatStatus.workRespawning}기</span>
+                            <span className="text-amber-400/90">{t('work.respawning', { n: huntCombatStatus.workRespawning })}</span>
                           ) : null}
                         </>
-                      ) : workClearStatus.failures.length ? ` · ${workClearStatus.failures[0]}` : ' · 처치 불가'}
+                      ) : workClearStatus.failures.length ? t('work.reasonPrefix', { reason: workClearStatus.failures[0] }) : t('work.noClearSuffix')}
                     </p>
                   </div>
       );
@@ -1478,12 +1532,13 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
     function GamingPanel({ activeGame, effectiveUnlockedGameIndex, huntActiveForIncome, specs, huntKillTimeSec, huntCombatStatus, isDownloading, isPartyHunting, huntPerKillPerUnit, huntIncomePerSec, downloadTarget, downloadProgress, downloadValidation, startDownload, storage }) {
       return (
                   <div className="p-4 bg-slate-950/60 rounded border border-cyan-900/40 space-y-3">
-                    <span className="text-xs text-cyan-400 font-mono uppercase font-bold">🎮 게임 사냥 (Gaming)</span>
-                    <p className="text-xs text-slate-300 font-bold">사냥 중: <strong className="text-cyan-300">{activeGame ? activeGame.name : '—'}</strong> · 해금 {effectiveUnlockedGameIndex + 1}/{OMG.GAME_HUNTING.length}</p>
+                    <span className="text-xs text-cyan-400 font-mono uppercase font-bold">{t('game.title')}</span>
+                    <p className="text-xs text-slate-300 font-bold">{t('game.hunting')}<strong className="text-cyan-300">{activeGame ? gameName(activeGame) : '—'}</strong>{t('game.unlocked', { n: effectiveUnlockedGameIndex + 1, total: OMG.GAME_HUNTING.length })}</p>
                     <HuntScene
                       units={huntActiveForIncome}
                       totalUnits={specs.maxHuntingUnits}
-                      monsterName={activeGame ? activeGame.name : null}
+                      monsterName={activeGame ? gameName(activeGame) : null}
+                      mobSeed={activeGame ? activeGame.name : null}
                       killTimeSec={huntKillTimeSec}
                       attackSpeedSec={specs.attackSpeedSec}
                       damage={specs.unitDamage}
@@ -1497,32 +1552,38 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                         const hunting = g.gameIndex === effectiveUnlockedGameIndex;
                         return (
                           <div key={g.gameIndex} className={`text-[10px] font-mono px-2 py-1 rounded border ${hunting ? 'border-cyan-500/50 bg-cyan-950/30 text-cyan-200' : unlocked ? 'border-emerald-900/40 bg-slate-900/60 text-slate-300' : 'border-slate-800 bg-slate-950/40 text-slate-600'}`}>
-                            {unlocked ? '✓' : '🔒'} {g.name}
-                            <span className="text-emerald-500/90"> · +{OMG.formatMineral(g.mineralPerUnit)}/처치·기{hunting && huntPerKillPerUnit !== g.mineralPerUnit ? ` (실제 ${OMG.formatMineral(huntPerKillPerUnit)})` : ''}</span>
-                            {hunting ? <span className="text-cyan-400"> · 사냥</span> : null}
+                            {unlocked ? '✓' : '🔒'} {gameName(g)}
+                            <span className="text-emerald-500/90">{t('game.perKill', { income: OMG.formatMineral(g.mineralPerUnit) })}{hunting && huntPerKillPerUnit !== g.mineralPerUnit ? t('game.perKillActual', { income: OMG.formatMineral(huntPerKillPerUnit) }) : ''}</span>
+                            {hunting ? <span className="text-cyan-400">{t('game.hunt')}</span> : null}
                           </div>
                         );
                       })}
                     </div>
                     <p className="text-xs text-slate-400 break-words">
-                      배치 <strong className="text-cyan-400">{specs.maxHuntingUnits}기</strong>
-                      (RAM 잔여 {specs.huntRamFree}GB / CPU {specs.cpuHuntRamPerUnit}GB·기 · 코어 {specs.ramAllocation.maxByCpu} · GPU참고 {specs.gpuRamPerUnit}GB·기)
+                      {t('game.deploy')}<strong className="text-cyan-400">{t('hw.unitsN', { n: specs.maxHuntingUnits })}</strong>
+                      {t('game.deployInfo', { free: specs.huntRamFree, per: specs.cpuHuntRamPerUnit, cores: specs.ramAllocation.maxByCpu, gpu: specs.gpuRamPerUnit })}
                       {isPartyHunting ? (
-                        <span className="text-purple-300"> · 파티 ON — 사냥 중단</span>
+                        <span className="text-purple-300">{t('game.partyOnStop')}</span>
                       ) : (
                         <>
-                          · 교전 <strong className="text-cyan-400">{huntActiveForIncome}</strong>/{specs.maxHuntingUnits}기
+                          {t('game.engaged')}<strong className="text-cyan-400">{huntActiveForIncome}</strong>{t('work.slashUnits', { n: specs.maxHuntingUnits })}
                           {huntCombatStatus.huntRespawning > 0 ? (
-                            <span className="text-amber-400/90"> · 리스폰 {huntCombatStatus.huntRespawning}기</span>
+                            <span className="text-amber-400/90">{t('game.respawning', { n: huntCombatStatus.huntRespawning })}</span>
                           ) : null}
-                          · 처치당 <strong className="text-cyan-400">{OMG.formatMineral(huntPerKillPerUnit)}/기</strong>
-                          <span className="text-slate-500"> · 초당 약 <strong className="text-cyan-400">{isDownloading ? '0원' : OMG.formatMineral(huntIncomePerSec)}</strong></span>
+                          {t('game.perKill2')}<strong className="text-cyan-400">{OMG.formatMineral(huntPerKillPerUnit)}{t('game.perUnit')}</strong>
+                          <span className="text-slate-500">{t('game.perSec')}<strong className="text-cyan-400">{isDownloading ? t('game.zeroWon') : OMG.formatMineral(huntIncomePerSec)}</strong></span>
                         </>
                       )}
                     </p>
                     {downloadTarget ? (
                       <>
-                        <div className="text-xs font-mono text-slate-400">다운로드: <strong>{downloadTarget.name}</strong> · +{downloadTarget.requiredGb}GB (여유 {specs.storageFreeGb}GB / 사용 {specs.storageUsedGb}GB / {storage.capacityGb}GB) · {OMG.formatMineral(downloadTarget.mineralCost || 0)}</div>
+                        <div className="text-xs font-mono text-slate-400">{t('game.download')}<strong>{tOr('omg.game.' + downloadTarget.gameIndex, downloadTarget.name)}</strong>{t('game.downloadInfo', {
+                          gb: downloadTarget.requiredGb,
+                          free: specs.storageFreeGb,
+                          used: specs.storageUsedGb,
+                          total: storage.capacityGb,
+                          cost: OMG.formatMineral(downloadTarget.mineralCost || 0),
+                        })}</div>
                         <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
                           <div className="bg-cyan-500 h-full transition-all" style={{ width: `${downloadProgress}%` }} />
                         </div>
@@ -1531,16 +1592,16 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                           {!isDownloading ? (
                             <button type="button" onClick={startDownload} disabled={!downloadValidation.ok} title={downloadValidation.reason}
                               className={`px-2 py-1 rounded border ${downloadValidation.ok ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'opacity-50 cursor-not-allowed text-slate-500 border-slate-800'}`}>
-                              게임 다운로드
+                              {t('game.downloadBtn')}
                             </button>
-                          ) : <span className="text-cyan-400 animate-pulse">다운로드 중…</span>}
+                          ) : <span className="text-cyan-400 animate-pulse">{t('game.downloading')}</span>}
                         </div>
                         {!downloadValidation.ok && !isDownloading && (
                           <p className="text-xs text-rose-400">{downloadValidation.reason}</p>
                         )}
                       </>
                     ) : (
-                      <p className="text-xs text-emerald-400 font-mono">모든 게임 다운로드 완료</p>
+                      <p className="text-xs text-emerald-400 font-mono">{t('game.allDownloaded')}</p>
                     )}
                   </div>
       );
@@ -1552,14 +1613,14 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
               <div className="bg-slate-900/40 p-4 sm:p-6 rounded-xl border border-purple-900/40 flex flex-col space-y-4 min-w-0">
                 <h2 className="text-base sm:text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
                   <span className="text-purple-400 text-lg mr-1.5">👥</span>
-                  <span>파티 사냥터</span>
+                  <span>{t('party.title')}</span>
                 </h2>
-                <p className="text-xs text-slate-400 break-words">원 + SCA 코인 · 파티 ON 시 작업 수입 중단 · 성능 {partyPerfScore.toLocaleString()} · 환생수치 {rebirthStat.toLocaleString()} · 채굴력 {partyMiningPower.toLocaleString()} (틱 가속·생존율)</p>
-                <p className="text-[10px] text-slate-500 font-mono break-words">1-x=미네랄 특화(반격 없음) · 2-x=SCA 특화(보스 반격 → 채굴력이 생존율 결정). 채굴력 부족한 채 상위 티어 가면 실효 수입 급감.</p>
+                <p className="text-xs text-slate-400 break-words">{t('party.desc', { perf: partyPerfScore.toLocaleString(), rebirth: rebirthStat.toLocaleString(), mining: partyMiningPower.toLocaleString() })}</p>
+                <p className="text-[10px] text-slate-500 font-mono break-words">{t('party.desc2')}</p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button onClick={handleTogglePartyHunting} className={`text-sm px-3 py-1.5 rounded font-mono font-bold border ${isPartyHunting ? 'bg-purple-600 border-purple-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-300'}`}>{isPartyHunting ? '파티 ON' : '파티 OFF'}</button>
-                  <button type="button" onClick={() => handlePartyAuto('mineral')} className="text-xs px-2.5 py-1.5 rounded font-mono border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10">💎 미네랄 최적</button>
-                  <button type="button" onClick={() => handlePartyAuto('sca')} className="text-xs px-2.5 py-1.5 rounded font-mono border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10">🪙 SCA 최적</button>
+                  <button onClick={handleTogglePartyHunting} className={`text-sm px-3 py-1.5 rounded font-mono font-bold border ${isPartyHunting ? 'bg-purple-600 border-purple-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-300'}`}>{t(isPartyHunting ? 'party.on' : 'party.off')}</button>
+                  <button type="button" onClick={() => handlePartyAuto('mineral')} className="text-xs px-2.5 py-1.5 rounded font-mono border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10">{t('party.optMineral')}</button>
+                  <button type="button" onClick={() => handlePartyAuto('sca')} className="text-xs px-2.5 py-1.5 rounded font-mono border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10">{t('party.optSca')}</button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
                   {OMG.PARTY_HUNTING_TIERS.map((tier, idx) => {
@@ -1567,7 +1628,12 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                     const locked = !access.ok;
                     const up = OMG.calcPartyUptime(tier, partyMiningPower);
                     return (
-                    <button key={tier.name} onClick={() => handlePartyTierSelect(idx)} disabled={!isPartyHunting || locked} title={locked ? access.failures.join(' · ') : `성능 ${tier.minPerfScore}+ · 환생 ${tier.minRebirthStat.toLocaleString()}+ · 채굴 ${tier.minMiningPower.toLocaleString()}+${tier.bossThreat > 0 ? ` · 보스 반격(생존율 ${Math.round(up * 100)}%)` : ' · 반격 없음'}`} className={`p-2 rounded border text-[11px] font-mono text-left disabled:opacity-40 ${locked ? 'border-slate-900 bg-slate-950/50 text-slate-600' : partyHuntingTier === idx && isPartyHunting ? 'border-purple-500 bg-purple-950/30' : 'border-slate-800 bg-slate-950'}`}>{tier.name}{locked ? ' 🔒' : ''}<br/>+{OMG.calcPartyMineralPerTick(tier, incomeBonusRate)}원 / +{tier.scaCoins}SCA{tier.bossThreat > 0 ? <span className={`block text-[9px] mt-0.5 ${up >= 0.7 ? 'text-emerald-400/80' : up >= 0.4 ? 'text-amber-400/80' : 'text-rose-400/80'}`}>생존 {Math.round(up * 100)}%</span> : null}{locked ? <span className="block text-[9px] text-rose-400/80 mt-0.5">{access.failures[0]}</span> : null}</button>
+                    <button key={tier.name} onClick={() => handlePartyTierSelect(idx)} disabled={!isPartyHunting || locked} title={locked ? access.failures.join(' · ') : t('party.tierTip', {
+                      perf: tier.minPerfScore,
+                      rebirth: tier.minRebirthStat.toLocaleString(),
+                      mining: tier.minMiningPower.toLocaleString(),
+                      counter: tier.bossThreat > 0 ? t('party.tierTipCounter', { up: Math.round(up * 100) }) : t('party.tierTipNoCounter'),
+                    })} className={`p-2 rounded border text-[11px] font-mono text-left disabled:opacity-40 ${locked ? 'border-slate-900 bg-slate-950/50 text-slate-600' : partyHuntingTier === idx && isPartyHunting ? 'border-purple-500 bg-purple-950/30' : 'border-slate-800 bg-slate-950'}`}>{partyTierName(idx, tier)}{locked ? ' 🔒' : ''}<br/>{t('party.tierIncome', { mineral: OMG.calcPartyMineralPerTick(tier, incomeBonusRate), sca: tier.scaCoins })}{tier.bossThreat > 0 ? <span className={`block text-[9px] mt-0.5 ${up >= 0.7 ? 'text-emerald-400/80' : up >= 0.4 ? 'text-amber-400/80' : 'text-rose-400/80'}`}>{t('party.uptime', { up: Math.round(up * 100) })}</span> : null}{locked ? <span className="block text-[9px] text-rose-400/80 mt-0.5">{access.failures[0]}</span> : null}</button>
                     );
                   })}
                 </div>
@@ -1581,8 +1647,17 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                   const _secs = partyElapsedSec % 60;
                   return (
                     <div className="space-y-1">
-                      <p className="text-xs text-purple-300 font-mono">선택: {_tier.name} · {(_tickMs / 1000).toFixed(1)}초당 +{Math.round(OMG.calcPartyMineralPerTick(_tier, incomeBonusRate) * _up).toLocaleString()}원 +{Math.round(_tier.scaCoins * _up).toLocaleString()}C{_tier.bossThreat > 0 ? ` · 생존율 ${Math.round(_up * 100)}%` : ''}</p>
-                      <p className="text-xs text-purple-400/70 font-mono">⏱ 경과 {_mins > 0 ? `${_mins}분 ${_secs}초` : `${_secs}초`} · 다음 틱까지 {_nextIn}초</p>
+                      <p className="text-xs text-purple-300 font-mono">{t('party.selected', {
+                        tier: partyTierName(partyHuntingTier, _tier),
+                        sec: (_tickMs / 1000).toFixed(1),
+                        mineral: Math.round(OMG.calcPartyMineralPerTick(_tier, incomeBonusRate) * _up).toLocaleString(),
+                        sca: Math.round(_tier.scaCoins * _up).toLocaleString(),
+                        uptime: _tier.bossThreat > 0 ? t('party.selectedUptime', { up: Math.round(_up * 100) }) : '',
+                      })}</p>
+                      <p className="text-xs text-purple-400/70 font-mono">{t('party.elapsed', {
+                        elapsed: _mins > 0 ? t('party.elapsedMin', { m: _mins, s: _secs }) : t('party.elapsedSec', { s: _secs }),
+                        next: _nextIn,
+                      })}</p>
                     </div>
                   );
                 })()}
@@ -1600,21 +1675,21 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                             {autoStatus.code === 'waiting' && <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />}
                             {autoStatus.code === 'manual' && <span className="w-2 h-2 rounded-full bg-cyan-400" />}
                             {(autoStatus.code === 'idle' || autoStatus.code === 'off') && <span className="w-2 h-2 rounded-full bg-slate-600" />}
-                            AUTO 실시간
+                            {t('auto.live')}
                           </span>
                           <span className={`text-[10px] font-mono ${
                             autoStatus.code === 'running' ? 'text-emerald-400' :
                             autoStatus.code === 'waiting' ? 'text-amber-400' :
                             autoStatus.code === 'manual' ? 'text-cyan-400' :
                             'text-slate-500'
-                          }`}>{autoStatus.message}</span>
+                          }`}>{autoStatus.msgKey ? t(autoStatus.msgKey) : autoStatus.message}</span>
                         </div>
                         <div className="max-h-24 overflow-y-auto space-y-0.5 font-mono text-[10px]">
                           {autoFeed.length === 0 ? (
-                            <p className="text-slate-600 py-1">구매·강화·수입 이벤트가 여기 표시됩니다.</p>
+                            <p className="text-slate-600 py-1">{t('auto.feedEmpty')}</p>
                           ) : autoFeed.map((item, i) => (
                             <div
-                              key={`${item.ts}-${i}-${item.message}`}
+                              key={`${item.ts}-${i}-${item.msgKey || item.message}`}
                               className={
                                 item.kind === 'explosion' ? 'text-rose-400' :
                                 item.kind === 'upgrade' ? 'text-emerald-400' :
@@ -1623,7 +1698,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                                 'text-slate-400'
                               }
                             >
-                              {item.message}
+                              {item.msgKey ? t(item.msgKey, item.msgVars) : item.message}
                             </div>
                           ))}
                         </div>
@@ -1636,8 +1711,8 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
       return (
                     <div className="p-3 bg-slate-900/50 rounded border border-emerald-900/30 space-y-2 col-span-full">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-emerald-300 font-mono">⚡ 램 슬롯 (장착 1개 = 슬롯 수만큼 동일 효과)</span>
-                        <span className="text-[11px] font-mono text-slate-400">현재 <strong className="text-emerald-400">{ramSlots}슬롯</strong> · 유효 용량 <strong className="text-emerald-400">{effectiveRamGb}GB</strong></span>
+                        <span className="text-xs font-bold text-emerald-300 font-mono">{t('shop.ramSlots')}</span>
+                        <span className="text-[11px] font-mono text-slate-400">{t('shop.ramSlotsNow')}<strong className="text-emerald-400">{t('shop.ramSlotsN', { n: ramSlots })}</strong>{t('shop.ramSlotsCap')}<strong className="text-emerald-400">{effectiveRamGb}GB</strong></span>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {OMG.RAM_SLOT_UPGRADES.map((opt) => {
@@ -1652,12 +1727,12 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                               onClick={() => handlePurchaseRamSlots(opt.slots)}
                               className={`px-3 py-2 rounded border text-xs font-mono font-bold transition ${owned ? 'bg-slate-950 border-slate-800 text-slate-600 cursor-default' : canBuy && affordable ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20' : 'bg-slate-950 border-slate-800 text-slate-500 cursor-not-allowed'}`}
                             >
-                              {owned ? `✓ ${opt.slots}슬롯` : `${opt.slots}슬롯 · ${OMG.formatMineral(opt.cost)}`}
+                              {owned ? t('shop.ramSlotOwned', { n: opt.slots }) : t('shop.ramSlotBuy', { n: opt.slots, cost: OMG.formatMineral(opt.cost) })}
                             </button>
                           );
                         })}
                       </div>
-                      <p className="text-[10px] text-slate-500 font-mono">기본 1슬롯 무료 · 2슬롯 5,000원 · 4슬롯 500,000원</p>
+                      <p className="text-[10px] text-slate-500 font-mono">{t('shop.ramSlotNote')}</p>
                     </div>
       );
     }
@@ -1678,7 +1753,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                         { type: 'ram', emoji: '⚡', label: 'RAM', variants: null },
                         { type: 'cooler', emoji: '❄️', label: 'Cooler', variants: (
                           <div className="flex gap-1">
-                            {[['air', '공랭'], ['water', '수랭']].map(([k, label]) => (
+                            {[['air', t('hw.air')], ['water', t('hw.water')]].map(([k, label]) => (
                               <button key={k} type="button" onClick={() => setCoolerBuyKind(k)} className={`px-2 py-0.5 text-[11px] font-mono rounded border ${coolerBuyKind === k ? 'bg-rose-500/20 border-rose-500 text-rose-300' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{label}</button>
                             ))}
                           </div>
@@ -1707,15 +1782,15 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                               {variants}
                             </div>
                             <div className="flex items-center gap-1">
-                              <button type="button" aria-label="이전 강화 단계" onClick={() => adjustBuyLevel(type, -1, levels.length)} disabled={idx <= 0} className={`px-2.5 py-2 rounded border text-xs font-bold ${idx <= 0 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>◀</button>
+                              <button type="button" aria-label={t('shop.prevLevel')} onClick={() => adjustBuyLevel(type, -1, levels.length)} disabled={idx <= 0} className={`px-2.5 py-2 rounded border text-xs font-bold ${idx <= 0 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>◀</button>
                               <div className="flex-1 text-center px-1 py-1 bg-slate-950 rounded border border-slate-800 min-w-0">
-                                <div className="text-sm font-bold text-cyan-200 font-mono">+{level}강</div>
+                                <div className="text-sm font-bold text-cyan-200 font-mono">{t('shop.levelN', { n: level })}</div>
                                 <div className="text-[10px] text-slate-400 font-mono truncate" title={row.name}>{row.name}</div>
                               </div>
-                              <button type="button" aria-label="다음 강화 단계" onClick={() => adjustBuyLevel(type, 1, levels.length)} disabled={idx >= levels.length - 1} className={`px-2.5 py-2 rounded border text-xs font-bold ${idx >= levels.length - 1 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>▶</button>
+                              <button type="button" aria-label={t('shop.nextLevel')} onClick={() => adjustBuyLevel(type, 1, levels.length)} disabled={idx >= levels.length - 1} className={`px-2.5 py-2 rounded border text-xs font-bold ${idx >= levels.length - 1 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>▶</button>
                             </div>
                             <button type="button" onClick={() => handleBuyComponentPack(type, level)} disabled={buyDisabled} className={`w-full py-1.5 rounded text-xs font-bold font-mono border transition mt-auto ${buyDisabled ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed opacity-60' : 'bg-cyan-600/20 border-cyan-500 text-cyan-200 hover:bg-cyan-500/30'}`}>
-                              {`구매 ${OMG.formatMineral(row.costMinerals)}`}
+                              {t('shop.buy', { cost: OMG.formatMineral(row.costMinerals) })}
                             </button>
                           </div>
                         );
@@ -1737,15 +1812,15 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                               </div>
                             </div>
                             <div className="flex items-center gap-1">
-                              <button type="button" aria-label="이전 메인보드" onClick={() => adjustMotherboardBuyIndex(-1)} disabled={mbIdx <= 0} className={`px-2.5 py-2 rounded border text-xs font-bold ${mbIdx <= 0 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>◀</button>
+                              <button type="button" aria-label={t('shop.prevBoard')} onClick={() => adjustMotherboardBuyIndex(-1)} disabled={mbIdx <= 0} className={`px-2.5 py-2 rounded border text-xs font-bold ${mbIdx <= 0 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>◀</button>
                               <div className="flex-1 text-center px-1 py-1 bg-slate-950 rounded border border-slate-800 min-w-0">
-                                <div className="text-sm font-bold text-cyan-200 font-mono truncate" title={board.name}>{board.name}</div>
-                                <div className="text-[10px] text-slate-400 font-mono">{board.supportedDdrGeneration} · 실드+{board.shieldIncrease.toLocaleString()}</div>
+                                <div className="text-sm font-bold text-cyan-200 font-mono truncate" title={boardName(board.name)}>{boardName(board.name)}</div>
+                                <div className="text-[10px] text-slate-400 font-mono">{t('shop.boardLine', { ddr: board.supportedDdrGeneration, shield: board.shieldIncrease.toLocaleString() })}</div>
                               </div>
-                              <button type="button" aria-label="다음 메인보드" onClick={() => adjustMotherboardBuyIndex(1)} disabled={mbIdx >= boards.length - 1} className={`px-2.5 py-2 rounded border text-xs font-bold ${mbIdx >= boards.length - 1 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>▶</button>
+                              <button type="button" aria-label={t('shop.nextBoard')} onClick={() => adjustMotherboardBuyIndex(1)} disabled={mbIdx >= boards.length - 1} className={`px-2.5 py-2 rounded border text-xs font-bold ${mbIdx >= boards.length - 1 ? 'bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed' : 'bg-slate-950 border-slate-700 text-cyan-300 hover:border-cyan-500'}`}>▶</button>
                             </div>
                             <button type="button" onClick={() => board && handlePurchaseMotherboard(board)} disabled={!affordable || !board} className={`w-full py-1.5 rounded text-xs font-bold font-mono border transition mt-auto ${!affordable ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed opacity-60' : 'bg-cyan-600/20 border-cyan-500 text-cyan-200 hover:bg-cyan-500/30'}`}>
-                              구매 {OMG.formatMineral(mbCost)}
+                              {t('shop.buy', { cost: OMG.formatMineral(mbCost) })}
                             </button>
                           </div>
                         );
@@ -1761,8 +1836,8 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                       {[
                         { type: 'cpu', variantKey: 'Intel', label: 'Intel CPU', emoji: '🧠', on: autoBuyCpuByMfr.Intel, toggle: () => toggleAutoCpuMfr('Intel'), activeCls: 'bg-emerald-500/20 border-emerald-500 text-emerald-400' },
                         { type: 'cpu', variantKey: 'AMD', label: 'AMD CPU', emoji: '🧠', on: autoBuyCpuByMfr.AMD, toggle: () => toggleAutoCpuMfr('AMD'), activeCls: 'bg-emerald-500/20 border-emerald-500 text-emerald-400' },
-                        { type: 'cooler', variantKey: 'air', label: '공랭', emoji: '❄️', on: autoBuyCoolerByKind.air, toggle: () => toggleAutoCoolerKind('air'), activeCls: 'bg-rose-500/20 border-rose-500 text-rose-400' },
-                        { type: 'cooler', variantKey: 'water', label: '수랭', emoji: '❄️', on: autoBuyCoolerByKind.water, toggle: () => toggleAutoCoolerKind('water'), activeCls: 'bg-rose-500/20 border-rose-500 text-rose-400' },
+                        { type: 'cooler', variantKey: 'air', label: t('hw.air'), emoji: '❄️', on: autoBuyCoolerByKind.air, toggle: () => toggleAutoCoolerKind('air'), activeCls: 'bg-rose-500/20 border-rose-500 text-rose-400' },
+                        { type: 'cooler', variantKey: 'water', label: t('hw.water'), emoji: '❄️', on: autoBuyCoolerByKind.water, toggle: () => toggleAutoCoolerKind('water'), activeCls: 'bg-rose-500/20 border-rose-500 text-rose-400' },
                         { type: 'storage', variantKey: 'hdd', label: 'HDD', emoji: '💾', on: autoBuyStorageByKind.hdd, toggle: () => toggleAutoStorageKind('hdd'), activeCls: 'bg-cyan-500/20 border-cyan-500 text-cyan-400' },
                         { type: 'storage', variantKey: 'nvme', label: 'NVMe', emoji: '💾', on: autoBuyStorageByKind.nvme, toggle: () => toggleAutoStorageKind('nvme'), activeCls: 'bg-cyan-500/20 border-cyan-500 text-cyan-400' },
                         { type: 'gpu', variantKey: null, label: 'GPU', emoji: '🎮', on: autoBuyGpu, toggle: toggleAutoGpu, activeCls: 'bg-cyan-500/20 border-cyan-500 text-cyan-400' },
@@ -1774,12 +1849,12 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                         return (
                           <div key={`${row.type}-${row.variantKey || 'default'}`} className="flex flex-col space-y-1">
                             <button type="button" onClick={row.toggle} className={`py-1.5 text-[11px] font-bold font-mono rounded border transition flex items-center justify-center space-x-1 ${row.on ? row.activeCls : 'bg-slate-950 border-slate-800 text-slate-500'}`}>
-                              <span>{row.emoji} {row.label} {row.on ? 'AUTO ON' : 'AUTO OFF'}</span>
+                              <span>{row.emoji} {row.label} {t(row.on ? 'auto.on' : 'auto.off')}</span>
                             </button>
                             <div className="flex items-center justify-center gap-0.5 text-[10px] font-mono text-slate-500">
-                              <button type="button" aria-label="자동 목표 강화 단계 감소" onClick={() => adjustAutoTarget(row.type, -1, row.variantKey)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">−</button>
-                              <span className="text-center leading-tight">+{buyLv != null ? buyLv : '—'}강 → {goal}강</span>
-                              <button type="button" aria-label="자동 목표 강화 단계 증가" onClick={() => adjustAutoTarget(row.type, 1, row.variantKey)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">+</button>
+                              <button type="button" aria-label={t('auto.targetDown')} onClick={() => adjustAutoTarget(row.type, -1, row.variantKey)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">−</button>
+                              <span className="text-center leading-tight">{t('auto.targetLine', { cur: buyLv != null ? buyLv : '—', goal })}</span>
+                              <button type="button" aria-label={t('auto.targetUp')} onClick={() => adjustAutoTarget(row.type, 1, row.variantKey)} className="px-1 py-0.5 bg-slate-900 border border-slate-800 rounded">+</button>
                             </div>
                           </div>
                         );
@@ -1797,8 +1872,8 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                 <span className="text-xl">🧠</span>
               </div>
               <div className="min-w-0 flex-1">
-                <h1 className="text-sm text-slate-400 uppercase tracking-widest font-semibold">복원 제어 터미널</h1>
-                <p className="text-xs text-emerald-500 font-mono break-words">환생 {rebirthCount}회 · 환생수치 {rebirthStat.toLocaleString()} · 수입 x{rebirthIncomeMult.toFixed(2)} · 배속 {gameSpeedFrames}f</p>
+                <h1 className="text-sm text-slate-400 uppercase tracking-widest font-semibold">{t('res.title')}</h1>
+                <p className="text-xs text-emerald-500 font-mono break-words">{t('res.rebirthLine', { count: rebirthCount, stat: rebirthStat.toLocaleString(), mult: rebirthIncomeMult.toFixed(2), frames: gameSpeedFrames })}</p>
                 <p className="text-sm text-slate-400 font-mono mt-0.5 flex items-center gap-2 flex-wrap">
                   <span>👤 {nickname}</span>
                   <button
@@ -1806,14 +1881,22 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                     onClick={() => setIsSettingsOpen(true)}
                     className="px-2 py-0.5 text-xs border border-slate-600 rounded text-slate-300 hover:bg-slate-800"
                   >
-                    ⚙️ 설정
+                    {t('settings.title')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleLang}
+                    title={t('lang.switchTitle')}
+                    className="px-2 py-0.5 text-xs border border-slate-600 rounded text-slate-300 hover:bg-slate-800"
+                  >
+                    🌐 {t('lang.other')}
                   </button>
                   <button
                     type="button"
                     onClick={() => { if (onLogout) onLogout(); }}
                     className="px-2 py-0.5 text-xs border border-rose-500/40 rounded text-rose-300 hover:bg-rose-500/10"
                   >
-                    로그아웃
+                    {t('res.logout')}
                   </button>
                 </p>
               </div>
@@ -1824,13 +1907,13 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
               mineralFlash === 'spend' ? 'border-amber-500/60 bg-amber-950/20' :
               'border-slate-800'
             }`}>
-              <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">MINERALS (원)</span>
+              <span className="text-xs uppercase tracking-wider text-slate-400 font-mono">{t('res.minerals')}</span>
               <span className={`text-lg font-bold font-mono flex items-center space-x-1 transition-colors duration-300 ${
                 mineralFlash === 'gain' ? 'text-emerald-300 scale-105' :
                 mineralFlash === 'spend' ? 'text-amber-300' :
                 'text-emerald-400'
               }`}>
-                <span>{minerals.toLocaleString()}<span className="text-slate-500 text-xs ml-1">원</span></span>
+                <span>{minerals.toLocaleString()}<span className="text-slate-500 text-xs ml-1">{t('res.won')}</span></span>
               </span>
             </div>
 
@@ -1855,13 +1938,13 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
                 <div className="flex justify-between items-center border-b border-emerald-950 pb-2">
                   <span className="text-xs text-emerald-400 font-mono tracking-widest uppercase flex items-center space-x-1.5 font-bold">
                     <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
-                    <span>수입 로그</span>
+                    <span>{t('log.title')}</span>
                   </span>
                   <span className="text-[11px] text-emerald-600 font-mono">{isPartyHunting ? 'PARTY' : 'WORK'}</span>
                 </div>
                 <div className="h-36 overflow-y-auto overscroll-contain font-mono text-xs text-emerald-400/90 space-y-1.5 select-text leading-relaxed">
                   {combatLogs.map((log, idx) => (
-                    <div key={idx} className="transition-all duration-300 hover:text-emerald-300">{log}</div>
+                    <div key={idx} className="transition-all duration-300 hover:text-emerald-300">{renderLog(log)}</div>
                   ))}
                 </div>
               </div>
@@ -1908,8 +1991,8 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
 
       const formatRemainingRewardRange = (claimedFloor) => {
         const claimed = Math.max(0, Math.min(100, claimedFloor || 0));
-        if (claimed >= 100) return '모든 구간 수령 완료';
-        return `${claimed + 10}층 ~ 100층`;
+        if (claimed >= 100) return t('raid.rangeAllDone');
+        return t('raid.rangeFrom', { from: claimed + 10 });
       };
 
       const refreshRaidProgress = async () => {
@@ -1950,7 +2033,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
         });
 
         socketCon.on('connect_error', (err) => {
-          setErrorMessage(err.message || '레이드 서버 연결에 실패했습니다. 로그인 상태를 확인해 주세요.');
+          setErrorMessage(err.message || t('raid.connectFail'));
         });
 
         socketCon.on('room_state', (state) => {
@@ -1982,8 +2065,8 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
             sessionRewardRef.current += Number(txResult.claimedCoins) || 0;
             setScaCoins(total);
             localStorage.setItem('sca_scaCoins', String(total));
-            pushToast(`레이드 ${clearedFloor}층 · SCA +${txResult.claimedCoins.toLocaleString()} (잔액 ${total.toLocaleString()})`, 'success', 3500);
-            setRewardMessage(`돌파 성공. ${clearedFloor}층 마일스톤 보상 SCA 코인 +${txResult.claimedCoins} 지급 완료. (잔액 ${total.toLocaleString()})`);
+            pushToast(t('raid.claimToast', { floor: clearedFloor, sca: txResult.claimedCoins.toLocaleString(), total: total.toLocaleString() }), 'success', 3500);
+            setRewardMessage(t('raid.claimMsg', { floor: clearedFloor, sca: txResult.claimedCoins, total: total.toLocaleString() }));
             setTimeout(() => setRewardMessage(null), 4000);
 
             // 최고 층수 업데이트
@@ -1992,7 +2075,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
               highestRaidFloor: Math.max(prev.highestRaidFloor || 0, clearedFloor),
             }));
           } else if (txResult.message) {
-            pushToast(`레이드 보상: ${txResult.message}`, 'info', 3000);
+            pushToast(t('raid.claimInfo', { msg: txResult.message }), 'info', 3000);
           }
         });
 
@@ -2002,7 +2085,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
 
         socketCon.on('disconnect', (reason) => {
           debugLog('[Socket] Disconnected:', reason);
-          setErrorMessage(`🔴 [실시간 연결 끊김] 서버와의 실시간 네트워크 연결이 유실되었습니다 (원인: ${reason}). 레이드 참여방에서 이탈되었으니 다시 [레이드 입장]을 눌러 도전해 주시기 바랍니다.`);
+          setErrorMessage(t('raid.disconnected', { reason }));
           setRaidState(null);
           setSocket(null);
         });
@@ -2138,7 +2221,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
             });
           }
           S.shockwaves.push({ x: cx, y: cy, r: 4, life: 0.5, col: success ? 'rgba(52,211,153,0.8)' : 'rgba(248,113,113,0.85)' });
-          S.floats.push({ x: cx, y: cy - 34, txt: success ? '강화 성공!' : '💥 파괴!', life: 1.1, col: success ? '#6ee7b7' : '#fca5a5' });
+          S.floats.push({ x: cx, y: cy - 34, txt: t(success ? 'fx.upgradeOk' : 'fx.exploded'), life: 1.1, col: success ? '#6ee7b7' : '#fca5a5' });
           if (!S.running) { S.running = true; S.last = performance.now(); S.raf = requestAnimationFrame(loop); }
         }
 
@@ -2165,6 +2248,8 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
     }
 
     function App({ onLogout }) {
+      // 언어가 바뀌면 트리 전체를 다시 그린다(새로고침 없이 — 진행 중인 게임을 잃지 않는다).
+      useLang();
       // ----------------------------------------------------------------------
       // 1. 핵심 유저 재화 및 강화 피드백 상태 정의
       // ----------------------------------------------------------------------
@@ -2220,7 +2305,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
         }, ms);
       };
       const [isUpgrading, setIsUpgrading] = useState(false);
-      const [autoStatus, setAutoStatus] = useState({ code: 'off', message: 'AUTO 꺼짐' });
+      const [autoStatus, setAutoStatus] = useState({ code: 'off', msgKey: 'auto.statusOff' });
       const [autoFeed, setAutoFeed] = useState([]);
       const [mineralFlash, setMineralFlash] = useState(null);
       const mineralFlashTimerRef = useRef(null);
@@ -2491,47 +2576,27 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
         return newName;
       });
 
+      // 로그는 문장이 아니라 {k, v} 로 쌓는다 — 언어를 바꾸면 이미 쌓인 줄도 따라 바뀐다.
       const [combatLogs, setCombatLogs] = useState([
-        '💬 [SYSTEM] 사이버네틱 배틀 매트릭스 기동 완료.',
-        '💬 [SYSTEM] 100층 레이드용 소켓 프로토콜 대기 중.'
+        { k: 'log.system1' },
+        { k: 'log.system2' },
       ]);
 
       const getSummonUnit = (level) => {
         // 이름/이모지만 프론트에 두고, DPS 배율은 OMG(originalMapData.js) 단일 소스에서 읽는다(값 중복 금지).
-        const units = {
-          1: { name: '테란 마린 (Marine)', emoji: '🔫' },
-          2: { name: '테란 고스트 (Ghost)', emoji: '👁️' },
-          3: { name: '프로토스 드라군 (Dragoon)', emoji: '🦀' },
-          4: { name: '저그 히드라리스크 (Hydralisk)', emoji: '🐍' },
-          5: { name: '테란 영웅 시즈 탱크 (Siege Tank)', emoji: '💥' },
-          6: { name: '프로토스 하이 템플러 / 아칸 (Archon)', emoji: '⚡' },
-          7: { name: '프로토스 우주모함 캐리어 (Carrier)', emoji: '🛸' },
-          8: { name: '테란 전투순양함 배틀크루저 (Battlecruiser)', emoji: '🚢' },
-          9: { name: '프로토스 전설 영웅 제라툴 (Zeratul)', emoji: '🗡️' },
-          10: { name: '최종 테란 기함 하이페리온 (Hyperion)', emoji: '🌟' },
-          11: { name: '프로토스 모선 마더십 (Mothership)', emoji: '🌀' },
-          12: { name: '저그 초월체 오버마인드 (Overmind)', emoji: '🧠' },
-          13: { name: '공허의 지배자 아몬 (Amon)', emoji: '👹' },
-          14: { name: '초월 존재 젤나가 (Xel\'Naga)', emoji: '✨' }
+        const emojis = {
+          1: '🔫', 2: '👁️', 3: '🦀', 4: '🐍', 5: '💥', 6: '⚡', 7: '🛸',
+          8: '🚢', 9: '🗡️', 10: '🌟', 11: '🌀', 12: '🧠', 13: '👹', 14: '✨',
         };
-        const meta = units[level] || { name: '미확인 차원 유닛', emoji: '👽' };
-        return { ...meta, dpsFactor: OMG.getCpuSummonDpsFactor({ level }) };
+        const emoji = emojis[level] || '👽';
+        const name = emojis[level] ? t('unit.' + level) : t('unit.unknown');
+        return { name, emoji, dpsFactor: OMG.getCpuSummonDpsFactor({ level }) };
       };
 
       const getRaidBossName = (floor) => {
-        const bosses = {
-          10: 'Guarder (폭주한 광전사 영웅)',
-          20: 'Torrasque (울트라리스크 융합수)',
-          30: 'Matriarch (뮤탈리스크 군락 영웅)',
-          40: 'Unclean One (디파일러 불사 보스)',
-          50: 'General Duke (크론 배틀크루저)',
-          60: 'Fenix (드라군 기계 거신 영웅)',
-          70: 'Zeratul (공허의 방랑자 제라툴)',
-          80: 'Infested Kerrigan (칼날의 여왕 케리건)',
-          90: 'The Overmind (초월체 생체 거대 코어)',
-          100: 'Amon (어두운 공허의 지배자 아몬)'
-        };
-        return bosses[floor] || `Raid Boss Level ${floor} (수호 가디언)`;
+        const named = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+        if (named.includes(floor)) return t('boss.' + floor);
+        return t('raid.bossFallback', { floor });
       };
 
       // ----------------------------------------------------------------------
@@ -2927,21 +2992,28 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
       // ----------------------------------------------------------------------
       useEffect(() => {
         const interval = setInterval(() => {
-          const time = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+          const time = new Date().toLocaleTimeString(getLang() === 'ko' ? 'ko-KR' : 'en-GB', { hour12: false });
           let newLog;
           if (isPartyHunting) {
             const tier = OMG.PARTY_HUNTING_TIERS[partyHuntingTier];
             if (!tier) return;
             const mEarn = OMG.calcPartyMineralPerTick(tier, incomeBonusRate);
-            newLog = `[${time}] 👥 파티 :: ${tier.name} +${mEarn}원 +${tier.scaCoins}C`;
+            newLog = { k: 'log.party', v: { time, tier: partyTierVar(partyHuntingTier), mineral: mEarn, sca: tier.scaCoins } };
           } else {
-            const gameName = activeGame ? activeGame.name : '게임 없음';
+            const gameLabel = activeGame ? gameNameVar(activeGame) : { $k: 'key', key: 'log.noGame' };
             const huntSec = isDownloading ? 0 : huntIncomePerSec;
-            if (workIncomeIsCoin) {
-              newLog = `[${time}] 💼작업 ${effectiveWorkUnits}기 처치 +${formatWorkCoinAsMinerals(workCoinPerKillPerUnit)}/기 · 🎮${gameName} ${specs.maxHuntingUnits}기 처치 +${OMG.formatMineral(huntPerKillPerUnit)}/기 · 합산 초당 ~${OMG.formatMineral(workCoinIncomePerSec * OMG.MINERAL_PER_COIN + huntSec)}`;
-            } else {
-              newLog = `[${time}] 💼작업 ${effectiveWorkUnits}기 처치 +${OMG.formatMineral(workPerKillPerUnit)}/기 · 🎮${gameName} ${specs.maxHuntingUnits}기 처치 +${OMG.formatMineral(huntPerKillPerUnit)}/기 · 합산 초당 ~${OMG.formatMineral(workIncomePerSec + huntSec)}`;
-            }
+            newLog = {
+              k: 'log.workHunt',
+              v: {
+                time,
+                units: effectiveWorkUnits,
+                workIncome: mineral(workIncomeIsCoin ? workCoinPerKillPerUnit * OMG.MINERAL_PER_COIN : workPerKillPerUnit),
+                game: gameLabel,
+                huntUnits: specs.maxHuntingUnits,
+                huntIncome: mineral(huntPerKillPerUnit),
+                total: mineral(workIncomeIsCoin ? workCoinIncomePerSec * OMG.MINERAL_PER_COIN + huntSec : workIncomePerSec + huntSec),
+              },
+            };
           }
           setCombatLogs(prev => {
             const nextLogs = [...prev, newLog];
@@ -3053,23 +3125,23 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
 
       const handlePurchaseScaItem = async (item) => {
         const bought = scaUpgrades[item.id] || 0;
-        if (bought >= item.maxPurchases) { alert('최대 구매 횟수 도달'); return; }
+        if (bought >= item.maxPurchases) { alert(t('sca.maxBuys')); return; }
         if (!OMG.canPurchaseScaShopItem(item, scaUpgrades)) {
-          if (item.id === 'miningAmplifierUnlock') alert('이미 채굴증폭기를 구축했습니다.');
-          else if (item.requiresMining) alert('먼저 채굴증폭기를 구축해야 합니다.');
-          else if (item.id === 'gpuGradeUp') alert('GPU 등급이 이미 하이엔드입니다.');
-          else alert('현재 구매할 수 없습니다.');
+          if (item.id === 'miningAmplifierUnlock') alert(t('sca.alreadyMining'));
+          else if (item.requiresMining) alert(t('sca.needMining'));
+          else if (item.id === 'gpuGradeUp') alert(t('sca.gpuMaxGrade'));
+          else alert(t('sca.cannotBuy'));
           return;
         }
         if (item.mineralBonus) {
           const currentTotal = OMG.calcRebirthStartMinerals(scaUpgrades);
           if (currentTotal >= OMG.REBIRTH_MINERAL_CAP) {
-            alert(`시작 미네랄이 이미 최대 상한선(${OMG.REBIRTH_MINERAL_CAP.toLocaleString()}원)에 도달했습니다.`);
+            alert(t('sca.mineralCapReached', { cap: OMG.REBIRTH_MINERAL_CAP.toLocaleString() }));
             return;
           }
         }
         const cost = OMG.getScaShopItemCost(item, scaUpgrades);
-        if (scaCoins < cost) { alert(`SCA 코인 부족 (필요 ${cost.toLocaleString()})`); return; }
+        if (scaCoins < cost) { alert(t('sca.needCoins', { cost: cost.toLocaleString() })); return; }
         try {
           const data = await GameSync.purchaseScaItem(item.id);
           setScaCoins(data.scaCoins);
@@ -3077,20 +3149,20 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
           const nextBought = (data.scaUpgrades && data.scaUpgrades[item.id]) || bought + 1;
           if (item.id === 'gpuGradeUp') {
             const g = OMG.getGpuGradeLevel(data.scaUpgrades || {});
-            pushToast(`GPU 등급 → ${OMG.GPU_GRADE_NAMES[g]}`, 'success', 2500);
+            pushToast(t('sca.toastGpuGrade', { grade: OMG.getGpuGradeName(g) }), 'success', 2500);
           } else if (item.id === 'miningAmplifierUnlock') {
-            pushToast('채굴증폭기 구축 완료 · 레이드 채굴봇 활성화', 'success', 2500);
+            pushToast(t('sca.toastMiningUnlock'), 'success', 2500);
           } else if (item.id === 'miningAmplifier') {
             const effectivePower = OMG.getMiningPower(data.scaUpgrades || {});
-            pushToast(`채굴 공격력 +${OMG.MINING_AMPLIFIER_SPEC.powerPerLevel} (채굴력 ${effectivePower.toLocaleString()})`, 'success', 2500);
+            pushToast(t('sca.toastMiningPower', { add: OMG.MINING_AMPLIFIER_SPEC.powerPerLevel, power: effectivePower.toLocaleString() }), 'success', 2500);
           } else if (item.id === 'miningAmplifierSpeed') {
             const frames = OMG.getMiningAttackFrames(data.scaUpgrades || {});
-            pushToast(`채굴증폭기 공속 강화 (${frames}f)`, 'success', 2500);
+            pushToast(t('sca.toastMiningSpeed', { frames }), 'success', 2500);
           } else if (item.mineralBonus) {
-            pushToast(`환생 미네랄 +${item.mineralBonus}`, 'success', 2500);
+            pushToast(t('sca.toastRebirthMineral', { n: item.mineralBonus }), 'success', 2500);
           }
         } catch (err) {
-          alert(err.message || 'SCA 상점 구매에 실패했습니다.');
+          alert(err.message || t('sca.buyFail'));
         }
       };
 
@@ -3106,7 +3178,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
             <div>{OMG.getScaShopItemDisplayName(item, scaUpgrades)}</div>
             {hint ? <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">{hint}</div> : null}
             <div className="text-cyan-400">{cost.toLocaleString()} SCA</div>
-            <div className="text-slate-500 mt-1">{soldOut ? '완료' : `${bought}/${item.maxPurchases}`}</div>
+            <div className="text-slate-500 mt-1">{soldOut ? t('sca.soldOut') : `${bought}/${item.maxPurchases}`}</div>
           </button>
         );
       };
@@ -3120,7 +3192,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
         }
         setMinerals((prev) => prev - check.cost);
         setRamSlots(check.newSlots);
-        pushToast(`램 슬롯 ${check.newSlots}개`, 'success', 2500);
+        pushToast(t('shop.ramSlotToast', { n: check.newSlots }), 'success', 2500);
       };
 
       const handleBuyComponentPack = (type, level = 1, buyMetaOverride, options) => {
@@ -3129,8 +3201,10 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
         if (!OMG.isPurchasableLevel(type, level, buyMeta)) {
           if (!auto) {
             const buyable = OMG.getPurchasableLevels(type, buyMeta);
-            const list = buyable.length ? buyable.map((lv) => `+${lv}강`).join(', ') : '없음';
-            alert(`${type.toUpperCase()} +${level}강은 상점에서 직접 구매할 수 없습니다. 구매 가능: ${list}. 그 외 강은 강화로 올려야 합니다.`);
+            const list = buyable.length
+              ? buyable.map((lv) => t('shop.levelN', { n: lv })).join(', ')
+              : t('shop.buyableNone');
+            alert(t('shop.notBuyable', { type: type.toUpperCase(), level, list }));
           }
           return;
         }
@@ -3138,7 +3212,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
         const curMinerals = auto ? (gameStateRef.current.minerals ?? minerals) : minerals;
         if (curMinerals < costM) {
           if (!auto) {
-            alert(`미네랄 부족 (필요 ${OMG.formatMineral(costM)} · 보유 ${OMG.formatMineral(curMinerals)})`);
+            alert(t('shop.needMinerals', { cost: OMG.formatMineral(costM), have: OMG.formatMineral(curMinerals) }));
           }
           return;
         }
@@ -3152,7 +3226,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
         setInventory(nextInv);
         const tierName = OMG.getPartName(type, level, newPart);
         if (!auto) {
-          setCombatLogs((prev) => [...prev.slice(-7), `구매 ${tierName} +${level}강`]);
+          setCombatLogs((prev) => [...prev.slice(-7), { k: 'log.buy', v: { name: tierName, level } }]);
         }
       };
 
@@ -3166,7 +3240,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
         gameStateRef.current.minerals = nextMinerals;
         setMinerals(nextMinerals);
         flushInventoryUi(nextInv, { force: true });
-        setCombatLogs((prev) => [...prev.slice(-7), `판매 +${OMG.formatMineral(sellM)}`]);
+        setCombatLogs((prev) => [...prev.slice(-7), { k: 'log.sell', v: { amount: mineral(sellM) } }]);
       };
 
       const handleInventoryUpgrade = (itemId, options) => {
@@ -3188,13 +3262,13 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
             const n = baseInv.map((p) => (p.id === itemId ? OMG.applyTierStats(p, currentLevel + 1) : p));
             gameStateRef.current.inventory = n;
             setInventory(n);
-            if (!auto) setCombatLogs((prev) => [...prev.slice(-7), `${label} +${currentLevel + 1}강`]);
+            if (!auto) setCombatLogs((prev) => [...prev.slice(-7), { k: 'log.upgraded', v: { label, level: currentLevel + 1 } }]);
           } else {
             const baseInv = gameStateRef.current.inventory || inv;
             const n = baseInv.filter((p) => p.id !== itemId);
             gameStateRef.current.inventory = n;
             setInventory(n);
-            if (!auto) pushToast(`${label} +${currentLevel}강 파괴`, 'exploded', 2200);
+            if (!auto) pushToast(t('log.exploded', { label, level: currentLevel }), 'exploded', 2200);
           }
         };
 
@@ -3213,22 +3287,22 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
       };
 
       const handleRebirth = async () => {
-        if (gpu.level < 10) { alert('GPU 10강 필요'); return; }
-        if (isDownloading) { alert('게임 다운로드 중에는 환생할 수 없습니다. (v1.0.6)'); return; }
+        if (gpu.level < 10) { alert(t('rebirth.needGpu10')); return; }
+        if (isDownloading) { alert(t('rebirth.downloading')); return; }
         // download state cleared on rebirth below via setIsDownloading(false)
-        if (!confirm('환생 시 부품·미네랄이 초기화됩니다. SCA 코인/센터·환생 수치는 유지됩니다.')) return;
+        if (!confirm(t('rebirth.confirm'))) return;
         const parts = { cpu, gpu, ram, cooler, storage };
         const outcome = OMG.calcRebirthOutcome(parts, rebirthStat);
         const startMinerals = OMG.calcRebirthStartMinerals(scaUpgrades);
         if (!GameSync.hasSession()) {
-          alert('환생 SCA 지급을 위해 로그인이 필요합니다.');
+          alert(t('rebirth.needLogin'));
           return;
         }
         let rebirthData;
         try {
           rebirthData = await GameSync.claimRebirth(parts);
         } catch (err) {
-          alert(err.message || '환생 SCA 지급에 실패했습니다.');
+          alert(err.message || t('rebirth.fail'));
           return;
         }
         setScaCoins(rebirthData.scaCoins);
@@ -3260,12 +3334,12 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         setDownloadProgress(0);
         setIsPartyHunting(false);
         setAutoTargetLevels(defaultAutoTargets);
-        pushToast(`환생 완료 · SCA +${rebirthData.scaReward.toLocaleString()}`, 'success', 3500);
+        pushToast(t('rebirth.done', { sca: rebirthData.scaReward.toLocaleString() }), 'success', 3500);
       };
 
       const handlePurchaseMotherboard = (board) => {
         const mbCost = OMG.costToMinerals(board.cost);
-        if (minerals < mbCost) { alert(`미네랄 부족 (필요 ${OMG.formatMineral(mbCost)})`); return; }
+        if (minerals < mbCost) { alert(t('shop.needMineralsShort', { cost: OMG.formatMineral(mbCost) })); return; }
         setMinerals((prev) => prev - mbCost);
         setMotherboard({ name: board.name, socketManufacturer: board.socketManufacturer, supportedDdrGeneration: board.supportedDdrGeneration, shieldIncrease: board.shieldIncrease });
       };
@@ -3356,7 +3430,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         }
 
         flushInventoryUi(nextInv, { force: true });
-        setCombatLogs((prev) => [...prev.slice(-7), `장착 ${type.toUpperCase()} +${partToEquip.level}강`]);
+        setCombatLogs((prev) => [...prev.slice(-7), { k: 'log.equipped', v: { label: type.toUpperCase(), level: partToEquip.level } }]);
       };
 
       // ----------------------------------------------------------------------
@@ -3475,8 +3549,10 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           simCtx.scaCoinsGain = 0;
           simCtx.partyMineralGained = 0;
           if (partyMineral > 0) {
-            const tierName = OMG.PARTY_HUNTING_TIERS[tierIdx]?.name || `T${tierIdx + 1}`;
-            setCombatLogs(prev => [...prev.slice(-7), `💎 [PARTY] ${tierName} 파티 ${ticks}틱 수입 +${partyMineral.toLocaleString()} 미네랄`]);
+            setCombatLogs(prev => [...prev.slice(-7), {
+              k: 'log.partyIncome',
+              v: { tier: partyTierVar(tierIdx), ticks, mineral: partyMineral.toLocaleString() },
+            }]);
           }
           if (GameSync.hasSession()) {
             GameSync.claimPartyIncome(tierIdx, ticks, { cpu, gpu, ram, cooler, storage })
@@ -3512,11 +3588,11 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           const st = simCtx.stats;
           if (st.incomeMinerals > 0 || st.autoActions > 0) {
             const parts = [];
-            if (st.incomeMinerals > 0) parts.push(`수입 +${OMG.formatMineral(st.incomeMinerals)}`);
-            if (st.upgrades > 0) parts.push(`강화 ${st.upgrades}`);
-            if (st.buys > 0) parts.push(`구매 ${st.buys}`);
-            if (st.explosions > 0) parts.push(`파괴 ${st.explosions}`);
-            pushToast(`⏳ 방치 정산 · ${parts.join(' · ')}`, 'success', 4500);
+            if (st.incomeMinerals > 0) parts.push(t('auto.sumIncome', { amount: OMG.formatMineral(st.incomeMinerals) }));
+            if (st.upgrades > 0) parts.push(t('auto.sumUpgrade', { n: st.upgrades }));
+            if (st.buys > 0) parts.push(t('auto.sumBuy', { n: st.buys }));
+            if (st.explosions > 0) parts.push(t('auto.sumExplode', { n: st.explosions }));
+            pushToast(t('auto.idleSummary', { parts: parts.join(' · ') }), 'success', 4500);
           }
         }
         if (simCtx.logs && simCtx.logs.length) {
@@ -3621,7 +3697,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         if (Sim.hasActiveAuto(ctx)) {
           setAutoStatus(Sim.detectAutoStatus(ctx));
         } else {
-          setAutoStatus({ code: 'off', message: 'AUTO 꺼짐' });
+          setAutoStatus({ code: 'off', msgKey: 'auto.statusOff' });
         }
       }, [autoBuyCpuByMfr, autoBuyGpu, autoBuyRam, autoBuyCoolerByKind, autoBuyStorageByKind]);
 
@@ -3724,15 +3800,18 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     const dropPart = generateOverclockPart(farmLvl);
                     const stock = Array.isArray(s.overclockData.overclockParts) ? s.overclockData.overclockParts : [];
                     if (stock.length >= 30) {
-                      setCombatLogs((prev) => [...prev.slice(-7), `⚠️ [RESEARCH] 재료 보관함이 가득 차(30개) 드랍한 파츠를 폐기했습니다.`]);
+                      setCombatLogs((prev) => [...prev.slice(-7), { k: 'log.vaultFull' }]);
                     } else {
                       s.overclockData.overclockParts = [...stock, dropPart];
                       setOverclockData({ ...s.overclockData });
                       // 세대는 보이되 목표 클럭(성능)은 강화 성공 전까지 비공개
-                      setCombatLogs((prev) => [...prev.slice(-7), `🎉 [RESEARCH] Lv.${farmLvl} 연구소 파괴 — 미확인 ${dropPart.generation} 재료 획득! (보유 ${stock.length + 1}개)`]);
+                      setCombatLogs((prev) => [...prev.slice(-7), {
+                        k: 'log.labDrop',
+                        v: { lv: farmLvl, gen: dropPart.generation, count: stock.length + 1 },
+                      }]);
                     }
                   } else {
-                    setCombatLogs((prev) => [...prev.slice(-7), `⚙️ [RESEARCH] Lv.${farmLvl} 연구소를 파괴했으나 파츠 드랍 실패.`]);
+                    setCombatLogs((prev) => [...prev.slice(-7), { k: 'log.labNoDrop', v: { lv: farmLvl } }]);
                   }
 
                   s.overclockLabCooldown = OMG.OVERCLOCK_LAB_RESPAWN_SEC;
@@ -3896,7 +3975,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         if (isSuccess) {
           if (part.generation === 'DDR4') {
             setOverclockData(prev => ({ ...removeSelected(prev), ddr4Overclocked: true }));
-            setCombatLogs((logs) => [...logs.slice(-7), `🎉 [RESEARCH] DDR4 오버클럭 강화 성공! (성공 확률 ${pct}%) 이제 DDR4 9강 장착 시 자동으로 OC-4000 사양으로 작동합니다.`]);
+            setCombatLogs((logs) => [...logs.slice(-7), { k: 'log.ocDdr4', v: { pct } }]);
           } else {
             let nextStep = 1;
             if (part.targetMhz === 7200) nextStep = 2;
@@ -3905,17 +3984,17 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               ...removeSelected(prev),
               ddr5OverclockedStep: Math.max(prev.ddr5OverclockedStep || 0, nextStep),
             }));
-            setCombatLogs((logs) => [...logs.slice(-7), `🎉 [RESEARCH] DDR5-${part.targetMhz} 오버클럭 강화 성공! (성공 확률 ${pct}%) DDR5 13강 장착 시 자동으로 해당 OC 사양으로 작동합니다.`]);
+            setCombatLogs((logs) => [...logs.slice(-7), { k: 'log.ocDdr5', v: { mhz: part.targetMhz, pct } }]);
           }
         } else {
           setOverclockData(prev => removeSelected(prev));
-          setCombatLogs((logs) => [...logs.slice(-7), `❌ [RESEARCH] 오버클럭 강화 실패 (성공 확률 ${pct}%). 미확인 재료가 과부하로 폭발하였습니다.`]);
+          setCombatLogs((logs) => [...logs.slice(-7), { k: 'log.ocFail', v: { pct } }]);
         }
       };
 
       const handleAssignOverclockLabUnit = () => {
         if (effectiveUnitLimit < 1) {
-          alert('차출할 유닛이 없습니다. CPU 코어(유닛 상한)를 늘려 주세요.');
+          alert(t('oc.noUnitToAssign'));
           return;
         }
         if (overclockLabActive) return;
@@ -3935,7 +4014,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
         gameStateRef.current.overclockLabShield = spec.shield;
         gameStateRef.current.overclockLabCooldown = 0;
 
-        setCombatLogs(prev => [...prev.slice(-7), `⚔️ [RESEARCH] 작업·사냥 유닛 1기를 차출하여 오버클럭 연구소 건물 공격을 시작합니다.`]);
+        setCombatLogs(prev => [...prev.slice(-7), { k: 'log.labAssign' }]);
       };
 
       const handleRecallOverclockLabUnit = () => {
@@ -3945,7 +4024,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           gameStateRef.current.overclockData = next;
           return next;
         });
-        setCombatLogs(prev => [...prev.slice(-7), `↩️ [RESEARCH] 연구소 공격 유닛을 복귀시켰습니다. (작업·사냥 풀 +1기)`]);
+        setCombatLogs(prev => [...prev.slice(-7), { k: 'log.labRecall' }]);
       };
 
       // ----------------------------------------------------------------------
@@ -3985,11 +4064,8 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
 
       const handleAccountReset = async () => {
         if (isResettingAccount) return;
-        const msg1 =
-          '계정의 모든 진행도(부품·미네랄·SCA·환생·레이드 기록 등)가 삭제됩니다.\n' +
-          '닉네임과 로그인 정보는 유지됩니다.\n\n계속할까요?';
-        if (!confirm(msg1)) return;
-        if (!confirm('정말 초기화합니다. 이 작업은 되돌릴 수 없습니다.')) return;
+        if (!confirm(t('settings.confirm1'))) return;
+        if (!confirm(t('settings.confirm2'))) return;
         setIsResettingAccount(true);
         try {
           closeRaid();
@@ -3997,7 +4073,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           setIsSettingsOpen(false);
           window.location.reload();
         } catch (err) {
-          alert(err.message || '계정 초기화에 실패했습니다.');
+          alert(err.message || t('settings.resetFail'));
           setIsResettingAccount(false);
         }
       };
@@ -4021,11 +4097,11 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             onLogout={onLogout}
           />
           <div className="mb-4 flex gap-2 flex-wrap">
-            <button onClick={() => setShowScaCenter(v => !v)} className="px-3 py-2 text-xs font-mono border border-cyan-500/30 rounded text-cyan-300">🏛️ SCA 센터</button>
+            <button onClick={() => setShowScaCenter(v => !v)} className="px-3 py-2 text-xs font-mono border border-cyan-500/30 rounded text-cyan-300">{t('sca.center')}</button>
             <button 
               onClick={() => {
                 if ((overclockData.highestRaidFloor || 0) < 20) {
-                  alert('파티 보스 20층 이상 클리어 보상을 수령해야 오버클럭 연구소가 해금됩니다. (현재 최고: ' + (overclockData.highestRaidFloor || 0) + '층)');
+                  alert(t('oc.needFloor20', { floor: overclockData.highestRaidFloor || 0 }));
                   return;
                 }
                 setShowOverclockLab(v => !v);
@@ -4036,7 +4112,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   : 'border-slate-800 text-slate-500 cursor-not-allowed'
               }`}
             >
-              🧪 오버클럭 연구소 {(overclockData.highestRaidFloor || 0) < 20 && '🔒'}
+              {t('oc.title')} {(overclockData.highestRaidFloor || 0) < 20 && '🔒'}
             </button>
           </div>
           {showScaCenter && (
@@ -4119,7 +4195,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               <div className="bg-slate-900/40 p-4 sm:p-6 rounded-xl border border-slate-800 flex flex-col space-y-4 min-w-0">
                 <h2 className="text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
                   <span className="text-cyan-400 text-lg mr-1.5">🛒</span>
-                  <span>부품 조립 및 고도 강화 상점</span>
+                  <span>{t('shop.title')}</span>
                 </h2>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -4128,21 +4204,25 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                   <div className="p-4 bg-slate-950/60 rounded border border-slate-800 col-span-2 space-y-3.5 animate-fade-in">
                     <div className="flex justify-between items-center">
                       <div>
-                        <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">📦 부품 상점 — 부품별 구매 가능 강 (미네랄)</span>
+                        <span className="text-xs font-bold text-cyan-300 font-mono block mb-1">{t('shop.partsTitle')}</span>
                         <p className="text-xs text-slate-400">
-                          스프레드시트 구매가 = 미네랄(원) 1:1 (C = N×천만). Intel CPU 1·4·7·10·11강, AMD 1·3강, GPU 1·3·5·7강, RAM 1·5·10강, 쿨러·드라이브 1강, 메인보드(DDR·소켓 표시) 직접 구매. ◀▶로 강 선택 · AUTO는 목표 미만 구매 가능 최고 강 구매 후 목표까지 강화. 램 슬롯 2·4 구매 · 판매 50% 환급.
+                          {t('shop.partsDesc')}
                         </p>
                       </div>
                       {rebirthPreview && (
                         <div className="flex flex-col gap-1">
                           <p className="text-[11px] text-cyan-400 font-mono">
-                            환생 시: SCA +<strong>{rebirthPreview.scaReward.toLocaleString()}</strong> · 수치 +{rebirthPreview.statGain.toLocaleString()} (누적 {rebirthPreview.baseStat.toLocaleString()}) · {rebirthPreview.tier?.name ?? '?'}
+                            {t('shop.rebirthPreview')}<strong>{rebirthPreview.scaReward.toLocaleString()}</strong>{t('shop.rebirthPreview2', {
+                              gain: rebirthPreview.statGain.toLocaleString(),
+                              total: rebirthPreview.baseStat.toLocaleString(),
+                              tier: rebirthPreview.tier?.name ?? '?',
+                            })}
                           </p>
                           <button
                             onClick={handleRebirth}
                             className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-slate-950 font-bold rounded text-xs tracking-wider transition uppercase shadow-lg shadow-cyan-500/20 animate-pulse"
                           >
-                            ✨ GPU 환생 (REBIRTH)
+                            {t('shop.rebirthBtn')}
                           </button>
                         </div>
                       )}
@@ -4230,14 +4310,31 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
               <div className="bg-slate-900/40 p-4 sm:p-6 rounded-xl border border-slate-800 flex flex-col space-y-4 min-w-0">
                 <h2 className="text-base sm:text-lg uppercase tracking-widest text-slate-300 font-mono flex items-center space-x-2 border-b border-slate-800 pb-3">
                   <span className="text-emerald-400 text-lg mr-1.5">💼</span>
-                  <span>작업 사냥터</span>
+                  <span>{t('work.groundTitle')}</span>
                 </h2>
-                <p className="text-xs text-slate-400 break-words">작업(Work)과 게임 사냥(Gaming)은 <strong className="text-emerald-400">동시 진행</strong> · 작업 목록은 원작처럼 모두 표시, <strong className="text-amber-400">실제 파괴 가능</strong>할 때만 선택 (GPU·공속·건물 내구 종합 · 1기 {OMG.WORK_PRACTICAL_CLEAR_KILL_SEC}초 이내)</p>
+                <p className="text-xs text-slate-400 break-words">{t('work.groundDesc1')}<strong className="text-emerald-400">{t('work.groundDescBold')}</strong>{t('work.groundDesc2')}<strong className="text-amber-400">{t('work.groundDescBold2')}</strong>{t('work.groundDesc3', { sec: OMG.WORK_PRACTICAL_CLEAR_KILL_SEC })}</p>
                 <p className="text-[10px] text-slate-500 font-mono break-words">
-                  GPU 공격 {specs.unitDamage} · RAM {incomeAttackFrames}f({incomeEventMs}ms/타격) · 배속 {gameSpeedMult.toFixed(2)}×
-                  · 작업 건물 반격 없음 · HP{workMobSpec.hp}{workMobSpec.shield ? `+실드${workMobSpec.shield}` : ''}{workMobSpec.defense ? ` 방${workMobSpec.defense}` : ''} → {workHitsToKill}타격/{workKillTimeSec.toFixed(1)}초/파괴
-                  · 게임 몬스터 공{OMG.getMobAttackPerHit(huntMobSpec)} HP{huntMobSpec.hp}{huntMobSpec.shield ? `+실드${huntMobSpec.shield}` : ''} → {huntHitsToKill}타격/{huntKillTimeSec.toFixed(1)}초/처치
-                  · 게임 사냥 유닛 HP{specs.unitHp}+실드{specs.unitShield} 방{specs.unitDefense} · 몬스터 반격 사망 시 {OMG.HUNT_UNIT_RESPAWN_MS / 1000}초 후 자동 재배치
+                  {t('work.statLine', { atk: specs.unitDamage, frames: incomeAttackFrames, ms: incomeEventMs, speed: gameSpeedMult.toFixed(2) })}
+                  {t('work.statLine2', {
+                    hp: workMobSpec.hp,
+                    shield: workMobSpec.shield ? t('work.statShield', { n: workMobSpec.shield }) : '',
+                    defense: workMobSpec.defense ? t('work.statDefense', { n: workMobSpec.defense }) : '',
+                    hits: workHitsToKill,
+                    sec: workKillTimeSec.toFixed(1),
+                  })}
+                  {t('work.statLine3', {
+                    atk: OMG.getMobAttackPerHit(huntMobSpec),
+                    hp: huntMobSpec.hp,
+                    shield: huntMobSpec.shield ? t('work.statShield', { n: huntMobSpec.shield }) : '',
+                    hits: huntHitsToKill,
+                    sec: huntKillTimeSec.toFixed(1),
+                  })}
+                  {t('work.statLine4', {
+                    hp: specs.unitHp,
+                    shield: specs.unitShield,
+                    def: specs.unitDefense,
+                    sec: OMG.HUNT_UNIT_RESPAWN_MS / 1000,
+                  })}
                 </p>
                 <div className="grid md:grid-cols-2 gap-4">
                   <WorkPanel
@@ -4342,6 +4439,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
     // 로그인 게이트: 미로그인 시 로그인/회원가입 화면, 로그인 시 게임(App) 마운트
     // ======================================================================
     function AuthGate() {
+      useLang();
       const [phase, setPhase] = useState('booting'); // booting | auth | ready
       const [mode, setMode] = useState('login');      // login | register
       const [username, setUsername] = useState('');
@@ -4366,7 +4464,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           if (cancelled) return;
           GameSync.clearAuth();
           // 로그인한 적 없는 방문자에게 "다시 로그인" 은 말이 안 된다
-          if (hadLocalMark) setError('서버 동기화 시간이 초과되었습니다. 다시 로그인해 주세요.');
+          if (hadLocalMark) setError(t('auth.syncTimeout'));
           setPhase('auth');
         }, 12000);
         (async () => {
@@ -4383,9 +4481,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             // 401 은 이제 정상 경로다(비로그인 방문자). 표식이 있었을 때만
             // 만료를 알리고, 그 밖의 오류(네트워크·서버)는 그대로 보여준다.
             if (/UNAUTHORIZED/.test(e.message || '')) {
-              if (hadLocalMark) setError('세션이 만료되었습니다. 다시 로그인해 주세요.');
+              if (hadLocalMark) setError(t('auth.expired'));
             } else {
-              setError(e.message || '진행도를 불러오지 못했습니다.');
+              setError(e.message || t('auth.loadFail'));
             }
             setPhase('auth');
           }
@@ -4419,7 +4517,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           }
           setPhase('ready');
         } catch (err) {
-          setError(err.message || '오류가 발생했습니다.');
+          setError(err.message || t('auth.genericError'));
         } finally {
           setLoading(false);
         }
@@ -4437,7 +4535,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
       if (phase === 'booting') {
         return (
           <div className="min-h-screen flex items-center justify-center text-slate-400 font-mono text-sm">
-            <span className="animate-pulse">⏳ 진행도 동기화 중...</span>
+            <span className="animate-pulse">{t('auth.syncing')}</span>
           </div>
         );
       }
@@ -4453,33 +4551,41 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           <div className="w-full max-w-sm bg-slate-900/70 border border-emerald-500/20 neon-border-emerald rounded-2xl p-7 space-y-5">
             <div className="text-center space-y-1">
               <div className="text-3xl">🧠</div>
-              <h1 className="text-lg font-bold text-emerald-300">컴퓨터 강화하기</h1>
+              <h1 className="text-lg font-bold text-emerald-300">{t('auth.appTitle')}</h1>
               <p className="text-xs text-slate-400 font-mono">
-                {mode === 'login' ? '로그인하여 진행도를 불러옵니다' : '계정을 만들어 진행도를 저장합니다'}
+                {t(mode === 'login' ? 'auth.loginDesc' : 'auth.registerDesc')}
               </p>
+              <button
+                type="button"
+                onClick={toggleLang}
+                title={t('lang.switchTitle')}
+                className="px-2 py-0.5 text-xs border border-slate-600 rounded text-slate-300 hover:bg-slate-800 font-mono"
+              >
+                🌐 {t('lang.other')}
+              </button>
             </div>
 
             <form onSubmit={submit} className="space-y-3">
               <div>
-                <label className="block text-sm text-slate-400 font-mono mb-1">닉네임</label>
+                <label className="block text-sm text-slate-400 font-mono mb-1">{t('auth.nickname')}</label>
                 <input
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoComplete="username"
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-100 focus:border-emerald-500 outline-none"
-                  placeholder="2~50자"
+                  placeholder={t('auth.nicknamePh')}
                 />
               </div>
               <div>
-                <label className="block text-sm text-slate-400 font-mono mb-1">비밀번호</label>
+                <label className="block text-sm text-slate-400 font-mono mb-1">{t('auth.password')}</label>
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-100 focus:border-emerald-500 outline-none"
-                  placeholder="최소 4자"
+                  placeholder={t('auth.passwordPh')}
                 />
               </div>
 
@@ -4492,9 +4598,9 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                     className="mt-0.5 shrink-0 accent-emerald-500"
                   />
                   <span>
-                    만 14세 이상이며,{' '}
-                    <a href="https://elcherlab.com/terms.html" target="_blank" rel="noopener noreferrer" className="text-emerald-400 underline">이용약관</a>과{' '}
-                    <a href="https://elcherlab.com/privacy.html" target="_blank" rel="noopener noreferrer" className="text-emerald-400 underline">개인정보처리방침</a>에 동의합니다.
+                    {t('auth.consent1')}
+                    <a href="https://elcherlab.com/terms.html" target="_blank" rel="noopener noreferrer" className="text-emerald-400 underline">{t('auth.terms')}</a>{t('auth.consentAnd')}
+                    <a href="https://elcherlab.com/privacy.html" target="_blank" rel="noopener noreferrer" className="text-emerald-400 underline">{t('auth.privacy')}</a>{t('auth.consent2')}
                   </span>
                 </label>
               )}
@@ -4510,29 +4616,31 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 disabled={loading}
                 className="w-full py-2.5 rounded-lg bg-emerald-500/90 hover:bg-emerald-400 text-slate-950 font-bold text-sm disabled:opacity-50"
               >
-                {loading ? '처리 중...' : (mode === 'login' ? '로그인' : '회원가입')}
+                {loading ? t('auth.loading') : t(mode === 'login' ? 'auth.login' : 'auth.register')}
               </button>
             </form>
 
             <div className="text-center text-xs text-slate-400 font-mono">
-              {mode === 'login' ? '계정이 없으신가요? ' : '이미 계정이 있으신가요? '}
+              {t(mode === 'login' ? 'auth.noAccount' : 'auth.hasAccount')}
               <button
                 onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); setAgeConfirm(false); }}
                 className="text-emerald-400 underline"
               >
-                {mode === 'login' ? '회원가입' : '로그인'}
+                {t(mode === 'login' ? 'auth.register' : 'auth.login')}
               </button>
             </div>
 
             <div className="text-center text-[11px] text-slate-500 font-mono space-x-2">
-              <a href="https://elcherlab.com/terms.html" target="_blank" rel="noopener noreferrer" className="underline">이용약관</a>
-              <a href="https://elcherlab.com/privacy.html" target="_blank" rel="noopener noreferrer" className="underline">개인정보처리방침</a>
-              <a href="https://auth.elcherlab.com/account" target="_blank" rel="noopener noreferrer" className="underline">내 계정</a>
+              <a href="https://elcherlab.com/terms.html" target="_blank" rel="noopener noreferrer" className="underline">{t('auth.terms')}</a>
+              <a href="https://elcherlab.com/privacy.html" target="_blank" rel="noopener noreferrer" className="underline">{t('auth.privacy')}</a>
+              <a href="https://auth.elcherlab.com/account" target="_blank" rel="noopener noreferrer" className="underline">{t('auth.myAccount')}</a>
             </div>
           </div>
         </div>
       );
     }
+
+    document.title = t('meta.title');
 
     const container = document.getElementById('root');
     const root = ReactDOM.createRoot(container);

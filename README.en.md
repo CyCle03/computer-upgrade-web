@@ -31,6 +31,7 @@ tables and so on), see the documents below.
 | **Real-time raids** | Socket.io-based 4-player party simulation of the 100-floor boss raid |
 | **Hardware simulator** | DPS and penalty calculations for CPU/GPU/RAM/cooler/motherboard/storage combinations |
 | **Web dashboard** | `frontend/src/app.jsx` + `public/originalMapData.js` — V1.2.9 (1:1 minerals, cumulative saving, DDR and RAM slots, CPU hunting RAM, GPU tiers/display names, ◀▶ shop, AUTO, raids) |
+| **Korean · English** | Switch with the 🌐 button in the header. Korean is the source text and the dictionary (`frontend/src/i18n.js`) layers English on top. The choice lives in localStorage only; between subdomains it is carried by a `?lang=en` link |
 
 ## Tech stack
 

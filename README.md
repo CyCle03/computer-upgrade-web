@@ -29,6 +29,7 @@
 | **실시간 레이드** | Socket.io 기반 4인 파티 100층 보스 레이드 시뮬레이션 |
 | **하드웨어 시뮬레이터** | CPU/GPU/RAM/쿨러/메인보드/저장장치 조합에 따른 DPS·페널티 연산 |
 | **웹 대시보드** | `frontend/src/app.jsx` + `public/originalMapData.js` — V1.2.9 (미네랄 1:1, 누적 저장·DDR·램 슬롯, CPU 사냥 RAM, GPU 등급/표시명, ◀▶ 상점, AUTO, 레이드) |
+| **한국어 · English** | 헤더 🌐 버튼으로 전환. 원문은 한국어이고 사전(`frontend/src/i18n.js`)이 영어를 덧입힌다. 설정은 localStorage 에만 저장하며, 서브도메인 사이에서는 `?lang=en` 링크로 넘긴다 |
 
 ## 기술 스택
 

@@ -5,6 +5,25 @@
  */
 (function (global) {
   const MINERAL_PER_COIN = 10000000;
+
+  /**
+   * 언어 전환 다리.
+   * 이 파일은 ES 모듈이 아니고(전역 스크립트) 서버(src/omgLoader.ts)도 vm 으로 같은
+   * 파일을 읽어 밸런스 공식을 공유하므로 frontend/src/i18n.js 를 import 할 수 없다.
+   * 화면에 낼 문구는 번들이 깔아 둔 window.PcI18n 을 **호출 시점에** 찾아 옮긴다.
+   * 다리가 없으면(서버·테스트) fallback 인 원문 한국어가 그대로 나온다 —
+   * 서버 동작·밸런스 스냅샷은 이 커밋으로 바뀌지 않는다.
+   */
+  function tx(key, vars, fallback) {
+    const bridge = (typeof window !== 'undefined' && window.PcI18n) || null;
+    return bridge ? bridge.t(key, vars, fallback) : fallback;
+  }
+
+  /** 지금 화면 언어. 다리가 없으면 원문(ko). */
+  function txLang() {
+    const bridge = (typeof window !== 'undefined' && window.PcI18n) || null;
+    return bridge ? bridge.lang() : 'ko';
+  }
   const MANWON_MINERALS = 10000;
 
   /** 스프레드시트 가격 → tier.cost. 숫자=원, NC=N×천만, -=0 */
@@ -310,6 +329,12 @@
   /** SCA/EUD Wait 주기 상한. 배속 N ≠ 실시간 N배 — 배율 = (REF−BASE) / (REF−N) */
   const GAME_SPEED_FRAME_REF = 29;
   const GPU_GRADE_NAMES = ['엔트리', '메인스트림', '퍼포먼스', '하이엔드'];
+
+  /** 등급 이름은 화면용이라 언어를 탄다. 표(GPU_GRADE_NAMES)는 원문 한국어로 남긴다. */
+  function getGpuGradeName(index) {
+    const i = Math.max(0, Math.min(GPU_GRADE_NAMES.length - 1, index || 0));
+    return tx('omg.gpuGrade.' + i, null, GPU_GRADE_NAMES[i]);
+  }
   const GPU_GRADE_ATTACK_FRAMES = [20, 16, 12, 8];
   /** 커뮤니티 13배속방 7→10 자동구매 통계용 등급별 내부 카운터 배율 (재미 참고치) */
   const GPU_GRADE_BENCHMARK_MULTIPLIERS = [1, 4, 10, 25];
@@ -400,45 +425,53 @@
     if (!item) return '';
     if (item.id === 'gpuGradeUp') {
       const cur = getGpuGradeLevel(scaUpgrades);
-      if (cur >= GPU_GRADE_NAMES.length - 1) return 'GPU 등급 (하이엔드 달성)';
-      const from = GPU_GRADE_NAMES[cur];
-      const to = GPU_GRADE_NAMES[cur + 1];
-      return `GPU 등급: ${from} → ${to}`;
+      if (cur >= GPU_GRADE_NAMES.length - 1) return tx('omg.sca.gpuGradeMax', null, 'GPU 등급 (하이엔드 달성)');
+      const from = getGpuGradeName(cur);
+      const to = getGpuGradeName(cur + 1);
+      return tx('omg.sca.gpuGradeFromTo', { from, to }, `GPU 등급: ${from} → ${to}`);
     }
     if (item.id === 'miningAmplifierUnlock') {
-      return isMiningAmplifierUnlocked(scaUpgrades) ? '채굴증폭기 (구축 완료)' : '채굴증폭기 구축';
+      return isMiningAmplifierUnlocked(scaUpgrades)
+        ? tx('omg.sca.miningBuilt', null, '채굴증폭기 (구축 완료)')
+        : tx('omg.sca.miningAmplifierUnlock', null, '채굴증폭기 구축');
     }
     if (item.id === 'miningAmplifier') {
       const attackPower = ((scaUpgrades && scaUpgrades.miningAmplifier) || 0) * MINING_AMPLIFIER_SPEC.powerPerLevel;
-      return `채굴 공격력 (현재 ${attackPower.toLocaleString()})`;
+      return tx('omg.sca.miningPowerNow', { power: attackPower.toLocaleString() }, `채굴 공격력 (현재 ${attackPower.toLocaleString()})`);
     }
     if (item.id === 'miningAmplifierSpeed') {
       const frames = getMiningAttackFrames(scaUpgrades);
-      return `채굴증폭기 공속 (${frames}f · ×${getMiningSpeedMultiplier(scaUpgrades).toFixed(2)})`;
+      const mult = getMiningSpeedMultiplier(scaUpgrades).toFixed(2);
+      return tx('omg.sca.miningSpeedNow', { frames, mult }, `채굴증폭기 공속 (${frames}f · ×${mult})`);
     }
-    return item.name;
+    return tx('omg.sca.' + item.id, null, item.name);
   }
 
   function getScaShopItemHint(item, scaUpgrades) {
     if (!item) return '';
     if (item.id === 'miningAmplifierUnlock') {
-      return isMiningAmplifierUnlocked(scaUpgrades) ? '레이드 채굴봇 활성화됨' : '최종 컨텐츠 · 레이드 채굴봇 해금';
+      return isMiningAmplifierUnlocked(scaUpgrades)
+        ? tx('omg.sca.hintMiningActive', null, '레이드 채굴봇 활성화됨')
+        : tx('omg.sca.hintMiningUnlock', null, '최종 컨텐츠 · 레이드 채굴봇 해금');
     }
     if (item.id === 'miningAmplifier') {
-      if (!isMiningAmplifierUnlocked(scaUpgrades)) return '구축 후 구매 가능';
-      return `+${MINING_AMPLIFIER_SPEC.powerPerLevel} 채굴 공격력 · 레이드 보스 채굴 DPS에 채굴력만큼 가산`;
+      if (!isMiningAmplifierUnlocked(scaUpgrades)) return tx('omg.sca.hintNeedBuild', null, '구축 후 구매 가능');
+      return tx('omg.sca.hintMiningPower', { add: MINING_AMPLIFIER_SPEC.powerPerLevel },
+        `+${MINING_AMPLIFIER_SPEC.powerPerLevel} 채굴 공격력 · 레이드 보스 채굴 DPS에 채굴력만큼 가산`);
     }
     if (item.id === 'miningAmplifierSpeed') {
-      if (!isMiningAmplifierUnlocked(scaUpgrades)) return '구축 후 구매 가능';
+      if (!isMiningAmplifierUnlocked(scaUpgrades)) return tx('omg.sca.hintNeedBuild', null, '구축 후 구매 가능');
       const bought = (scaUpgrades && scaUpgrades.miningAmplifierSpeed) || 0;
       if (bought >= MINING_AMPLIFIER_SPEC.maxSpeedLevels) {
-        return `최고 공속 ${getMiningAttackFrames(scaUpgrades)}f`;
+        return tx('omg.sca.hintSpeedMax', { frames: getMiningAttackFrames(scaUpgrades) },
+          `최고 공속 ${getMiningAttackFrames(scaUpgrades)}f`);
       }
       const nextFrames = Math.max(
         MINING_AMPLIFIER_SPEC.minSpeedFrames,
         getMiningAttackFrames(scaUpgrades) - MINING_AMPLIFIER_SPEC.framesPerSpeedLevel
       );
-      return `공속 −${MINING_AMPLIFIER_SPEC.framesPerSpeedLevel}f (다음 ${nextFrames}f)`;
+      return tx('omg.sca.hintSpeedNext', { frames: MINING_AMPLIFIER_SPEC.framesPerSpeedLevel, next: nextFrames },
+        `공속 −${MINING_AMPLIFIER_SPEC.framesPerSpeedLevel}f (다음 ${nextFrames}f)`);
     }
     return '';
   }
@@ -521,7 +554,7 @@
     const buyable = getPurchasableLevels(type, part);
     return getPartTable(type, part).map((row) => ({
       level: row.level,
-      name: row.name,
+      name: type === 'cooler' ? getCoolerTierName(row, part) : row.name,
       costC: row.cost,
       costMinerals: Math.max(0, Math.floor(row.cost || 0)),
       prob: row.prob,
@@ -666,7 +699,17 @@
   function getPartName(type, level, part, scaUpgrades) {
     if (type === 'gpu') return getGpuDisplayName(level, part, scaUpgrades);
     const tier = getTier(type, part, level);
-    return tier ? tier.name : type.toUpperCase() + ' Lv.' + level;
+    if (!tier) return type.toUpperCase() + ' Lv.' + level;
+    // 쿨러만 한국어 이름이다(CPU·GPU·RAM·드라이브는 제품명이라 언어를 안 탄다).
+    if (type === 'cooler') return getCoolerTierName(tier, part);
+    return tier.name;
+  }
+
+  /** 쿨러 티어 이름 — 공랭/수랭 × 강 으로 사전을 찾는다. */
+  function getCoolerTierName(tier, part) {
+    if (!tier) return '';
+    const kind = (part && part.coolerKind) || 'air';
+    return tx('omg.cooler.' + kind + '.' + tier.level, null, tier.name);
   }
 
   function applyTierStats(part, nextLevel) {
@@ -1120,9 +1163,14 @@
     return Math.max(0, Math.floor(cost || 0));
   }
 
-  /** 1억·만원·원 단위 표기 (미네랄 1:1) */
+  /**
+   * 1억·만원·원 단위 표기 (미네랄 1:1).
+   * 영어에서는 억·만이 없는 단위라 K·M·B 로 끊는다. 한국어 출력은 그대로다
+   * (밸런스 스냅샷·서버 로그가 이 문자열을 쓰므로 원문 경로를 건드리지 않는다).
+   */
   function formatMineral(amount) {
     const n = Math.max(0, Math.floor(amount || 0));
+    if (txLang() !== 'ko') return formatMineralEn(n);
     if (n >= 100000000) {
       const eok = n / 100000000;
       return (Number.isInteger(eok) ? eok.toLocaleString() : eok.toFixed(1)) + '억원';
@@ -1132,6 +1180,15 @@
       return (Number.isInteger(man) ? man.toLocaleString() : man.toFixed(1)) + '만원';
     }
     return n.toLocaleString() + '원';
+  }
+
+  /** 영어 금액 표기 — 1,000 단위로 K·M·B. */
+  function formatMineralEn(n) {
+    const unit = (v, suffix) => (Number.isInteger(v) ? v.toLocaleString() : v.toFixed(1)) + suffix + ' won';
+    if (n >= 1000000000) return unit(n / 1000000000, 'B');
+    if (n >= 1000000) return unit(n / 1000000, 'M');
+    if (n >= 10000) return unit(n / 1000, 'K');
+    return n.toLocaleString() + ' won';
   }
 
   /** 코인 수입·잔액을 미네랄(원) 표기로 (500코인 → 50억원) */
@@ -1170,11 +1227,16 @@
 
   function validateRamSlotPurchase(currentSlots, targetSlots, minerals) {
     if (!canPurchaseRamSlotUpgrade(currentSlots, targetSlots)) {
-      return { ok: false, reason: '이미 보유한 슬롯이거나 구매할 수 없는 단계입니다.' };
+      return { ok: false, reason: tx('omg.ramSlot.owned', null, '이미 보유한 슬롯이거나 구매할 수 없는 단계입니다.') };
     }
     const cost = getRamSlotUpgradeCost(targetSlots);
     if ((minerals ?? 0) < cost) {
-      return { ok: false, reason: `미네랄 부족 (필요 ${formatMineral(cost)} · 보유 ${formatMineral(minerals ?? 0)})` };
+      const have = formatMineral(minerals ?? 0);
+      return {
+        ok: false,
+        reason: tx('omg.ramSlot.needMinerals', { cost: formatMineral(cost), have },
+          `미네랄 부족 (필요 ${formatMineral(cost)} · 보유 ${have})`),
+      };
     }
     return { ok: true, cost, newSlots: getRamSlotCount(targetSlots) };
   }
@@ -1205,10 +1267,10 @@
 
   function getGpuDisplayName(level, part, scaUpgrades) {
     const tier = getTier('gpu', part, level);
-    if (!tier) return 'GPU +' + level + '강';
+    if (!tier) return tx('omg.gpuLevel', { level }, 'GPU +' + level + '강');
     const grade = scaUpgrades != null ? calcGpuGrade(scaUpgrades) : 0;
     const model = getGpuModelName(tier, grade);
-    return model || ('GPU +' + level + '강');
+    return model || tx('omg.gpuLevel', { level }, 'GPU +' + level + '강');
   }
 
   function getGpuAttackPower(gpu, scaUpgrades) {
@@ -1307,20 +1369,23 @@
   function evaluatePartyTierAccess(tierIndex, perfScore, rebirthStat, miningPower) {
     const tier = PARTY_HUNTING_TIERS[tierIndex];
     if (!tier) {
-      return { ok: false, failures: ['존재하지 않는 파티 티어입니다.'], tier: null };
+      return { ok: false, failures: [tx('omg.party.notFound', null, '존재하지 않는 파티 티어입니다.')], tier: null };
     }
     const failures = [];
     const perf = Math.max(0, perfScore || 0);
     const reb = Math.max(0, rebirthStat || 0);
     const mine = Math.max(0, miningPower || 0);
     if (perf < (tier.minPerfScore || 0)) {
-      failures.push(`성능수치 ${tier.minPerfScore}+ 필요 (현재 ${perf})`);
+      failures.push(tx('omg.party.needPerf', { need: tier.minPerfScore, cur: perf },
+        `성능수치 ${tier.minPerfScore}+ 필요 (현재 ${perf})`));
     }
     if (reb < (tier.minRebirthStat || 0)) {
-      failures.push(`환생수치 ${tier.minRebirthStat.toLocaleString()}+ 필요 (현재 ${reb.toLocaleString()})`);
+      failures.push(tx('omg.party.needRebirth', { need: tier.minRebirthStat.toLocaleString(), cur: reb.toLocaleString() },
+        `환생수치 ${tier.minRebirthStat.toLocaleString()}+ 필요 (현재 ${reb.toLocaleString()})`));
     }
     if (mine < (tier.minMiningPower || 0)) {
-      failures.push(`채굴력 ${tier.minMiningPower.toLocaleString()}+ 필요 (현재 ${mine.toLocaleString()})`);
+      failures.push(tx('omg.party.needMining', { need: tier.minMiningPower.toLocaleString(), cur: mine.toLocaleString() },
+        `채굴력 ${tier.minMiningPower.toLocaleString()}+ 필요 (현재 ${mine.toLocaleString()})`));
     }
     return { ok: failures.length === 0, failures, tier };
   }
@@ -1423,12 +1488,13 @@ function getPartLevel(part) {
 
     const failures = [];
     if (ramGb < minRamGb) {
-      failures.push(`RAM ${minRamGb}GB 필요 (현재 ${ramGb}GB)`);
+      failures.push(tx('omg.work.needRam', { need: minRamGb, cur: ramGb }, `RAM ${minRamGb}GB 필요 (현재 ${ramGb}GB)`));
     }
     const maxWorkByRam = Math.floor(ramGb / ramPerUnit);
     const activeWorkUnits = Math.max(0, Math.min(cpuCores, maxWorkByRam));
     if (activeWorkUnits < 1) {
-      failures.push(`작업 유닛 배치 불가 (${ramPerUnit}GB/기 · 코어 ${cpuCores})`);
+      failures.push(tx('omg.work.noCapacity', { per: ramPerUnit, cores: cpuCores },
+        `작업 유닛 배치 불가 (${ramPerUnit}GB/기 · 코어 ${cpuCores})`));
     }
 
     return {
@@ -1459,16 +1525,20 @@ function getPartLevel(part) {
     const cpuCores = getCpuCores(parts && parts.cpu);
     const shield = (parts && parts.motherboard && parts.motherboard.shieldIncrease) || 0;
     if (task.requiredGpuLevel && gpuLevel < task.requiredGpuLevel) {
-      failures.push(`GPU +${task.requiredGpuLevel}강 필요 (현재 +${gpuLevel}강)`);
+      failures.push(tx('omg.work.needGpu', { need: task.requiredGpuLevel, cur: gpuLevel },
+        `GPU +${task.requiredGpuLevel}강 필요 (현재 +${gpuLevel}강)`));
     }
     if (task.requiredRamLevel && ramLevel < task.requiredRamLevel) {
-      failures.push(`RAM +${task.requiredRamLevel}강 필요 (현재 +${ramLevel}강)`);
+      failures.push(tx('omg.work.needRamLevel', { need: task.requiredRamLevel, cur: ramLevel },
+        `RAM +${task.requiredRamLevel}강 필요 (현재 +${ramLevel}강)`));
     }
     if (task.requiredCpuCores && cpuCores < task.requiredCpuCores) {
-      failures.push(`CPU ${task.requiredCpuCores}코어 필요 (현재 ${cpuCores}코어)`);
+      failures.push(tx('omg.work.needCores', { need: task.requiredCpuCores, cur: cpuCores },
+        `CPU ${task.requiredCpuCores}코어 필요 (현재 ${cpuCores}코어)`));
     }
     if (task.requiredShield && shield < task.requiredShield) {
-      failures.push(`유닛 실드 ${task.requiredShield} 필요 (현재 ${shield}) — 메인보드 교체`);
+      failures.push(tx('omg.work.needShield', { need: task.requiredShield, cur: shield },
+        `유닛 실드 ${task.requiredShield} 필요 (현재 ${shield}) — 메인보드 교체`));
     }
     return { ok: failures.length === 0, failures };
   }
@@ -1488,10 +1558,11 @@ function getPartLevel(part) {
     const failures = cap.failures.slice();
     if (!req.ok) failures.push(...req.failures);
     if (cap.ok && (combat.unitDamage <= 0 || kps <= 0)) {
-      failures.push('공격력 부족 — 건물 파괴 불가');
+      failures.push(tx('omg.work.noAttack', null, '공격력 부족 — 건물 파괴 불가'));
     }
     if (cap.ok && kps > 0 && killSec > WORK_PRACTICAL_CLEAR_KILL_SEC) {
-      failures.push(`1기 파괴 ${killSec.toFixed(0)}초 — GPU·공속 강화 필요 (기준 ${WORK_PRACTICAL_CLEAR_KILL_SEC}초)`);
+      failures.push(tx('omg.work.tooSlow', { sec: killSec.toFixed(0), target: WORK_PRACTICAL_CLEAR_KILL_SEC },
+        `1기 파괴 ${killSec.toFixed(0)}초 — GPU·공속 강화 필요 (기준 ${WORK_PRACTICAL_CLEAR_KILL_SEC}초)`));
     }
 
     return {
@@ -1613,14 +1684,14 @@ function getPartLevel(part) {
   }
 
   function validateDownloadStart(parts, unlockedGameIndex, downloadTarget, isDownloading, minerals) {
-    if (isDownloading) return { ok: false, reason: '이미 다운로드가 진행 중입니다.' };
+    if (isDownloading) return { ok: false, reason: tx('omg.dl.inProgress', null, '이미 다운로드가 진행 중입니다.') };
     const meta = getDownloadTargetMeta(downloadTarget);
     if (!meta || meta.gameIndex == null) {
-      return { ok: false, reason: '다운로드할 게임이 없습니다.' };
+      return { ok: false, reason: tx('omg.dl.noGames', null, '다운로드할 게임이 없습니다.') };
     }
     const unlocked = getEffectiveUnlockedGameIndex(unlockedGameIndex);
     if (unlocked !== meta.gameIndex - 1) {
-      return { ok: false, reason: '이전 게임을 다운로드한 뒤에만 다음 게임을 받을 수 있습니다.' };
+      return { ok: false, reason: tx('omg.dl.needPrev', null, '이전 게임을 다운로드한 뒤에만 다음 게임을 받을 수 있습니다.') };
     }
     const storageGb = getStorageCapacityGb(parts && parts.storage);
     const usedGb = calcStorageUsedGb(unlocked);
@@ -1628,12 +1699,17 @@ function getPartLevel(part) {
     if (freeGb < meta.requiredGb) {
       return {
         ok: false,
-        reason: `저장장치 여유 부족 (이번 게임 ${meta.requiredGb}GB 필요 · 여유 ${freeGb}GB / 사용 ${usedGb}GB / 전체 ${storageGb}GB)`,
+        reason: tx('omg.dl.needSpace', { need: meta.requiredGb, free: freeGb, used: usedGb, total: storageGb },
+          `저장장치 여유 부족 (이번 게임 ${meta.requiredGb}GB 필요 · 여유 ${freeGb}GB / 사용 ${usedGb}GB / 전체 ${storageGb}GB)`),
       };
     }
     const cost = meta.mineralCost || 0;
     if ((minerals ?? 0) < cost) {
-      return { ok: false, reason: `게임 다운로드에 필요한 자금이 부족합니다. (필요 ${formatMineral(cost)})` };
+      return {
+        ok: false,
+        reason: tx('omg.dl.needMinerals', { cost: formatMineral(cost) },
+          `게임 다운로드에 필요한 자금이 부족합니다. (필요 ${formatMineral(cost)})`),
+      };
     }
     return { ok: true, reason: '', mineralCost: cost, storageUsedGb: usedGb, storageFreeGb: freeGb, storageCapacityGb: storageGb };
   }
@@ -1827,6 +1903,7 @@ function getPartLevel(part) {
     INTEL_CPU, AMD_CPU, GPU, RAM, COOLER_AIR, COOLER_WATER, HDD, NVME,
     MOTHERBOARDS, WORK_TASKS, GAME_HUNTING, WORK_HUNTING_GROUNDS, WORK_TASK_MOB_SPECS, GAME_HUNT_MOB_SPECS, PARTY_HUNTING_TIERS, SCA_SHOP_ITEMS, DOWNLOAD_TARGETS, GPU_GRADE_PERF_MULT, WORK_PRACTICAL_CLEAR_KILL_SEC,
     getPartTable, getMaxLevel, getTier, getUpgradeCost, getUpgradeProbability, auditUpgradeProbTable, getPartName,
+    getGpuGradeName, getCoolerTierName,
     applyTierStats, getCpuCoolingRequired, getCpuCores, convertMineralsToCoins,
     calcRebirthPerformanceScore, calcRebirthStatGain, calcRebirthScaReward,
     calcRebirthStartMinerals, calcRebirthIncomeMultiplier,

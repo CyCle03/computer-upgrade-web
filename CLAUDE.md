@@ -16,6 +16,14 @@
 - **Tailwind 함정**: 클래스는 소스를 "텍스트로 훑어" 뽑는다. `${cond ? 'text-emerald-300' : 'text-rose-300'}` 처럼 **완성형 문자열**이면 잡히지만 `text-${color}-300` 처럼 **쪼개 조합하면 못 잡아** 조용히 스타일이 빠진다. 새 클래스는 반드시 완성형 분기로 쓸 것(`tailwind.config.js` 참조).
 - **게임 로직/밸런스는 `public/originalMapData.js` = `window.OriginalMapGame` (코드에선 `OMG`)** 전역에 있음. 부품 스펙·수입·공식이 여기 다 들어있고, UI는 이 값을 읽어 그린다.
 - **2D 시각 레이어**: `HuntScene`(사냥)·`WorkScene`(작업) Canvas 2D 씬. 상태값을 읽어 그리기만 하고 게임 로직은 건드리지 않는 게 원칙.
+- **한국어/영어 전환 — `frontend/src/i18n.js`**
+  - **원문은 한국어다.** 유즈맵 복원판이라 부품·작업·유닛 이름이 한국어에서 출발한다. 사전에 키가 없으면 en 이 아니라 **ko 로 되돌아간다**(pet 과 같고, 영어가 원문인 bm·cc 와는 반대).
+  - `t(key, vars, fallback)` / `tOr(key, fallback)` / `setLang` / `toggleLang` / `useLang()`. 최상위 컴포넌트(`App`·`AuthGate`)에서 `useLang()` 을 부르면 언어가 바뀔 때 트리 전체가 다시 그려진다 — **새로고침하지 않는다**(진행 중인 게임을 잃는다).
+  - **전역 스크립트는 이 모듈을 import 할 수 없다.** `originalMapData.js` 는 서버(`src/omgLoader.ts`)가 vm 으로 같은 파일을 읽어 밸런스 공식을 공유하고, `autoSimulator.js` 도 전역 스크립트다. 그래서 i18n 이 `window.PcI18n` **다리**를 깔고, 그쪽 파일들은 호출 시점에 `tx(key, vars, 한국어원문)` 으로 찾아 쓴다. 다리가 없으면(서버·테스트) 원문 한국어가 그대로 나오므로 서버 동작·밸런스 스냅샷은 영향을 받지 않는다.
+  - 그래서 사전의 `omg.*` 키는 **en 만** 둔다. ko 원문은 데이터 표(부품·작업 이름)와 `tx()` 의 fallback 에 이미 있어서, 사전에 복사해 두면 한쪽만 고쳐 어긋난다.
+  - **부품·작업 이름을 표에서 번역하지 않는다.** 세이브(메인보드·다운로드 대상)에 그 값이 그대로 들어가므로, 표는 한국어로 두고 **화면에 낼 때만** index/id 로 사전을 찾는다(`workTaskName`·`gameName`·`partyTierName`·`boardName`).
+  - **수입 로그·AUTO 피드는 문장이 아니라 `{k, v}` 로 쌓는다.** 언어를 바꾸면 이미 쌓인 줄도 따라 바뀐다. 인자 자리에 번역 결과를 넣지 말고 표식으로 넘길 것 — 금액은 `mineral(n)`, 이름은 `{ $k: 'key', key, fallback }`(autoSimulator 의 `LK()`).
+  - 언어 설정은 **localStorage 만** 쓴다(쿠키 금지 — 개인정보처리방침 9.1). 서브도메인 사이는 `?lang=en` 링크로 넘긴다.
 
 **백엔드 — `src/*.ts` (Express + socket.io + Postgres, `tsc` 빌드)**
 - `server.ts`가 `public/`를 정적 서빙 + `/api/auth/*`, `/api/sca/*`, `/api/raid/*`, `/api/state` + socket.io.

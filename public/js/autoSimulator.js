@@ -46,27 +46,36 @@
     return Math.min(...levels);
   }
 
+  /**
+   * 사전 키 표식. 피드·로그는 **키와 인자로 쌓아** 둔 뒤 그릴 때 옮기므로(app.jsx),
+   * 인자 자리에 들어가는 라벨도 문장처럼 표식으로 넘긴다 — 안 그러면 언어를 바꿨을 때
+   * 그 자리만 예전 언어로 남는다. frontend/src/i18n.js 의 resolveVar 가 풀어 준다.
+   */
+  function LK(key) {
+    return { $k: 'key', key };
+  }
+
   function getAutoJobs(ctx) {
     return [
       { type: 'cpu', variantKey: 'Intel', active: ctx.autoBuyCpuByMfr && ctx.autoBuyCpuByMfr.Intel, label: 'Intel CPU' },
       { type: 'cpu', variantKey: 'AMD', active: ctx.autoBuyCpuByMfr && ctx.autoBuyCpuByMfr.AMD, label: 'AMD CPU' },
       { type: 'gpu', variantKey: null, active: ctx.autoBuyGpu, label: 'GPU' },
       { type: 'ram', variantKey: null, active: ctx.autoBuyRam, label: 'RAM' },
-      { type: 'cooler', variantKey: 'air', active: ctx.autoBuyCoolerByKind && ctx.autoBuyCoolerByKind.air, label: '공랭' },
-      { type: 'cooler', variantKey: 'water', active: ctx.autoBuyCoolerByKind && ctx.autoBuyCoolerByKind.water, label: '수랭' },
+      { type: 'cooler', variantKey: 'air', active: ctx.autoBuyCoolerByKind && ctx.autoBuyCoolerByKind.air, label: LK('hw.air') },
+      { type: 'cooler', variantKey: 'water', active: ctx.autoBuyCoolerByKind && ctx.autoBuyCoolerByKind.water, label: LK('hw.water') },
       { type: 'storage', variantKey: 'hdd', active: ctx.autoBuyStorageByKind && ctx.autoBuyStorageByKind.hdd, label: 'HDD' },
       { type: 'storage', variantKey: 'nvme', active: ctx.autoBuyStorageByKind && ctx.autoBuyStorageByKind.nvme, label: 'NVMe' },
     ];
   }
 
-  function disableAutoVariant(ctx, type, variantKey, message) {
+  function disableAutoVariant(ctx, type, variantKey, log) {
     if (type === 'cpu') ctx.autoBuyCpuByMfr = { ...ctx.autoBuyCpuByMfr, [variantKey]: false };
     else if (type === 'cooler') ctx.autoBuyCoolerByKind = { ...ctx.autoBuyCoolerByKind, [variantKey]: false };
     else if (type === 'storage') ctx.autoBuyStorageByKind = { ...ctx.autoBuyStorageByKind, [variantKey]: false };
     else if (type === 'gpu') ctx.autoBuyGpu = false;
     else if (type === 'ram') ctx.autoBuyRam = false;
     ctx.autoFlagsDirty = true;
-    if (message) ctx.logs.push(message);
+    if (log) ctx.logs.push(log);
   }
 
   function pushAutoEvent(ctx, event) {
@@ -91,7 +100,8 @@
       partId: part.id,
       cost: costM,
       label: label || type.toUpperCase(),
-      message: `[AUTO] ${label || type} ${tierName} +${level}강 구매 (−${OMG.formatMineral(costM)})`,
+      msgKey: 'auto.buy',
+      msgVars: { label: label || type.toUpperCase(), name: tierName, level, cost: { $k: 'mineral', n: costM } },
     };
     pushAutoEvent(ctx, event);
     return event;
@@ -114,7 +124,8 @@
         fromLevel: part.level,
         partId,
         label: partLabel,
-        message: `[AUTO] ${partLabel} +${part.level}강 → +${nextLevel}강 성공`,
+        msgKey: 'auto.upgradeOk',
+        msgVars: { label: partLabel, from: part.level, to: nextLevel },
       };
       pushAutoEvent(ctx, event);
       return event;
@@ -127,7 +138,8 @@
       level: part.level,
       partId,
       label: partLabel,
-      message: `[AUTO] ${partLabel} +${part.level}강 파괴`,
+      msgKey: 'auto.exploded',
+      msgVars: { label: partLabel, level: part.level },
     };
     pushAutoEvent(ctx, event);
     return event;
@@ -164,7 +176,7 @@
       const needsShopBuy = buyLevel != null && (owned.length === 0 || maxOwnedLevel < buyLevel);
 
       if (buyLevel == null && owned.length === 0) {
-        disableAutoVariant(ctx, type, variantKey, `⚠️ [AUTO] ${label} 직접 구매 가능한 강 없음 → 중단`);
+        disableAutoVariant(ctx, type, variantKey, { k: 'auto.noBuyable', v: { label } });
         continue;
       }
 
@@ -179,7 +191,7 @@
 
       if (upgradesOnly) {
         if (!needsShopBuy) {
-          disableAutoVariant(ctx, type, variantKey, `🎉 [AUTO] ${label} 목표 ${goal}강 달성`);
+          disableAutoVariant(ctx, type, variantKey, { k: 'auto.goalReached', v: { label, goal } });
         }
         continue;
       }
@@ -194,7 +206,7 @@
         continue;
       }
 
-      disableAutoVariant(ctx, type, variantKey, `🎉 [AUTO] ${label} 목표 ${goal}강 달성`);
+      disableAutoVariant(ctx, type, variantKey, { k: 'auto.goalReached', v: { label, goal } });
     }
 
     if (!anyActive) return { acted: false, reason: 'off' };
@@ -204,10 +216,10 @@
 
   function detectAutoStatus(ctx) {
     if (!hasActiveAuto(ctx)) {
-      return { code: 'off', message: 'AUTO 꺼짐' };
+      return { code: 'off', msgKey: 'auto.statusOff' };
     }
     if (ctx.isUpgrading) {
-      return { code: 'manual', message: '수동 강화 중 — AUTO 일시 정지' };
+      return { code: 'manual', msgKey: 'auto.statusManual' };
     }
 
     let waiting = false;
@@ -226,9 +238,9 @@
       }
     }
 
-    if (canAct) return { code: 'running', message: 'AUTO 진행 중' };
-    if (waiting) return { code: 'waiting', message: '미네랄 부족 — 수입 대기 중' };
-    return { code: 'idle', message: 'AUTO 대기 (목표 달성 또는 작업 없음)' };
+    if (canAct) return { code: 'running', msgKey: 'auto.statusRunning' };
+    if (waiting) return { code: 'waiting', msgKey: 'auto.statusWaiting' };
+    return { code: 'idle', msgKey: 'auto.statusIdle' };
   }
 
   /** 실시간 tick용 — AUTO 간격마다 1스텝씩, 이벤트 수집 */
@@ -309,12 +321,12 @@
     if (!OMG.getPurchasableLevels(type, buyMeta).length) return { success: false };
 
     if (buyLevel == null && !ctx.inventory.some((p) => partMatchesBuyMeta(p, type, buyMeta))) {
-      disableAutoVariant(ctx, type, variantKey, `⚠️ [AUTO] ${label} 직접 구매 가능한 강 없음 → 중단`);
+      disableAutoVariant(ctx, type, variantKey, { k: 'auto.noBuyable', v: { label } });
       return { success: false };
     }
 
     if (isJobGoalReached(ctx.inventory, type, buyMeta, goal)) {
-      disableAutoVariant(ctx, type, variantKey, `🎉 [AUTO] ${label} 목표 ${goal}강 달성`);
+      disableAutoVariant(ctx, type, variantKey, { k: 'auto.goalReached', v: { label, goal } });
       return { success: true, goalReached: true };
     }
 
@@ -359,7 +371,7 @@
         batchUpgrades += 1;
         hadSuccess = true;
         if (inv[idx].level >= goal) {
-          disableAutoVariant(ctx, type, variantKey, `🎉 [AUTO] ${label} 목표 ${goal}강 달성`);
+          disableAutoVariant(ctx, type, variantKey, { k: 'auto.goalReached', v: { label, goal } });
           break;
         }
         continue;
@@ -609,10 +621,10 @@
 
     if (workDeaths > 0 || huntDeaths > 0) {
       if (!ctx.logs) ctx.logs = [];
-      const parts = [];
-      if (workDeaths > 0) parts.push(`작업 ${workDeaths}기 전멸`);
-      if (huntDeaths > 0) parts.push(`사냥 ${huntDeaths}기 전멸`);
-      ctx.logs.push(`⚠️ ${parts.join(' · ')} → ${OMG.HUNT_UNIT_RESPAWN_MS / 1000}초 후 자동 재배치`);
+      const sec = OMG.HUNT_UNIT_RESPAWN_MS / 1000;
+      // 문장을 조각내 이어붙이면 옮길 자리가 없어진다 — 경우별로 통문장 키를 쓴다.
+      const k = workDeaths > 0 && huntDeaths > 0 ? 'auto.wipeBoth' : workDeaths > 0 ? 'auto.wipeWork' : 'auto.wipeHunt';
+      ctx.logs.push({ k, v: { work: workDeaths, hunt: huntDeaths, sec } });
       if (ctx.logs.length > 8) ctx.logs.shift();
     }
 
