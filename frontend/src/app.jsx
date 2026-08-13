@@ -2636,7 +2636,6 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
         const cpuHeatDemand = OMG.getCpuCoolingRequired(cpu);
         return cpuHeatDemand > cooler.coolingCapacity ? 0.5 : 1.0;
       }, [cpu, cooler]);
-      const currentWorkTask = useMemo(() => OMG.getWorkTask(workTaskIndex), [workTaskIndex]);
       const effectiveUnlockedGameIndex = useMemo(
         () => OMG.getEffectiveUnlockedGameIndex(unlockedGameIndex),
         [unlockedGameIndex]
@@ -3027,8 +3026,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
       // ----------------------------------------------------------------------
       // 7. V1.2.9 원작 강화 (미네랄 상점)
       // ----------------------------------------------------------------------
-      const getUpgradeCost = (type, level, part) => OMG.getUpgradeCost(type, level, part || { type });
-      const getUpgradeProbability = (type, level, part) => OMG.getUpgradeProbability(type, level, part || { type }, probBonusRate);
+      const getUpgradeProbability =(type, level, part) => OMG.getUpgradeProbability(type, level, part || { type }, probBonusRate);
 
       const adjustAutoTarget = (type, delta, variantKey = null) => {
         setAutoTargetLevels((prev) => {
@@ -3095,22 +3093,6 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
         return typeof v === 'number' ? v : 1;
       };
 
-      const setVariantAutoBuyOff = (type, variantKey) => {
-        if (type === 'cpu') setAutoBuyCpuByMfr((prev) => ({ ...prev, [variantKey]: false }));
-        else if (type === 'cooler') setAutoBuyCoolerByKind((prev) => ({ ...prev, [variantKey]: false }));
-        else if (type === 'storage') setAutoBuyStorageByKind((prev) => ({ ...prev, [variantKey]: false }));
-        else if (type === 'gpu') setAutoBuyGpu(false);
-        else if (type === 'ram') setAutoBuyRam(false);
-      };
-
-      const getShopSelectedBuyLevel = (type) => {
-        const buyMeta = getComponentBuyMeta(type);
-        const levels = OMG.getPurchasableLevels(type, buyMeta);
-        if (!levels.length) return 1;
-        const idx = Math.min(buyLevelIndex[type] || 0, levels.length - 1);
-        return levels[idx];
-      };
-
       /** AUTO: 목표 강 미만 중 상점 직접구매 가능한 최고 강 */
       const getAutoBuyLevel = (type, goal, buyMetaOverride) => {
         const buyMeta = buyMetaOverride || getComponentBuyMeta(type);
@@ -3146,7 +3128,6 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
           const data = await GameSync.purchaseScaItem(item.id);
           setScaCoins(data.scaCoins);
           setScaUpgrades(data.scaUpgrades || {});
-          const nextBought = (data.scaUpgrades && data.scaUpgrades[item.id]) || bought + 1;
           if (item.id === 'gpuGradeUp') {
             const g = OMG.getGpuGradeLevel(data.scaUpgrades || {});
             pushToast(t('sca.toastGpuGrade', { grade: OMG.getGpuGradeName(g) }), 'success', 2500);
@@ -3292,7 +3273,6 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
         // download state cleared on rebirth below via setIsDownloading(false)
         if (!confirm(t('rebirth.confirm'))) return;
         const parts = { cpu, gpu, ram, cooler, storage };
-        const outcome = OMG.calcRebirthOutcome(parts, rebirthStat);
         const startMinerals = OMG.calcRebirthStartMinerals(scaUpgrades);
         if (!GameSync.hasSession()) {
           alert(t('rebirth.needLogin'));
@@ -3725,7 +3705,6 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           runIdleSimulation(elapsed);
 
           const s = gameStateRef.current;
-          const rem = tickRemainderRef.current;
 
           if (s.isDownloading && s.downloadTarget && s.downloadStartedAt) {
             const dlTickMs = Math.max(20, OMG.calcGameSpeedTickMs(s.scaUpgrades, 100));
@@ -3774,53 +3753,53 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
                 const totalDmg = netDmgPerSec * sec;
 
                 if (totalDmg > 0) {
-                let curShield = s.overclockLabShield !== undefined ? s.overclockLabShield : spec.shield;
-                let curHp = s.overclockLabHp !== undefined ? s.overclockLabHp : spec.hp;
+                  let curShield = s.overclockLabShield !== undefined ? s.overclockLabShield : spec.shield;
+                  let curHp = s.overclockLabHp !== undefined ? s.overclockLabHp : spec.hp;
 
-                if (curShield > 0) {
-                  if (totalDmg >= curShield) {
-                    const carryDmg = totalDmg - curShield;
-                    curShield = 0;
-                    curHp = Math.max(0, curHp - carryDmg);
-                  } else {
-                    curShield -= totalDmg;
-                  }
-                } else {
-                  curHp = Math.max(0, curHp - totalDmg);
-                }
-
-                s.overclockLabHp = curHp;
-                s.overclockLabShield = curShield;
-                setOverclockLabHp(curHp);
-                setOverclockLabShield(curShield);
-
-                if (curHp <= 0) {
-                  const dropRoll = Math.random() < 0.3;
-                  if (dropRoll) {
-                    const dropPart = generateOverclockPart(farmLvl);
-                    const stock = Array.isArray(s.overclockData.overclockParts) ? s.overclockData.overclockParts : [];
-                    if (stock.length >= 30) {
-                      setCombatLogs((prev) => [...prev.slice(-7), { k: 'log.vaultFull' }]);
+                  if (curShield > 0) {
+                    if (totalDmg >= curShield) {
+                      const carryDmg = totalDmg - curShield;
+                      curShield = 0;
+                      curHp = Math.max(0, curHp - carryDmg);
                     } else {
-                      s.overclockData.overclockParts = [...stock, dropPart];
-                      setOverclockData({ ...s.overclockData });
-                      // 세대는 보이되 목표 클럭(성능)은 강화 성공 전까지 비공개
-                      setCombatLogs((prev) => [...prev.slice(-7), {
-                        k: 'log.labDrop',
-                        v: { lv: farmLvl, gen: dropPart.generation, count: stock.length + 1 },
-                      }]);
+                      curShield -= totalDmg;
                     }
                   } else {
-                    setCombatLogs((prev) => [...prev.slice(-7), { k: 'log.labNoDrop', v: { lv: farmLvl } }]);
+                    curHp = Math.max(0, curHp - totalDmg);
                   }
 
-                  s.overclockLabCooldown = OMG.OVERCLOCK_LAB_RESPAWN_SEC;
-                  s.overclockLabHp = 0;
-                  s.overclockLabShield = 0;
-                  setOverclockLabCooldown(OMG.OVERCLOCK_LAB_RESPAWN_SEC);
-                  setOverclockLabHp(0);
-                  setOverclockLabShield(0);
-                }
+                  s.overclockLabHp = curHp;
+                  s.overclockLabShield = curShield;
+                  setOverclockLabHp(curHp);
+                  setOverclockLabShield(curShield);
+
+                  if (curHp <= 0) {
+                    const dropRoll = Math.random() < 0.3;
+                    if (dropRoll) {
+                      const dropPart = generateOverclockPart(farmLvl);
+                      const stock = Array.isArray(s.overclockData.overclockParts) ? s.overclockData.overclockParts : [];
+                      if (stock.length >= 30) {
+                        setCombatLogs((prev) => [...prev.slice(-7), { k: 'log.vaultFull' }]);
+                      } else {
+                        s.overclockData.overclockParts = [...stock, dropPart];
+                        setOverclockData({ ...s.overclockData });
+                        // 세대는 보이되 목표 클럭(성능)은 강화 성공 전까지 비공개
+                        setCombatLogs((prev) => [...prev.slice(-7), {
+                          k: 'log.labDrop',
+                          v: { lv: farmLvl, gen: dropPart.generation, count: stock.length + 1 },
+                        }]);
+                      }
+                    } else {
+                      setCombatLogs((prev) => [...prev.slice(-7), { k: 'log.labNoDrop', v: { lv: farmLvl } }]);
+                    }
+
+                    s.overclockLabCooldown = OMG.OVERCLOCK_LAB_RESPAWN_SEC;
+                    s.overclockLabHp = 0;
+                    s.overclockLabShield = 0;
+                    setOverclockLabCooldown(OMG.OVERCLOCK_LAB_RESPAWN_SEC);
+                    setOverclockLabHp(0);
+                    setOverclockLabShield(0);
+                  }
                 }
               }
             }

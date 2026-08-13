@@ -73,7 +73,9 @@ npm run jsxcheck            # frontend/src/app.jsx 구문 게이트(TS 파서) �
 
 - 커밋 메시지·주석은 **한국어**, `feat:`/`fix:`/`docs:`/`ci:` 접두.
 - **프론트는 타입체크가 없다**(esbuild는 트랜스파일만) — `app.jsx` 편집 후 `npm run build:frontend`(또는 `npm run jsxcheck`)로 구문 게이트를 먼저 통과시키고, 최종은 실제 로드로 확인.
+- 백엔드는 `tsconfig` 에 `noUnusedLocals`/`noUnusedParameters` 가 켜져 있다. 안 쓰는 지역 변수·인자가 남으면 `tsc`(= `npm run build`)가 막는다. 인터페이스상 필요하지만 안 쓰는 인자는 `_req` 처럼 `_` 를 붙일 것. 프론트에는 이 그물이 없으니 `app.jsx` 는 눈으로 걷어내야 한다.
 - 웹폰트는 셀프 호스팅(`public/fonts/*.woff2`). 폰트를 바꿀 때만 `node scripts/vendor-fonts.js` 를 다시 돌리고 결과물을 커밋한다.
 - `express.static` 은 **`cors` 미들웨어보다 앞**에 있어야 한다. 웹폰트는 same-origin이어도 브라우저가 CORS 모드로 받아 `Origin` 헤더를 붙이므로, 순서가 뒤집히면 허용 목록에 없는 도메인에서 woff2가 500으로 떨어진다.
 - `StorageType`은 백엔드 타입상 `'HDD' | 'SSD'`만 존재(‘NVMe’는 프론트 표기용 텍스트). 서버 부품 객체에 `'NVMe'` 쓰면 컴파일 에러.
 - `tsconfig`는 `src/**/*`만 빌드 → `scripts/*.ts`는 ts-node로만 실행(빌드에 안 들어감).
+- `scripts/*.py` 는 **원본 `.scx` 에서 값을 뽑아 `docs/` 를 만드는 일회성 도구**다(`extract_*`·`build_map_extract_doc`·`compare_map_spreadsheet`·`dump_map_context`, PKWARE 압축 해제는 `_vendor/`). `.scx` 가 저장소에 있어 재현은 되지만 앱 실행 경로와는 무관하다. 예전에 `public/index.html` 을 직접 기워넣던 패치 스크립트들이 함께 있었는데, index.html 이 껍데기가 되고 UI 가 `app.jsx` 번들로 옮겨간 뒤로는 돌릴 수 없는 코드라 지웠다.

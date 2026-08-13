@@ -6,6 +6,10 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
+    // 죽은 지역 변수·인자를 빌드에서 잡는다. 프론트(esbuild)는 타입체크가 없으니
+    // 최소한 서버 쪽만이라도 조용히 쌓이지 않게 한다. 의도적으로 안 쓰는 인자는 `_` 접두.
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,

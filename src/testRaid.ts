@@ -32,7 +32,7 @@ async function runRaidSimulation() {
   console.log('==================================================');
 
   // 1. 테스트 전용 독립 HTTP 서버 및 Socket.io 기동
-  const server = createServer((req, res) => {
+  const server = createServer((_req, res) => {
     res.writeHead(200);
     res.end('Raid Test Server');
   });

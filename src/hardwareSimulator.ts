@@ -16,7 +16,7 @@ export class HardwareSimulator {
   static calculateComputerSpecs(parts: ComputerParts, scaUpgrades?: any): ComputerSpecs {
     const OMG = loadOmg();
 
-    const { cpu, gpu, cooler, motherboard, storage } = parts;
+    const { cpu, cooler, motherboard, storage } = parts;
     let ram = parts.ram;
 
     if (ram && scaUpgrades) {
