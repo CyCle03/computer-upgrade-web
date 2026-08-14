@@ -1052,37 +1052,20 @@ export function tOr(key, fallback, vars) {
 }
 
 /**
- * 서버가 보낸 오류 문구를 현재 언어로 옮긴다.
+ * 이 게임 백엔드(src/*.ts)가 보낸 오류 문구를 현재 언어로 옮긴다.
  *
- * 백엔드(src/*.ts)와 통합 인증(auth.elcherlab.com)은 한국어 문장을 그대로 내려준다.
- * 화면은 그걸 `err.message` 로 받아 그대로 뿌리므로, 영어로 보는 사람에게도
- * 한국어가 나갔다 — 로그인 실패 문구가 대표적이다. 서버를 다국어로 만들면 사업자
- * 한 곳(auth)이 모든 앱의 언어를 알아야 하므로, 받는 쪽에서 문장으로 맞춘다.
+ * 백엔드는 한국어 문장을 그대로 내려주고 화면은 그걸 `err.message` 로 받아 뿌리므로,
+ * 영어로 보는 사람에게 한국어가 나갔다. 백엔드에 언어 협상을 넣는 대신 받는 쪽에서
+ * 문장으로 맞춘다 — 이 서버는 이 앱만 쓰므로 표가 갈라질 일이 없다.
  *
- * 문장이 키다. 서버 문구를 고치면 여기도 같이 고쳐야 하고, 없는 문장은 원문
- * 그대로 나간다(비어 있는 화면보다는 낫다). cc·pet·bm 과 같은 방식이다.
+ * **통합 인증(auth) 문구는 여기 두지 않는다.** auth 가 `?lang=` 을 보고 직접 그 언어로
+ * 내려준다(elcherlab-auth 의 src/messages.js). 예전에는 앱마다 auth 표를 한 벌씩 들고
+ * 있었는데(다섯 벌), 사업자는 하나인데 표가 다섯이라 문구를 고칠 때마다 어긋났다.
+ *
+ * 문장이 키다. 백엔드 문구를 고치면 여기도 같이 고쳐야 하고, 없는 문장은 원문 그대로
+ * 나간다(비어 있는 화면보다는 낫다).
  */
 const SERVER_ERRORS_EN = {
-  // ── 통합 인증(auth.elcherlab.com) ──
-  '가입 처리 중 오류가 발생했습니다.': 'Something went wrong while signing up.',
-  '로그인 처리 중 오류가 발생했습니다.': 'Something went wrong while signing in.',
-  '로그인이 필요합니다.': 'You need to sign in.',
-  '만 14세 이상인지 확인해 주세요. 만 14세 미만은 가입할 수 없습니다.':
-    'Please confirm you are 14 or older. Under-14s cannot sign up.',
-  '비밀번호 변경 중 오류가 발생했습니다.': 'Something went wrong while changing your password.',
-  '비밀번호가 올바르지 않습니다.': 'That password is not correct.',
-  '비밀번호는 6자 이상이어야 합니다.': 'The password must be at least 6 characters.',
-  '새 비밀번호는 6자 이상이어야 합니다.': 'The new password must be at least 6 characters.',
-  '시도가 너무 잦습니다. 잠시 후 다시 시도하세요.': 'Too many attempts. Please try again in a moment.',
-  '아이디 또는 비밀번호가 올바르지 않습니다.': 'That ID or password is not correct.',
-  '아이디는 영문·숫자·밑줄 3~20자여야 합니다.':
-    'The ID must be 3-20 characters: letters, digits or underscore.',
-  '아이디와 비밀번호를 입력하세요.': 'Enter your ID and password.',
-  '이미 사용 중인 아이디입니다.': 'That ID is already taken.',
-  '지금 쓰는 비밀번호와 같습니다.': 'That is the password you are already using.',
-  '탈퇴 처리 중 오류가 발생했습니다.': 'Something went wrong while deleting your account.',
-  '현재 비밀번호가 올바르지 않습니다.': 'Your current password is not correct.',
-
   // ── 이 게임의 백엔드(src/*.ts) ──
   'GPU 10강 이상이어야 환생할 수 있습니다.': 'Your GPU must be +10 or higher to rebirth.',
   'SCA 상점 구매 처리 중 오류가 발생했습니다.': 'Something went wrong with the SCA shop purchase.',
