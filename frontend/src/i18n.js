@@ -1094,6 +1094,19 @@ const SERVER_ERRORS_EN = {
   '파티 티어 해금 조건을 충족하지 않습니다.': 'You do not meet the unlock conditions for that party tier.',
   '환생 SCA 지급 중 오류가 발생했습니다.': 'Something went wrong while paying out rebirth SCA.',
   '환생 SCA가 지급되었습니다.': 'Rebirth SCA has been paid out.',
+  '로그인이 필요합니다.': 'You need to sign in.',
+  '방 입장 도중 오류가 발생했습니다.': 'Something went wrong while joining the room.',
+  '지급할 파티 틱이 없습니다.': 'There are no party ticks to pay out.',
+  '진행도 저장 중 오류가 발생했습니다.': 'Something went wrong while saving your progress.',
+  '진행도 조회 중 오류가 발생했습니다.': 'Something went wrong while loading your progress.',
+  '존재하지 않는 상점 항목입니다.': 'That shop item does not exist.',
+  // 아래 넷은 요청이 잘못 만들어졌을 때만 나온다(정상 조작으로는 닿지 않는다).
+  // 그래도 화면에 뜨는 경로라 비워 두지 않는다.
+  'userId 가 필요합니다.': 'A userId is required.',
+  '상점 항목 ID(itemId)가 필요합니다.': 'A shop item id (itemId) is required.',
+  '환생 부품 정보(parts)가 필요합니다.': 'Rebirth part info (parts) is required.',
+  '달성한 층수(currentFloor)는 숫자 타입으로 입력해야 합니다.':
+    'The floor reached (currentFloor) must be a number.',
 };
 
 /** 서버 문구를 현재 언어로. 한국어이거나 모르는 문장이면 원문 그대로. */
