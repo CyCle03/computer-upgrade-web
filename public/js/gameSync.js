@@ -27,6 +27,25 @@
   const SYNC_EXCLUDE = new Set([AUTH_TOKEN_KEY, LOGGED_IN_KEY, ...SERVER_ONLY_STATE_KEYS]);
 
   // 통합 인증 주소는 서버가 내려준다(하드코딩하면 개발 환경에서 어긋난다).
+  /**
+   * auth 에 넘길 `?lang=`. auth 가 오류 문구를 이 언어로 내려준다.
+   *
+   * 헤더가 아니라 쿼리인 이유: auth 는 다른 오리진이라 커스텀 헤더를 붙이면
+   * 프리플라이트가 뜨는데 auth 는 Content-Type 만 허용한다(gm 이 X-Lang 을 붙였다가
+   * 로그인이 통째로 막힌 적이 있다). 쿼리는 CORS 를 건드리지 않는다.
+   *
+   * 이 파일은 전역 스크립트라 i18n 모듈을 import 할 수 없다 — 다리(window.PcI18n)를
+   * 호출 시점에 찾는다. 다리가 없으면(서버·테스트) 한국어로 둔다.
+   */
+  function authLangQuery() {
+    try {
+      const lang = window.PcI18n && window.PcI18n.lang && window.PcI18n.lang();
+      return lang === 'en' ? '?lang=en' : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   let authOriginPromise = null;
   function authOrigin() {
     if (!authOriginPromise) {
@@ -106,7 +125,7 @@
     /** 가입·로그인은 통합 인증이 처리하고 쿠키를 발급한다(다른 출처 → credentials 필요). */
     async _authRequest(path, username, password, extra) {
       const origin = await authOrigin();
-      const res = await fetch(origin + path, {
+      const res = await fetch(origin + path + authLangQuery(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password, ...(extra || {}) }),
@@ -129,7 +148,7 @@
       // 세션 쿠키는 .elcherlab.com 도메인이라 통합 인증이 지운다.
       try {
         const origin = await authOrigin();
-        await fetch(origin + '/api/logout', { method: 'POST', credentials: 'include' });
+        await fetch(origin + '/api/logout' + authLangQuery(), { method: 'POST', credentials: 'include' });
       } catch (e) { /* best-effort */ }
       this.clearAuth();
     },
