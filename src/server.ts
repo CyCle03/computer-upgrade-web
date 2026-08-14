@@ -112,17 +112,26 @@ app.post('/internal/export-user', ensureDb, async (req: Request, res: Response) 
   if (!verifyInternal(req.headers['x-internal-auth'])) {
     return res.status(403).json({ success: false, message: 'forbidden' });
   }
-  const userId = (req.body as { userId?: unknown } | undefined)?.userId;
+  const body = req.body as { userId?: unknown; lang?: unknown } | undefined;
+  const userId = body?.userId;
   if (typeof userId !== 'string' || !userId) {
     return res.status(400).json({ success: false, message: 'userId 가 필요합니다.' });
   }
+  // 열람권 문서의 키는 언어별로 아예 다른 한 벌이다. 받아서 보관하는 파일이라
+  // 같은 키를 언어에 따라 바꾸면 이미 받아 둔 파일과 형식이 갈린다.
+  // lang 은 auth 가 본문에 실어 보낸다(모르는 값이면 한국어).
+  const en = body?.lang === 'en';
   try {
     const u = await pool.query(
       'SELECT id, nickname, created_at FROM users WHERE identity_id = $1',
       [userId]
     );
     if (!u.rowCount) {
-      return res.json({ 서비스: '컴퓨터 강화하기 (pc.elcherlab.com)', 저장된데이터: null });
+      return res.json(
+        en
+          ? { service: 'PC Upgrade (pc.elcherlab.com)', storedData: null }
+          : { 서비스: '컴퓨터 강화하기 (pc.elcherlab.com)', 저장된데이터: null }
+      );
     }
     const localId = u.rows[0].id;
     const [state, perm, ingame, raid] = await Promise.all([
@@ -131,6 +140,16 @@ app.post('/internal/export-user', ensureDb, async (req: Request, res: Response) 
       pool.query('SELECT * FROM in_game_currencies WHERE user_id = $1', [localId]),
       pool.query('SELECT * FROM daily_raid_progresses WHERE user_id = $1', [localId]),
     ]);
+    if (en) {
+      return res.json({
+        service: 'PC Upgrade (pc.elcherlab.com)',
+        account: { inGameNickname: u.rows[0].nickname, createdAt: u.rows[0].created_at },
+        gameProgress: state.rows[0] || null,
+        permanentCurrency: perm.rows[0] || null,
+        inGameCurrency: ingame.rows[0] || null,
+        dailyRaidProgress: raid.rows[0] || null,
+      });
+    }
     return res.json({
       서비스: '컴퓨터 강화하기 (pc.elcherlab.com)',
       계정: { 게임내닉네임: u.rows[0].nickname, 생성일: u.rows[0].created_at },
