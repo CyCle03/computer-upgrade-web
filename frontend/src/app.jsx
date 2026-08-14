@@ -16,7 +16,7 @@
  */
 import React from 'react';
 import * as ReactDOM from 'react-dom/client';
-import { t, tOr, getLang, setLang, toggleLang, useLang, mineral } from './i18n.js';
+import { t, tOr, getLang, setLang, toggleLang, useLang, mineral, translateServerError } from './i18n.js';
 
 /**
  * 개발용 로그. 배포본에서는 아무 것도 찍지 않는다.
@@ -2033,7 +2033,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
         });
 
         socketCon.on('connect_error', (err) => {
-          setErrorMessage(err.message || t('raid.connectFail'));
+          setErrorMessage(translateServerError(err.message) || t('raid.connectFail'));
         });
 
         socketCon.on('room_state', (state) => {
@@ -3143,7 +3143,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
             pushToast(t('sca.toastRebirthMineral', { n: item.mineralBonus }), 'success', 2500);
           }
         } catch (err) {
-          alert(err.message || t('sca.buyFail'));
+          alert(translateServerError(err.message) || t('sca.buyFail'));
         }
       };
 
@@ -3282,7 +3282,7 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
         try {
           rebirthData = await GameSync.claimRebirth(parts);
         } catch (err) {
-          alert(err.message || t('rebirth.fail'));
+          alert(translateServerError(err.message) || t('rebirth.fail'));
           return;
         }
         setScaCoins(rebirthData.scaCoins);
@@ -4052,7 +4052,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           setIsSettingsOpen(false);
           window.location.reload();
         } catch (err) {
-          alert(err.message || t('settings.resetFail'));
+          alert(translateServerError(err.message) || t('settings.resetFail'));
           setIsResettingAccount(false);
         }
       };
@@ -4462,7 +4462,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             if (/UNAUTHORIZED/.test(e.message || '')) {
               if (hadLocalMark) setError(t('auth.expired'));
             } else {
-              setError(e.message || t('auth.loadFail'));
+              setError(translateServerError(e.message) || t('auth.loadFail'));
             }
             setPhase('auth');
           }
@@ -4496,7 +4496,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
           }
           setPhase('ready');
         } catch (err) {
-          setError(err.message || t('auth.genericError'));
+          setError(translateServerError(err.message) || t('auth.genericError'));
         } finally {
           setLoading(false);
         }

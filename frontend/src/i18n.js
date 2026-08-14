@@ -1051,6 +1051,74 @@ export function tOr(key, fallback, vars) {
   return fill(s, vars);
 }
 
+/**
+ * 서버가 보낸 오류 문구를 현재 언어로 옮긴다.
+ *
+ * 백엔드(src/*.ts)와 통합 인증(auth.elcherlab.com)은 한국어 문장을 그대로 내려준다.
+ * 화면은 그걸 `err.message` 로 받아 그대로 뿌리므로, 영어로 보는 사람에게도
+ * 한국어가 나갔다 — 로그인 실패 문구가 대표적이다. 서버를 다국어로 만들면 사업자
+ * 한 곳(auth)이 모든 앱의 언어를 알아야 하므로, 받는 쪽에서 문장으로 맞춘다.
+ *
+ * 문장이 키다. 서버 문구를 고치면 여기도 같이 고쳐야 하고, 없는 문장은 원문
+ * 그대로 나간다(비어 있는 화면보다는 낫다). cc·pet·bm 과 같은 방식이다.
+ */
+const SERVER_ERRORS_EN = {
+  // ── 통합 인증(auth.elcherlab.com) ──
+  '가입 처리 중 오류가 발생했습니다.': 'Something went wrong while signing up.',
+  '로그인 처리 중 오류가 발생했습니다.': 'Something went wrong while signing in.',
+  '로그인이 필요합니다.': 'You need to sign in.',
+  '만 14세 이상인지 확인해 주세요. 만 14세 미만은 가입할 수 없습니다.':
+    'Please confirm you are 14 or older. Under-14s cannot sign up.',
+  '비밀번호 변경 중 오류가 발생했습니다.': 'Something went wrong while changing your password.',
+  '비밀번호가 올바르지 않습니다.': 'That password is not correct.',
+  '비밀번호는 6자 이상이어야 합니다.': 'The password must be at least 6 characters.',
+  '새 비밀번호는 6자 이상이어야 합니다.': 'The new password must be at least 6 characters.',
+  '시도가 너무 잦습니다. 잠시 후 다시 시도하세요.': 'Too many attempts. Please try again in a moment.',
+  '아이디 또는 비밀번호가 올바르지 않습니다.': 'That ID or password is not correct.',
+  '아이디는 영문·숫자·밑줄 3~20자여야 합니다.':
+    'The ID must be 3-20 characters: letters, digits or underscore.',
+  '아이디와 비밀번호를 입력하세요.': 'Enter your ID and password.',
+  '이미 사용 중인 아이디입니다.': 'That ID is already taken.',
+  '지금 쓰는 비밀번호와 같습니다.': 'That is the password you are already using.',
+  '탈퇴 처리 중 오류가 발생했습니다.': 'Something went wrong while deleting your account.',
+  '현재 비밀번호가 올바르지 않습니다.': 'Your current password is not correct.',
+
+  // ── 이 게임의 백엔드(src/*.ts) ──
+  'GPU 10강 이상이어야 환생할 수 있습니다.': 'Your GPU must be +10 or higher to rebirth.',
+  'SCA 상점 구매 처리 중 오류가 발생했습니다.': 'Something went wrong with the SCA shop purchase.',
+  '게임 진행도를 찾을 수 없습니다.': 'Could not find your saved progress.',
+  '계정 초기화 중 오류가 발생했습니다.': 'Something went wrong while resetting your account.',
+  '계정이 초기화되었습니다.': 'Your account has been reset.',
+  '구매가 완료되었습니다.': 'Purchase complete.',
+  '데이터베이스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.':
+    'Cannot reach the database. Please try again in a moment.',
+  '레이드 진행도를 불러오지 못했습니다.': 'Could not load your raid progress.',
+  '보상이 정상적으로 지급되었습니다.': 'Your reward has been paid out.',
+  '삭제 중 오류가 발생했습니다.': 'Something went wrong while deleting.',
+  '서버 내부 오류가 발생하여 보상 처리에 실패했습니다.':
+    'An internal server error stopped the reward from being paid out.',
+  '아직 다음 파티 SCA 틱 시각이 되지 않았습니다.': 'The next party SCA tick is not due yet.',
+  '올바르지 않은 층수입니다. 10층 단위(10~100)로만 클리어할 수 있습니다.':
+    'That floor is not valid. Floors clear in steps of 10 (10-100).',
+  '올바르지 않은 파티 티어입니다.': 'That party tier is not valid.',
+  '이미 해당 층수 이하의 모든 마일스톤 보상을 수령하셨습니다.':
+    'You have already claimed every milestone reward up to that floor.',
+  '조회 중 오류가 발생했습니다.': 'Something went wrong while loading.',
+  '파티 SCA 지급 중 오류가 발생했습니다.': 'Something went wrong while paying out party SCA.',
+  '파티 SCA가 지급되었습니다.': 'Party SCA has been paid out.',
+  '파티 사냥 타이머가 시작되었습니다.': 'The party hunt timer has started.',
+  '파티 타이머 시작 중 오류가 발생했습니다.': 'Something went wrong while starting the party timer.',
+  '파티 티어 해금 조건을 충족하지 않습니다.': 'You do not meet the unlock conditions for that party tier.',
+  '환생 SCA 지급 중 오류가 발생했습니다.': 'Something went wrong while paying out rebirth SCA.',
+  '환생 SCA가 지급되었습니다.': 'Rebirth SCA has been paid out.',
+};
+
+/** 서버 문구를 현재 언어로. 한국어이거나 모르는 문장이면 원문 그대로. */
+export function translateServerError(msg) {
+  if (lang === 'ko' || !msg) return msg;
+  return SERVER_ERRORS_EN[msg] || msg;
+}
+
 const listeners = new Set();
 
 export function setLang(next) {
