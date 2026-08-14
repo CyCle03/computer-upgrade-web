@@ -200,6 +200,15 @@ Content-Type: application/json
 > If the production database still has the old reward RPC (10 coins per 10 floors), apply
 > `scripts/migrate_raid_rewards.sql` and then redeploy on Render.
 
+### The data-export document (`/internal/export-user`)
+
+This is the internal route the single sign-on service calls for "download my data". The document
+comes in **two versions, Korean and English**: if the `lang` in the request body is `en` it answers
+with English keys (anything else answers in Korean). The keys are not translated on the fly because
+this is a file you download and keep — a key that changed with the language would no longer line up
+with copies you already saved. The **rows themselves** (game progress, currencies) keep their DB
+column names.
+
 ## Socket.io events
 
 | Event (client → server) | Description |
