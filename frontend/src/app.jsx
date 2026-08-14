@@ -4612,7 +4612,7 @@ setCpu({ manufacturer: 'Intel', level: 1, ddrGeneration: 'DDR3' });
             <div className="text-center text-[11px] text-slate-500 font-mono space-x-2">
               <a href="https://elcherlab.com/terms.html" target="_blank" rel="noopener noreferrer" className="underline">{t('auth.terms')}</a>
               <a href="https://elcherlab.com/privacy.html" target="_blank" rel="noopener noreferrer" className="underline">{t('auth.privacy')}</a>
-              <a href="https://auth.elcherlab.com/account" target="_blank" rel="noopener noreferrer" className="underline">{t('auth.myAccount')}</a>
+              <a href={`https://auth.elcherlab.com/account?lang=${getLang()}`} target="_blank" rel="noopener noreferrer" className="underline">{t('auth.myAccount')}</a>
             </div>
           </div>
         </div>
