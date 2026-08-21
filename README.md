@@ -45,6 +45,7 @@
 .
 ├── frontend/src/
 │   ├── app.jsx             # 웹 복원판 대시보드 (React SPA, UI 전부)
+│   ├── i18n.js             # 한국어/영어 사전과 전환 (원문은 한국어)
 │   ├── styles.css          # Tailwind 지시자 + 커스텀 CSS
 │   └── fonts.css           # 셀프 호스팅 웹폰트 (vendor-fonts.js 생성물)
 ├── public/
@@ -52,8 +53,10 @@
 │   ├── build/              # 번들 산출물 app.js·app.css (gitignore, 배포 시 빌드)
 │   ├── fonts/              # 셀프 호스팅 woff2
 │   ├── js/gameSync.js      # 로그인·진행도 동기화 헬퍼
+│   ├── js/autoSimulator.js # AUTO·방치 수입 시뮬 (자동 구매 판정도 여기 한 벌)
 │   └── originalMapData.js  # V1.2.9 부품·상점·작업·사냥 데이터
 ├── docs/
+│   ├── map-extract-v1.2.9.md
 │   ├── original-map-v1.2.9.md
 │   └── spreadsheet-prices-v1.2.9.md
 ├── src/

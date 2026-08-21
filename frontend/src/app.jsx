@@ -3069,23 +3069,12 @@ const debugLog = (...args) => { if (DEBUG_ENABLED) console.log(...args); };
         storageKind: type === 'storage' ? storageBuyKind : undefined,
       });
 
-      const buildBuyMetaForVariant = (type, variantKey) => {
-        if (type === 'cpu') return { manufacturer: variantKey };
-        if (type === 'cooler') return { coolerKind: variantKey };
-        if (type === 'storage') return { storageKind: variantKey };
-        return {};
-      };
-
-      const partMatchesBuyMeta = (part, type, buyMeta) => {
-        if (!part || part.type !== type) return false;
-        if (type === 'cpu') return (part.manufacturer || 'Intel') === (buyMeta.manufacturer || 'Intel');
-        if (type === 'cooler') return (part.coolerKind || 'air') === (buyMeta.coolerKind || 'air');
-        if (type === 'storage') {
-          const kind = part.storageKind || (part.storageType === 'SSD' ? 'nvme' : 'hdd');
-          return kind === (buyMeta.storageKind || 'hdd');
-        }
-        return true;
-      };
+      // 자동 구매의 '같은 부품인가' 판정과 변종 메타는 autoSimulator.js 한 벌만 쓴다.
+      // 여기에 똑같은 것을 따로 두고 있었는데, 한쪽만 고치면 "화면에는 살 수 있다고
+      // 나오는데 AUTO 는 안 사는" 식으로 갈린다. 전역 스크립트라 import 는 못 하고
+      // window.AutoSimulator 다리로 받는다(파일 상단 '전역 의존' 참고).
+      // 다리가 없어도 렌더가 죽지 않게 받아만 둔다 — 그 경우 AUTO 자체가 동작하지 않는다.
+      const { partMatchesBuyMeta, buildBuyMetaForVariant } = window.AutoSimulator || {};
 
       const getVariantAutoTarget = (type, variantKey) => {
         const v = autoTargetLevels[type];

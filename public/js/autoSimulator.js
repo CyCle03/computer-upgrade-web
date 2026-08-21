@@ -156,14 +156,7 @@
     for (const job of getAutoJobs(ctx)) {
       if (!job.active) continue;
       anyActive = true;
-      const { type, variantKey, label } = job;
-      const buyMeta = variantKey != null
-        ? buildBuyMetaForVariant(type, variantKey)
-        : getComponentBuyMeta(ctx, type);
-      const goalVal = ctx.autoTargetLevels[type];
-      const goal = variantKey != null && goalVal && typeof goalVal === 'object'
-        ? (goalVal[variantKey] || 1)
-        : (typeof goalVal === 'number' ? goalVal : 1);
+      const { type, variantKey, label, buyMeta, goal } = resolveJobTarget(ctx, job);
       const levels = OMG.getPurchasableLevels(type, buyMeta);
       if (!levels.length) continue;
 
@@ -273,13 +266,14 @@
     return others.concat(jobItems);
   }
 
-  function getJobUpgradeTarget(inv, type, buyMeta, goal) {
-    return inv
-      .filter((p) => partMatchesBuyMeta(p, type, buyMeta) && p.level < goal && p.level < OMG.getMaxLevel(type, p))
-      .sort((a, b) => b.level - a.level)[0];
-  }
-
-  function resolveJobContext(ctx, job) {
+  /**
+   * job 하나가 다루는 부품 메타와 목표 레벨.
+   *
+   * 실시간 경로(simulateOneAutoStep)와 배치 경로(resolveJobContext)가 같은 여섯 줄을
+   * 각자 적고 있었다. 변종 목표를 읽는 규칙(숫자냐 변종별 객체냐)이 여기 들어 있어서,
+   * 한쪽만 고치면 같은 설정인데 경로마다 다른 부품을 고르게 된다.
+   */
+  function resolveJobTarget(ctx, job) {
     const { type, variantKey, label } = job;
     const buyMeta = variantKey != null
       ? buildBuyMetaForVariant(type, variantKey)
@@ -288,6 +282,17 @@
     const goal = variantKey != null && goalVal && typeof goalVal === 'object'
       ? (goalVal[variantKey] || 1)
       : (typeof goalVal === 'number' ? goalVal : 1);
+    return { type, variantKey, label, buyMeta, goal };
+  }
+
+  function getJobUpgradeTarget(inv, type, buyMeta, goal) {
+    return inv
+      .filter((p) => partMatchesBuyMeta(p, type, buyMeta) && p.level < goal && p.level < OMG.getMaxLevel(type, p))
+      .sort((a, b) => b.level - a.level)[0];
+  }
+
+  function resolveJobContext(ctx, job) {
+    const { type, variantKey, label, buyMeta, goal } = resolveJobTarget(ctx, job);
     const levels = OMG.getPurchasableLevels(type, buyMeta);
     const buyLevel = levels.length ? getAutoBuyLevel(type, goal, buyMeta) : null;
     const buyCost = buyLevel != null ? OMG.getShopTierCostMinerals(type, buyLevel, buyMeta) : 0;
@@ -892,6 +897,11 @@
   }
 
   global.AutoSimulator = {
+    // 자동 구매의 '같은 부품인가' 판정과 변종 메타.
+    // 화면(app.jsx)도 같은 규칙으로 재고를 골라야 해서 함께 내보낸다 —
+    // 두 벌로 두면 "화면에는 살 수 있다고 나오는데 AUTO 는 안 사는" 식으로 갈린다.
+    partMatchesBuyMeta,
+    buildBuyMetaForVariant,
     simulateGameTick,
     simulateBackgroundCatchUp,
     simulateAutoPerTick,

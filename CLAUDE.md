@@ -7,12 +7,14 @@
 
 **프론트엔드 — `frontend/src/app.jsx` (빌드 타임 번들)**
 - React 18(npm) + **esbuild 번들** + **빌드 타임 Tailwind**. 예전엔 CDN에서 React UMD·Babel standalone·Tailwind를 받아 브라우저에서 JSX를 변환했지만, 그 구조는 CSP에 `'unsafe-eval'`(Babel)·`'unsafe-inline'`(Tailwind 런타임 주입)·외부 CDN 허용을 전부 요구해서 걷어냈다. 지금은 `script-src 'self'; style-src 'self'` 로 서빙된다.
-- 소스는 `frontend/src/` 셋뿐 — `app.jsx`(UI 전부, 4,400줄+), `styles.css`(Tailwind 지시자 + 커스텀 CSS), `fonts.css`(셀프 호스팅 웹폰트, 생성물). 산출물은 `public/build/{app.js,app.css}`(gitignore, 배포 시 빌드).
+- 소스는 `frontend/src/` 넷뿐 — `app.jsx`(UI 전부, 4,600줄+), `i18n.js`(한국어/영어 사전·전환), `styles.css`(Tailwind 지시자 + 커스텀 CSS), `fonts.css`(셀프 호스팅 웹폰트, 생성물). 산출물은 `public/build/{app.js,app.css}`(gitignore, 배포 시 빌드).
 - `public/index.html` 은 이제 **껍데기**다 — `#root` 와 스크립트 태그만 있다. 전역 스크립트(`originalMapData.js` → `gameSync.js` → `autoSimulator.js`)가 번들보다 **먼저** 실행돼야 한다(`app.jsx` 최상단에서 `window.OriginalMapGame` 등을 읽음).
 - **`app.jsx` 편집 후엔 반드시 `npm run build:frontend`** (또는 `npm run watch:frontend` 상시 실행). 안 돌리면 브라우저에 옛 번들이 그대로 뜬다 — 예전처럼 "저장 후 새로고침"이 아니다.
 - 구문 오류가 나면 번들이 아예 안 만들어져 앱이 안 뜬다(부분 실패 없음). esbuild 빌드가 1차 게이트고, `npm run jsxcheck`(TS 파서로 `app.jsx` 구문만 초 단위 검사)는 빌드 없이 훑고 싶을 때 쓰는 보조 도구다.
 - 훅은 구조분해로 사용: `const { useState, useEffect, useMemo, useRef } = React;` (파일 상단).
 - **God Component 분해**: `function App`은 여전히 크지만, 렌더 트리는 최상위 **프레젠테이션 컴포넌트**(모달 4종·ResourceBar·HardwareMonitor·IncomeLog·InventoryVault·WorkPanel·GamingPanel·PartyHuntingGround·RamSlotShop·ComponentBuyGrid·AutoBuyToggleGrid·AutoStatusPanel 등)와 **커스텀 훅**(`useRaidSocket` — 레이드 소켓 상태·이벤트·핸들러)으로 분리돼 있다. 원칙: **값·핸들러는 props로 주입, 게임 로직/상태는 App에 잔류.** 함정 — `getCpuName`/`getSummonUnit`/`getUpgradeProbability` 등 헬퍼는 App 클로저 함수라(전역 아님) 컴포넌트로 추출할 때 **props로 넘겨야 한다**(안 넘기면 렌더 시 ReferenceError로 앱 전체가 언마운트).
+- **자동 구매 판정은 `autoSimulator.js` 한 벌만 쓴다.** '이 재고가 지금 사려는 부품과 같은가'(`partMatchesBuyMeta`)와 변종 메타(`buildBuyMetaForVariant`)는 화면과 시뮬이 **반드시 같은 답**을 내야 한다 — 두 벌이면 "화면에는 살 수 있다고 나오는데 AUTO 는 안 사는" 식으로 갈린다. `app.jsx` 가 자기 복사본을 들고 있던 것을 걷어내고 `window.AutoSimulator` 다리로 받는다(전역 스크립트라 import 는 안 된다).
+- **남아 있는 중복 — `HuntScene`·`WorkScene`.** 두 Canvas 씬이 캔버스 크기 조정(DPR)·리사이즈 감시·프레임 루프를 같은 모양으로 각자 들고 있다. 그리는 내용이 달라 겉껍데기만 20여 줄 겹치는데, **시각 회귀를 잡을 테스트가 없어 아직 손대지 않았다.** 한쪽 씬의 프레임 루프를 고치면 다른 쪽도 같이 봐야 한다.
 - **Tailwind 함정**: 클래스는 소스를 "텍스트로 훑어" 뽑는다. `${cond ? 'text-emerald-300' : 'text-rose-300'}` 처럼 **완성형 문자열**이면 잡히지만 `text-${color}-300` 처럼 **쪼개 조합하면 못 잡아** 조용히 스타일이 빠진다. 새 클래스는 반드시 완성형 분기로 쓸 것(`tailwind.config.js` 참조).
 - **게임 로직/밸런스는 `public/originalMapData.js` = `window.OriginalMapGame` (코드에선 `OMG`)** 전역에 있음. 부품 스펙·수입·공식이 여기 다 들어있고, UI는 이 값을 읽어 그린다.
 - **2D 시각 레이어**: `HuntScene`(사냥)·`WorkScene`(작업) Canvas 2D 씬. 상태값을 읽어 그리기만 하고 게임 로직은 건드리지 않는 게 원칙.
